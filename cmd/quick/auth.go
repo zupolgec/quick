@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -130,8 +131,10 @@ func login(cfg *cliConfig) (*tokenSet, error) {
 		"code_challenge_method": {"S256"},
 		"state":                 {state},
 	}
-	if cfg.HostedDomain != "" {
-		q.Set("hd", cfg.HostedDomain)
+	// `hd` restringe il selettore Google a un dominio: ha senso solo con un
+	// singolo dominio (non con "*" o una lista).
+	if hd := cfg.HostedDomain; hd != "" && hd != "*" && !strings.Contains(hd, ",") {
+		q.Set("hd", hd)
 	}
 	authURL := authEndpoint + "?" + q.Encode()
 

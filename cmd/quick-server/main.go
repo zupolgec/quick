@@ -132,13 +132,29 @@ func (s *server) authenticate(r *http.Request) (string, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
 		return "", err
 	}
-	if s.domain != "" && info.Hd != s.domain {
+	if !s.domainAllowed(info.Hd) {
 		return "", fmt.Errorf("dominio %q non ammesso", info.Hd)
 	}
 	if s.clientID != "" && info.Aud != s.clientID {
 		return "", errors.New("audience del token non corrisponde")
 	}
 	return info.Email, nil
+}
+
+// domainAllowed verifica l'hosted domain Google contro QUICK_ALLOWED_DOMAIN, che
+// può essere vuoto o "*" (qualsiasi account), un singolo dominio, o una lista
+// comma-separated. Coerente con OAUTH2_PROXY_EMAIL_DOMAINS.
+func (s *server) domainAllowed(hd string) bool {
+	d := strings.TrimSpace(s.domain)
+	if d == "" || d == "*" {
+		return true
+	}
+	for part := range strings.SplitSeq(d, ",") {
+		if strings.TrimSpace(part) == hd {
+			return true
+		}
+	}
+	return false
 }
 
 func def(v, d string) string {
