@@ -1,10 +1,11 @@
 # Stack quick come risorsa Docker Compose di Coolify.
 #
 # Rete: abilitare "Connect to Predefined Network -> coolify" nella UI, così il
-# coolify-proxy raggiunge quick-server. Il routing del wildcard si imposta nel
-# campo Domains della risorsa (es. https://*.<tuo-dominio>): Coolify genera lui
-# le label caddy. Niente label di routing qui (repo generico). Le ${VAR} qui
-# sotto le sostituisce Coolify nell'env della risorsa.
+# coolify-proxy raggiunge quick-server. Routing: vedi le caddy labels esplicite
+# sotto (NON impostare un dominio nella UI: l'auto-gen di Coolify per i
+# compose-from-git e' rotta). Il dominio resta generico via {$QUICK_BASE_DOMAIN}
+# (da env del PROXY). Le ${VAR} qui sotto le sostituisce Coolify nell'env della
+# risorsa.
 #
 # Due client OAuth Google distinti:
 #  - CLI:          tipo "Desktop app" (solo client_id, PKCE)   -> QUICK_CLI_CLIENT_ID
@@ -36,10 +37,26 @@ services:
     # Routing via caddy-docker-proxy. NON impostare un dominio nella UI Coolify:
     # genererebbe label `caddy_0.*` sbagliate per un wildcard reverse-proxy
     # (handle_path + try_files /index.php). Le definiamo noi, esplicite e corrette.
-    # Routing: nessuna label qui. Il dominio (wildcard *.<tuo-dominio>) si imposta
-    # nel campo Domains della risorsa in Coolify, che genera lui le label caddy.
-    # Repo generico: zero domini cablati. Serve "Connect to Predefined Network ->
-    # coolify" perché il proxy raggiunga il container.
+    # Routing con caddy labels ESPLICITE (l'auto-generazione di Coolify dal campo
+    # dominio è rotta per un compose-from-git: ingress network sbagliata -> 502,
+    # e try_files /index.php -> path riscritti). Quindi: lascia VUOTO il dominio
+    # nella UI Coolify, e definiamo noi le label corrette qui sotto.
+    #  - dominio generico via {$QUICK_BASE_DOMAIN}: lo risolve Caddy dall'env del
+    #    PROXY (come {env.CF_API_TOKEN}); -> aggiungi QUICK_BASE_DOMAIN all'env del
+    #    coolify-proxy (Proxy -> Configuration), accanto a CF_API_TOKEN.
+    #  - caddy_ingress_network=coolify: la rete su cui il proxy raggiunge il
+    #    container (fix del 502; serve "Connect to Predefined Network -> coolify").
+    labels:
+      caddy: "*.{$QUICK_BASE_DOMAIN}"
+      caddy.tls.dns: "cloudflare {env.CF_API_TOKEN}"
+      caddy.reverse_proxy: "{{upstreams 8080}}"
+      caddy_ingress_network: coolify
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/api/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     volumes:
       # Solo per QUICK_STORAGE=local; con s3 il container è stateless e questi
       # mount restano inutilizzati (rimuovili nella UI Coolify se usi s3).
