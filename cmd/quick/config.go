@@ -5,8 +5,10 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -15,6 +17,16 @@ import (
 
 	"github.com/wayexperience/quick/internal/quick"
 )
+
+// promptServer chiede l'URL del server quando non è dato da flag/env/cache.
+func promptServer() string {
+	fmt.Fprint(os.Stderr, "URL del server quick (es. https://quick.example.com): ")
+	sc := bufio.NewScanner(os.Stdin)
+	if sc.Scan() {
+		return strings.TrimSpace(sc.Text())
+	}
+	return ""
+}
 
 type cliConfig struct {
 	Server            string `json:"server"`
@@ -65,7 +77,10 @@ func resolveConfig(serverFlag string) (*cliConfig, error) {
 		server = saved.Server
 	}
 	if server == "" {
-		return nil, errors.New("specifica il server con --server o QUICK_SERVER")
+		server = promptServer() // chiedi una volta, poi viene ricordato
+	}
+	if server == "" {
+		return nil, errors.New("server richiesto (--server, QUICK_SERVER, o inseriscilo al prompt)")
 	}
 	if !strings.Contains(server, "://") {
 		server = "https://" + server

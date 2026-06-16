@@ -101,7 +101,19 @@ func deploy(args []string) {
 	name := fs.String("name", "", "nome del sito (sottodominio); default: nome cartella")
 	server := fs.String("server", "", "URL del server (o QUICK_SERVER)")
 	token := fs.String("token", os.Getenv("QUICK_TOKEN"), "ID token Google (default: login salvato)")
+	public := fs.Bool("public", false, "rendi il sito pubblico (niente SSO)")
+	private := fs.String("private", "", "rendi il sito privato con questo codice (--private= vuoto = generato)")
 	fs.Parse(args)
+
+	privateSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "private" {
+			privateSet = true
+		}
+	})
+	if *public && privateSet {
+		fatal(fmt.Errorf("--public e --private sono mutuamente esclusivi"))
+	}
 
 	if *name == "" {
 		abs, _ := filepath.Abs(dir)
@@ -145,6 +157,20 @@ func deploy(args []string) {
 	var res quick.DeployResponse
 	json.Unmarshal(respBody, &res)
 	fmt.Printf("✓ %s pubblicato → %s\n", *name, res.URL)
+
+	// Visibilità opzionale applicata subito dopo il deploy.
+	switch {
+	case *public:
+		callPolicy(cfg, *name, tok, quick.PolicyRequest{Access: new(quick.AccessPublic)})
+		fmt.Println("  → pubblico (niente SSO)")
+	case privateSet:
+		code := *private
+		if code == "" {
+			code = genCode()
+		}
+		callPolicy(cfg, *name, tok, quick.PolicyRequest{Access: new(quick.AccessCode), Code: &code})
+		fmt.Printf("  → privato, codice: %s\n", code)
+	}
 }
 
 // tarGz crea un tar.gz in memoria con i contenuti della cartella (path relativi).

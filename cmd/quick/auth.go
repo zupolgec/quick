@@ -83,6 +83,7 @@ func idToken(cfg *cliConfig) (string, error) {
 			return nt.IDToken, nil
 		}
 	}
+	fmt.Fprintln(os.Stderr, "Non sei autenticato: eseguo il login.")
 	nt, err := login(cfg)
 	if err != nil {
 		return "", err
