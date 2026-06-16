@@ -285,25 +285,56 @@ var codeForm = template.Must(template.New("code").Parse(`<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Accesso protetto</title>
 <style>
-  body{font:16px/1.5 system-ui,sans-serif;background:#f5f5f7;color:#1d1d1f;
-    display:grid;place-items:center;min-height:100vh;margin:0}
-  form{background:#fff;padding:2rem;border-radius:14px;box-shadow:0 1px 4px rgba(0,0,0,.1);
-    width:min(360px,90vw);box-sizing:border-box}
-  h1{font-size:1.1rem;margin:0 0 .25rem}
-  p{margin:0 0 1.25rem;color:#6e6e73;font-size:.9rem}
-  input{width:100%;padding:.7rem;font-size:1rem;border:1px solid #d2d2d7;border-radius:9px;
-    box-sizing:border-box}
-  button{width:100%;margin-top:.75rem;padding:.7rem;font-size:1rem;border:0;border-radius:9px;
-    background:#1d1d1f;color:#fff;cursor:pointer}
-  .err{color:#c0392b;font-size:.85rem;margin-top:.5rem}
+  :root{
+    --bg:#f4f4f5; --card:#fff; --fg:#18181b; --muted:#71717a;
+    --border:#e4e4e7; --ring:#18181b; --btn:#18181b; --btn-fg:#fafafa;
+    --err:#dc2626; --err-bg:#fef2f2;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#09090b; --card:#161618; --fg:#fafafa; --muted:#a1a1aa;
+      --border:#27272a; --ring:#fafafa; --btn:#fafafa; --btn-fg:#18181b;
+      --err:#f87171; --err-bg:#2a1416;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;padding:1.5rem;
+    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    background:var(--bg);color:var(--fg);-webkit-font-smoothing:antialiased}
+  .card{width:min(360px,100%);background:var(--card);border:1px solid var(--border);
+    border-radius:18px;padding:2rem 1.75rem;
+    box-shadow:0 1px 2px rgba(0,0,0,.04),0 14px 40px rgba(0,0,0,.10)}
+  .badge{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;
+    background:var(--bg);border:1px solid var(--border);margin-bottom:1.2rem}
+  .badge svg{width:22px;height:22px;stroke:var(--fg);fill:none;
+    stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  h1{font-size:1.15rem;font-weight:600;margin:0 0 .35rem;letter-spacing:-.01em}
+  p{margin:0 0 1.4rem;color:var(--muted);font-size:.9rem}
+  p b{color:var(--fg);font-weight:600;overflow-wrap:anywhere}
+  label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .4rem}
+  input[type=password]{width:100%;padding:.72rem .85rem;font-size:1rem;color:var(--fg);
+    background:transparent;border:1px solid var(--border);border-radius:11px;outline:none;
+    transition:border-color .15s,box-shadow .15s}
+  input[type=password]:focus{border-color:var(--ring);
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--ring) 16%,transparent)}
+  button{width:100%;margin-top:1.05rem;padding:.74rem;font-size:.95rem;font-weight:600;
+    border:0;border-radius:11px;background:var(--btn);color:var(--btn-fg);cursor:pointer;
+    transition:opacity .15s}
+  button:hover{opacity:.88}
+  .err{margin-top:.9rem;padding:.55rem .7rem;border-radius:9px;font-size:.83rem;
+    color:var(--err);background:var(--err-bg)}
 </style></head><body>
-<form method="post" action="/__quick/code">
+<form class="card" method="post" action="/__quick/code">
+  <div class="badge" aria-hidden="true">
+    <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+  </div>
   <h1>Sito protetto</h1>
-  <p>Inserisci il codice di accesso per {{.Host}}.</p>
+  <p>Inserisci il codice di accesso per <b>{{.Host}}</b>.</p>
   <input type="hidden" name="rd" value="{{.RD}}">
-  <input type="password" name="code" placeholder="Codice" autofocus required>
+  <label for="code">Codice</label>
+  <input id="code" type="password" name="code" placeholder="••••••••" autofocus required autocomplete="off">
   <button type="submit">Entra</button>
-  {{if .Error}}<div class="err">Codice errato.</div>{{end}}
+  {{if .Error}}<div class="err">Codice errato, riprova.</div>{{end}}
 </form></body></html>`))
 
 func renderCodeForm(w http.ResponseWriter, host, rd string, isErr bool) {
