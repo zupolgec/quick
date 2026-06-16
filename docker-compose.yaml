@@ -61,7 +61,10 @@ services:
       - coolify
 
   oauth2-proxy:
-    image: quay.io/oauth2-proxy/oauth2-proxy:latest
+    # immagine ufficiale + mini healthcheck statico (vedi oauth2-proxy.Dockerfile)
+    build:
+      context: .
+      dockerfile: oauth2-proxy.Dockerfile
     restart: unless-stopped
     environment:
       OAUTH2_PROXY_HTTP_ADDRESS: "0.0.0.0:4180"
