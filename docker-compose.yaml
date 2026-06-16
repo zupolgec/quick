@@ -1,32 +1,33 @@
-# Stack quick come risorsa Docker Compose di Coolify.
+# Stack quick per Coolify in modalità "Raw Docker Compose".
 #
-# Rete: abilitare "Connect to Predefined Network -> coolify" nella UI, così il
-# coolify-proxy raggiunge quick-server. Routing: vedi le caddy labels esplicite
-# sotto (NON impostare un dominio nella UI: l'auto-gen di Coolify per i
-# compose-from-git e' rotta). Il dominio resta generico via {$QUICK_BASE_DOMAIN}
-# (da env del PROXY). Le ${VAR} qui sotto le sostituisce Coolify nell'env della
-# risorsa.
+# In raw mode Coolify deploya il compose COSÌ COM'È (niente auto-generazione di
+# label caddy: niente try_files, niente ingress network forzata) e gira
+# `docker compose` standard → le ${VAR} qui sotto le sostituisce dall'env della
+# risorsa, anche nelle label. Quindi:
+#  - il routing è nelle nostre caddy labels esplicite (corrette per un wildcard
+#    reverse-proxy), NON nel campo dominio della UI (lascialo vuoto);
+#  - il dominio resta generico via ${QUICK_BASE_DOMAIN} (nessun dominio cablato,
+#    nessuna var da mettere nel proxy);
+#  - le reti le dichiariamo noi: `quicknet` interna (quick-server <-> oauth2-proxy
+#    per service name) e `coolify` esterna (il coolify-proxy raggiunge quick-server).
 #
-# Due client OAuth Google distinti:
-#  - CLI:          tipo "Desktop app" (solo client_id, PKCE)   -> QUICK_CLI_CLIENT_ID
-#  - oauth2-proxy: tipo "Web application" (client_id + secret)  -> GOOGLE_CLIENT_ID/SECRET
+# Due client OAuth Google: CLI (riusa il client Web via QUICK_CLI_CLIENT_ID/SECRET)
+# e oauth2-proxy (GOOGLE_CLIENT_ID/SECRET).
 
 services:
   quick-server:
     build: .
     restart: unless-stopped
     environment:
-      QUICK_BASE_DOMAIN: ${QUICK_BASE_DOMAIN}        # es. quick.example.com
-      QUICK_ALLOWED_DOMAINS: ${QUICK_ALLOWED_DOMAINS}  # domini email Google: uno, lista "a,b", o "*"
-      QUICK_OAUTH_CLIENT_ID: ${QUICK_CLI_CLIENT_ID}          # client della CLI (audience + /api/config)
-      QUICK_OAUTH_CLIENT_SECRET: ${QUICK_CLI_CLIENT_SECRET:-} # solo se riusi un client Web per la CLI (vuoto per Desktop/PKCE)
+      QUICK_BASE_DOMAIN: ${QUICK_BASE_DOMAIN}
+      QUICK_ALLOWED_DOMAINS: ${QUICK_ALLOWED_DOMAINS}   # uno, lista "a,b", o "*"
+      QUICK_OAUTH_CLIENT_ID: ${QUICK_CLI_CLIENT_ID}
+      QUICK_OAUTH_CLIENT_SECRET: ${QUICK_CLI_CLIENT_SECRET:-}  # vuoto per client Desktop/PKCE
       QUICK_OAUTH2_URL: http://oauth2-proxy:4180
       QUICK_META_SECRET: ${QUICK_META_SECRET}
       QUICK_STORAGE: ${QUICK_STORAGE:-local}
-      # storage local (bind mount sotto):
       QUICK_SITES_DIR: /srv/quick
       QUICK_META_DIR: /srv/quick-meta
-      # storage s3 (usato solo se QUICK_STORAGE=s3):
       QUICK_S3_ENDPOINT: ${QUICK_S3_ENDPOINT:-}
       QUICK_S3_REGION: ${QUICK_S3_REGION:-}
       QUICK_S3_BUCKET: ${QUICK_S3_BUCKET:-}
@@ -34,20 +35,12 @@ services:
       QUICK_S3_SECRET_KEY: ${QUICK_S3_SECRET_KEY:-}
       QUICK_S3_PREFIX: ${QUICK_S3_PREFIX:-}
       QUICK_S3_USE_SSL: ${QUICK_S3_USE_SSL:-true}
-    # Routing via caddy-docker-proxy. NON impostare un dominio nella UI Coolify:
-    # genererebbe label `caddy_0.*` sbagliate per un wildcard reverse-proxy
-    # (handle_path + try_files /index.php). Le definiamo noi, esplicite e corrette.
-    # Routing con caddy labels ESPLICITE (l'auto-generazione di Coolify dal campo
-    # dominio è rotta per un compose-from-git: ingress network sbagliata -> 502,
-    # e try_files /index.php -> path riscritti). Quindi: lascia VUOTO il dominio
-    # nella UI Coolify, e definiamo noi le label corrette qui sotto.
-    #  - dominio generico via {$QUICK_BASE_DOMAIN}: lo risolve Caddy dall'env del
-    #    PROXY (come {env.CF_API_TOKEN}); -> aggiungi QUICK_BASE_DOMAIN all'env del
-    #    coolify-proxy (Proxy -> Configuration), accanto a CF_API_TOKEN.
-    #  - caddy_ingress_network=coolify: la rete su cui il proxy raggiunge il
-    #    container (fix del 502; serve "Connect to Predefined Network -> coolify").
+    # Routing del wildcard: label esplicite. ${QUICK_BASE_DOMAIN} lo sostituisce
+    # docker compose dall'env della risorsa; {env.CF_API_TOKEN} e {{upstreams}}
+    # restano per Caddy. caddy_ingress_network=coolify: rete su cui il proxy
+    # raggiunge il container.
     labels:
-      caddy: "*.{$QUICK_BASE_DOMAIN}"
+      caddy: "*.${QUICK_BASE_DOMAIN}"
       caddy.tls.dns: "cloudflare {env.CF_API_TOKEN}"
       caddy.reverse_proxy: "{{upstreams 8080}}"
       caddy_ingress_network: coolify
@@ -58,15 +51,14 @@ services:
       retries: 5
       start_period: 5s
     volumes:
-      # Solo per QUICK_STORAGE=local; con s3 il container è stateless e questi
-      # mount restano inutilizzati (rimuovili nella UI Coolify se usi s3).
+      # Solo per QUICK_STORAGE=local; con s3 il container è stateless (rimuovili).
       - /data/coolify/proxy/caddy/data/quick-sites:/srv/quick
       - /data/coolify/proxy/caddy/data/quick-meta:/srv/quick-meta
+    networks:
+      - quicknet
+      - coolify
 
   oauth2-proxy:
-    # Tutta la config via env: Coolify (compose-da-git) NON mette i file del repo
-    # nella dir di runtime, quindi un bind ./oauth2-proxy.cfg diventerebbe una dir
-    # vuota e oauth2-proxy crasherebbe. Niente file, niente mount.
     image: quay.io/oauth2-proxy/oauth2-proxy:latest
     restart: unless-stopped
     environment:
@@ -85,3 +77,10 @@ services:
       OAUTH2_PROXY_REDIRECT_URL: https://auth.${QUICK_BASE_DOMAIN}/oauth2/callback
       OAUTH2_PROXY_COOKIE_DOMAINS: .${QUICK_BASE_DOMAIN}
       OAUTH2_PROXY_WHITELIST_DOMAINS: .${QUICK_BASE_DOMAIN}
+    networks:
+      - quicknet
+
+networks:
+  quicknet:
+  coolify:
+    external: true
