@@ -1,7 +1,9 @@
 // quick è la CLI di way-quick (hosting statico interno, generico).
 //
+//	quick                                         # stato: server, sito, visibilità, deploy
 //	quick login                                   # login Google (una volta)
-//	quick deploy [cartella] --name <sito>         # pubblica una cartella
+//	quick deploy [cartella] --name <sito>         # pubblica una cartella (mirror)
+//	quick ignore [cartella]                       # crea un .quickignore modificabile
 //	quick publish|unpublish|private|lock|unlock <sito>
 //
 // Il server si indica con --server o QUICK_SERVER; il resto si auto-configura
@@ -31,11 +33,16 @@ var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
-		usage()
+		statusCmd(nil) // `quick` da solo: mostra lo stato invece di un errore
+		return
 	}
 	switch os.Args[1] {
 	case "version", "--version", "-v":
 		printVersion()
+	case "status":
+		statusCmd(os.Args[2:])
+	case "ignore":
+		ignoreCmd(os.Args[2:])
 	case "login":
 		fs := flag.NewFlagSet("login", flag.ExitOnError)
 		server := fs.String("server", "", "URL del server (o QUICK_SERVER)")
@@ -82,9 +89,11 @@ func printVersion() {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, `uso (server via --server o QUICK_SERVER):
+  quick                             # stato: server, sito, visibilità, deploy
   quick version
   quick login
-  quick deploy [cartella] --name <sito>
+  quick deploy [cartella] --name <sito> [--dry-run] [--yes]
+  quick ignore  [cartella]          # crea un .quickignore modificabile
   quick delete    <sito>            # elimina il sito (irreversibile)
   quick publish   <sito>            # apri al pubblico (niente SSO)
   quick unpublish <sito>            # torna dietro SSO aziendale
@@ -106,6 +115,9 @@ func deploy(args []string) {
 	token := fs.String("token", os.Getenv("QUICK_TOKEN"), "ID token Google (default: login salvato)")
 	public := fs.Bool("public", false, "rendi il sito pubblico (niente SSO)")
 	private := fs.String("private", "", "rendi il sito privato con questo codice (--private= vuoto = generato)")
+	yes := fs.Bool("yes", false, "non chiedere conferma prima di pubblicare")
+	dryRun := fs.Bool("dry-run", false, "mostra cosa verrebbe pubblicato senza farlo")
+	force := fs.Bool("force", false, "procedi anche se non c'è nessun file da pubblicare")
 	fs.Parse(args)
 
 	privateSet := false
@@ -133,6 +145,20 @@ func deploy(args []string) {
 		fatal(fmt.Errorf("%q non è una cartella", dir))
 	}
 
+	// Calcola il piano (cosa sale, cosa è escluso): condiviso con --dry-run.
+	pl, err := buildPlan(dir)
+	fatal(err)
+
+	if *dryRun {
+		printPlan(*name, pl)
+		return
+	}
+
+	// Guardia "deploy vuoto": senza file il mirror azzererebbe il sito.
+	if len(pl.files) == 0 && !*force {
+		fatal(fmt.Errorf("nessun file da pubblicare in %q (esclusi %d). Usa --force per svuotare comunque il sito", dir, pl.excluded))
+	}
+
 	// Se la cartella è già collegata a un altro sito (.quick), avvisa prima di
 	// fare deploy altrove: facile da innescare con --name sbagliato.
 	if !confirmSiteMismatch(sf, *name, "fare deploy su") {
@@ -146,6 +172,12 @@ func deploy(args []string) {
 	cfg, err := resolveConfig(srv)
 	fatal(err)
 
+	// Riepilogo + conferma: sostituire l'intero sito è un'operazione distruttiva.
+	if !confirmDeploy(*name, cfg, pl, *yes) {
+		fmt.Fprintln(os.Stderr, "annullato")
+		return
+	}
+
 	tok := *token
 	if tok == "" {
 		if tok, err = idToken(cfg); err != nil {
@@ -153,7 +185,7 @@ func deploy(args []string) {
 		}
 	}
 
-	payload, err := tarGz(dir)
+	payload, err := tarGzFromPlan(dir, pl)
 	fatal(err)
 
 	endpoint := cfg.Server + "/api/deploy?name=" + url.QueryEscape(*name)
@@ -191,58 +223,44 @@ func deploy(args []string) {
 	}
 }
 
-// tarGz crea un tar.gz in memoria con i contenuti della cartella (path relativi).
+// tarGz calcola il piano della cartella e ne crea il tar.gz in memoria.
 func tarGz(dir string) (*bytes.Buffer, error) {
+	p, err := buildPlan(dir)
+	if err != nil {
+		return nil, err
+	}
+	return tarGzFromPlan(dir, p)
+}
+
+// tarGzFromPlan impacchetta i soli file del piano (già filtrati dai tre tier).
+func tarGzFromPlan(dir string, p *plan) (*bytes.Buffer, error) {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
 
-	err := filepath.Walk(dir, func(path string, fi os.FileInfo, err error) error {
+	for _, pf := range p.files {
+		path := filepath.Join(dir, filepath.FromSlash(pf.rel))
+		fi, err := os.Stat(path)
 		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(dir, path)
-		if err != nil {
-			return err
-		}
-		if rel == "." {
-			return nil
-		}
-		// Salta i file/cartelle nascosti (.git, .DS_Store, .env, .quick…),
-		// tranne .well-known che è contenuto web legittimo.
-		for part := range strings.SplitSeq(filepath.ToSlash(rel), "/") {
-			if strings.HasPrefix(part, ".") && part != ".well-known" {
-				if fi.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
+			return nil, err
 		}
 		hdr, err := tar.FileInfoHeader(fi, "")
 		if err != nil {
-			return err
+			return nil, err
 		}
-		hdr.Name = filepath.ToSlash(rel)
-		if fi.IsDir() {
-			hdr.Name += "/"
-		}
+		hdr.Name = pf.rel
 		if err := tw.WriteHeader(hdr); err != nil {
-			return err
+			return nil, err
 		}
-		if fi.Mode().IsRegular() {
-			f, err := os.Open(path)
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-			if _, err := io.Copy(tw, f); err != nil {
-				return err
-			}
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, err
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
+		if _, err := io.Copy(tw, f); err != nil {
+			f.Close()
+			return nil, err
+		}
+		f.Close()
 	}
 	if err := tw.Close(); err != nil {
 		return nil, err

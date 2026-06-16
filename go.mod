@@ -2,7 +2,10 @@ module github.com/wayexperience/quick
 
 go 1.26
 
-require github.com/minio/minio-go/v7 v7.2.0
+require (
+	github.com/minio/minio-go/v7 v7.2.0
+	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
+)
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect

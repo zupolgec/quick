@@ -47,6 +47,10 @@ func (s *server) serveSite(w http.ResponseWriter, r *http.Request, sub string) {
 		if fi.ETag != "" {
 			w.Header().Set("ETag", fi.ETag)
 		}
+		// Niente MIME-sniffing: un sito pubblico non deve poter far interpretare
+		// un file col tipo sbagliato (vettore XSS). Il content-type resta quello
+		// dedotto dall'estensione, con fallback a octet-stream (scarica, non rende).
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		http.ServeContent(w, r, fi.Name, fi.ModTime, rc)
 		rc.Close()
 		return

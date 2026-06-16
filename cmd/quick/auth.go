@@ -64,11 +64,28 @@ func saveToken(t *tokenSet) error {
 
 // idToken restituisce un ID token valido: cache, poi refresh, poi login interattivo.
 func idToken(cfg *cliConfig) (string, error) {
-	t, err := loadToken()
-	if err == nil && t.IDToken != "" && time.Now().Before(t.Expiry.Add(-time.Minute)) {
-		return t.IDToken, nil
+	if tok, ok := silentToken(cfg); ok {
+		return tok, nil
 	}
-	if err == nil && t.RefreshToken != "" {
+	fmt.Fprintln(os.Stderr, "Non sei autenticato: eseguo il login.")
+	nt, err := login(cfg)
+	if err != nil {
+		return "", err
+	}
+	return nt.IDToken, nil
+}
+
+// silentToken prova a fornire un ID token senza interazione: usa la cache e, se
+// scaduta, il refresh token. ok=false se servirebbe un login interattivo.
+func silentToken(cfg *cliConfig) (string, bool) {
+	t, err := loadToken()
+	if err != nil {
+		return "", false
+	}
+	if t.IDToken != "" && time.Now().Before(t.Expiry.Add(-time.Minute)) {
+		return t.IDToken, true
+	}
+	if t.RefreshToken != "" {
 		v := url.Values{
 			"client_id":     {cfg.OAuthClientID},
 			"refresh_token": {t.RefreshToken},
@@ -80,15 +97,10 @@ func idToken(cfg *cliConfig) (string, error) {
 				nt.RefreshToken = t.RefreshToken
 			}
 			saveToken(nt)
-			return nt.IDToken, nil
+			return nt.IDToken, true
 		}
 	}
-	fmt.Fprintln(os.Stderr, "Non sei autenticato: eseguo il login.")
-	nt, err := login(cfg)
-	if err != nil {
-		return "", err
-	}
-	return nt.IDToken, nil
+	return "", false
 }
 
 // login esegue il flusso interattivo PKCE e salva il token.
