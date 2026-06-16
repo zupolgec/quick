@@ -20,16 +20,22 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"quick/internal/quick"
 )
+
+// version è sovrascrivibile a build time con -ldflags "-X main.version=...".
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
 		usage()
 	}
 	switch os.Args[1] {
+	case "version", "--version", "-v":
+		printVersion()
 	case "login":
 		fs := flag.NewFlagSet("login", flag.ExitOnError)
 		server := fs.String("server", "", "URL del server (o QUICK_SERVER)")
@@ -46,6 +52,29 @@ func main() {
 		policyCmd(os.Args[1], os.Args[2:])
 	default:
 		usage()
+	}
+}
+
+// printVersion stampa la versione + il commit git (embeddato da `go build`/`go install`).
+func printVersion() {
+	rev := ""
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			if s.Key == "vcs.revision" {
+				rev = s.Value
+			}
+		}
+		if version == "dev" && info.Main.Version != "" && info.Main.Version != "(devel)" {
+			version = info.Main.Version
+		}
+	}
+	if len(rev) > 12 {
+		rev = rev[:12]
+	}
+	if rev != "" {
+		fmt.Printf("quick %s (%s)\n", version, rev)
+	} else {
+		fmt.Printf("quick %s\n", version)
 	}
 }
 
