@@ -61,6 +61,8 @@ func (s *s3) metaKey(site string) string      { return s.prefix + "meta/" + site
 func (s *s3) PutSite(site string, tr *tar.Reader) error {
 	ctx := context.Background()
 	keep := map[string]bool{}
+	var extracted int64
+	var files int
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -79,6 +81,15 @@ func (s *s3) PutSite(site string, tr *tar.Reader) error {
 		if rel == "" {
 			continue
 		}
+		// Limiti anti-bomb: la dimensione dichiarata è autorevole (tar.Reader legge
+		// esattamente hdr.Size per entry, e PutObject ne consuma altrettanti).
+		if files++; files > maxExtractFiles {
+			return errTooManyFiles
+		}
+		if hdr.Size < 0 || extracted+hdr.Size > maxExtractBytes {
+			return errArchiveTooBig
+		}
+		extracted += hdr.Size
 		key := s.siteKey(site, rel)
 		ct := mime.TypeByExtension(filepath.Ext(rel))
 		if ct == "" {

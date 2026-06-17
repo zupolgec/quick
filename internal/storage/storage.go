@@ -13,11 +13,26 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
 // ErrNotFound: file/oggetto inesistente (per il fallback try_files in serve).
 var ErrNotFound = errors.New("storage: not found")
+
+// Tetti anti-bomb applicati durante l'estrazione del tar: il limite sullo stream
+// gzip in ingresso non basta, perché un archivio piccolo può espandersi a
+// dismisura (gzip bomb) o contenere moltissimi file minuscoli.
+// var (non const) per poterli abbassare nei test senza generare archivi enormi.
+var (
+	maxExtractBytes int64 = 500 << 20 // byte estratti totali (decompressi)
+	maxExtractFiles       = 20000     // numero massimo di file
+)
+
+var (
+	errArchiveTooBig = fmt.Errorf("storage: archivio troppo grande una volta estratto (oltre %d MiB)", maxExtractBytes>>20)
+	errTooManyFiles  = fmt.Errorf("storage: l'archivio supera il limite di %d file", maxExtractFiles)
+)
 
 // FileInfo accompagna un file aperto. Il content-type lo determina chi serve
 // (http.ServeContent) via estensione/sniff, qui basta nome+mtime+etag.
@@ -95,13 +110,14 @@ func newLocal(sitesDir, metaDir string) (*local, error) {
 }
 
 func (l *local) PutSite(site string, tr *tar.Reader) error {
-	tmp := filepath.Join(l.sitesDir, "."+site+".tmp")
-	os.RemoveAll(tmp)
+	tmp := l.uniqueTmp(site, "tmp")
 	if err := os.MkdirAll(tmp, 0o755); err != nil {
 		return err
 	}
 	defer os.RemoveAll(tmp)
 
+	var extracted int64
+	var files int
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -124,6 +140,9 @@ func (l *local) PutSite(site string, tr *tar.Reader) error {
 				return err
 			}
 		case tar.TypeReg:
+			if files++; files > maxExtractFiles {
+				return errTooManyFiles
+			}
 			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 				return err
 			}
@@ -131,11 +150,16 @@ func (l *local) PutSite(site string, tr *tar.Reader) error {
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(f, tr); err != nil {
-				f.Close()
+			// Copia limitata al budget residuo (+1 per rilevare lo sforamento):
+			// una dimensione dichiarata falsa nell'header non può riempire il disco.
+			n, err := io.Copy(f, io.LimitReader(tr, maxExtractBytes-extracted+1))
+			f.Close()
+			if err != nil {
 				return err
 			}
-			f.Close()
+			if extracted += n; extracted > maxExtractBytes {
+				return errArchiveTooBig
+			}
 		}
 	}
 
@@ -160,6 +184,14 @@ func (l *local) PutSite(site string, tr *tar.Reader) error {
 }
 
 func (l *local) prevPath(site string) string { return filepath.Join(l.sitesDir, "."+site+".prev") }
+
+// tmpSeq rende unici i path temporanei: due operazioni concorrenti sullo stesso
+// sito (oltre al lock per-sito a monte) non condividono mai la stessa dir di lavoro.
+var tmpSeq atomic.Uint64
+
+func (l *local) uniqueTmp(site, kind string) string {
+	return filepath.Join(l.sitesDir, fmt.Sprintf(".%s.%s.%d.%d", site, kind, os.Getpid(), tmpSeq.Add(1)))
+}
 
 func (l *local) ListSites() ([]string, error) {
 	set := map[string]bool{}
@@ -191,8 +223,7 @@ func (l *local) Rollback(site string) (bool, error) {
 	if _, err := os.Stat(prev); err != nil {
 		return false, nil // niente versione precedente
 	}
-	swap := filepath.Join(l.sitesDir, "."+site+".swap")
-	os.RemoveAll(swap)
+	swap := l.uniqueTmp(site, "swap")
 	if _, err := os.Stat(final); err == nil {
 		if err := os.Rename(final, swap); err != nil {
 			return false, err
