@@ -87,9 +87,13 @@ Use ` + "`quick status`" + ` or ` + "`quick deploy ... --dry-run`" + ` to see in
 
 ## Served site conventions
 
-- ` + "`index.html`" + ` is a folder's index; ` + "`/about`" + ` serves ` + "`about.html`" + ` or
-  ` + "`about/index.html`" + ` (clean URLs without an extension).
-- ` + "`404.html`" + ` at the root: page shown (with status 404) for nonexistent paths.
+- ` + "`index.html`" + ` is a folder's index. ` + "`/about`" + ` serves ` + "`about.html`" + `;
+  ` + "`about/index.html`" + ` is served at ` + "`/about/`" + `.
+- HTML pages have canonical URLs: ` + "`/about.html`" + ` -> ` + "`/about`" + `,
+  ` + "`/about/index.html`" + ` -> ` + "`/about`" + `, and if that is a folder,
+  ` + "`/about`" + ` -> ` + "`/about/`" + `.
+- ` + "`404.html`" + ` at the root or in the nearest folder: page shown (with status 404)
+  for nonexistent paths.
 - ` + "`200.html`" + ` at the root: app shell for SPAs; served (status 200) for
   any route that doesn't match a file. Without it, missing paths
   give a real 404 (no silent fallback to the home page).

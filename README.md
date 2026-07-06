@@ -55,9 +55,12 @@ keystore); (2) comodità, predefiniti e scavalcabili — `node_modules/`, `vendo
 esclusioni di comodità (sintassi gitignore, con `!`). Crealo con `quick ignore`.
 
 **Convenzioni del sito servito**: `index.html` come indice di cartella; `/about`
-serve `about.html` o `about/index.html` (URL puliti); `404.html` in radice per i
-path inesistenti (status 404); `200.html` in radice come app shell SPA (servita 200
-per le rotte che non sono file). Senza `200.html`, un path mancante dà un 404 vero.
+serve `about.html`, mentre `about/index.html` viene servito da `/about/`. Gli HTML
+hanno URL canonici: `/about.html` → `/about`, `/about/index.html` → `/about` e, se
+è una cartella, `/about` → `/about/`. `404.html` può stare nella radice o nella
+cartella più vicina al path mancante (status 404); `200.html` in radice è l'app
+shell SPA (servita 200 per le rotte che non sono file). Senza `200.html`, un path
+mancante dà un 404 vero.
 
 `quick status` mostra server, login, visibilità del sito e cosa salirebbe col deploy.
 `quick skill` pubblica una Agent Skill (`SKILL.md`) che insegna a un agente come usare
