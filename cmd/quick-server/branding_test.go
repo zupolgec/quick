@@ -46,3 +46,18 @@ func TestFontServedSameOriginNoCDN(t *testing.T) {
 		t.Errorf("landing still references an external font CDN")
 	}
 }
+
+func TestHealthDoesNotRequireHost(t *testing.T) {
+	s := &server{baseDomain: "quick.example.test"}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/api/health", nil)
+
+	s.route(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("code %d, want 200", w.Code)
+	}
+	if strings.TrimSpace(w.Body.String()) != "ok" {
+		t.Fatalf("body %q, want ok", w.Body.String())
+	}
+}

@@ -99,6 +99,10 @@ func main() {
 // route dispatches by host: the apex (== baseDomain) is the control plane (API,
 // auth, dashboard); every subdomain is just a site.
 func (s *server) route(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/api/health" {
+		fmt.Fprintln(w, "ok")
+		return
+	}
 	// Brand assets (font, logo, favicon) are served same-origin on every host so
 	// their URLs never need CORS (pages live on the apex and site subdomains).
 	if strings.HasPrefix(r.URL.Path, "/fonts/") || strings.HasPrefix(r.URL.Path, "/img/") {
