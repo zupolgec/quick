@@ -66,7 +66,10 @@ mancante dà un 404 vero.
 `quick skill` pubblica una Agent Skill (`SKILL.md`) che insegna a un agente come usare
 la CLI. `SKILL.md` è un formato aperto cross-vendor (Claude Code, Codex, Gemini,
 Cursor…): default `~/.claude/skills/quick/`, oppure `--target codex|gemini|…`,
-`--project` (cartella del repo), `--all` (tutti gli agenti noti).
+`--project` (cartella del repo), `--all` (tutti gli agenti noti). Quando la CLI
+viene aggiornata, i `SKILL.md` quick già installati per Claude/Codex/Gemini
+vengono aggiornati silenziosamente al primo comando operativo; non vengono create
+nuove skill senza `quick skill`.
 
 ## Deploy da CI e agenti web
 

@@ -52,18 +52,26 @@ func main() {
 		printUsage(os.Stdout) // explicit help: stdout, exit 0
 	case "version", "--version", "-v":
 		printVersion()
+	default:
+		refreshInstalledSkillsSilent()
+		runCmd(os.Args[1], os.Args[2:])
+	}
+}
+
+func runCmd(cmd string, args []string) {
+	switch cmd {
 	case "status":
-		statusCmd(os.Args[2:])
+		statusCmd(args)
 	case "ignore":
-		ignoreCmd(os.Args[2:])
+		ignoreCmd(args)
 	case "skill":
-		skillCmd(os.Args[2:])
+		skillCmd(args)
 	case "token", "tokens":
-		tokenCmd(os.Args[2:])
+		tokenCmd(args)
 	case "login":
 		fs := flag.NewFlagSet("login", flag.ExitOnError)
 		server := fs.String("server", "", "server URL (or QUICK_SERVER)")
-		fs.Parse(os.Args[2:])
+		fs.Parse(args)
 		cfg, err := resolveConfig(*server)
 		fatal(err)
 		if _, err := login(cfg); err != nil {
@@ -71,15 +79,15 @@ func main() {
 		}
 		fmt.Println("✓ logged in")
 	case "deploy":
-		deploy(os.Args[2:])
+		deploy(args)
 	case "rollback":
-		rollbackCmd(os.Args[2:])
+		rollbackCmd(args)
 	case "upgrade", "self-update":
-		upgradeCmd(os.Args[2:])
+		upgradeCmd(args)
 	case "delete", "rm":
-		deleteCmd(os.Args[2:])
+		deleteCmd(args)
 	case "publish", "unpublish", "private", "lock", "unlock":
-		policyCmd(os.Args[1], os.Args[2:])
+		policyCmd(cmd, args)
 	default:
 		usage()
 	}

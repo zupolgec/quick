@@ -66,6 +66,7 @@ const brandCSS = `@font-face{font-family:'Manrope';font-style:normal;font-weight
   --brand:#6b57ff;--brand-2:#8b7bff;--ring:#8b7bff;--accent:#a89bff;
   --err:#f87171;--err-bg:#2a1416;--ok:#34d399}}
 *{box-sizing:border-box}
+html,body{width:100%;overflow-x:hidden}
 body{margin:0;min-height:100vh;font:400 16px/1.6 var(--font-body);background:var(--bg);color:var(--fg);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 h1,h2,h3{font-family:var(--font-head)}
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}

@@ -228,18 +228,21 @@ var dashboardPage = template.Must(template.New("dash").Parse(`<!doctype html>
 <title>{{.T.DashTitle}}</title>` + brandHead + `
 <style>` + brandCSS + `
 .wrap{max-width:780px;margin:0 auto;padding:2rem 1.25rem}
-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem}
-.who{color:var(--muted);font-size:.85rem}
+header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:1.5rem}
+.who{min-width:0;color:var(--muted);font-size:.85rem;overflow-wrap:anywhere;text-align:right}
 h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:1.8rem 0 .6rem}
 .site{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.7rem .9rem;background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:.5rem}
+.site>div:first-child{min-width:0}
 .site .name{font-weight:600;font-family:var(--font-head)}
-.site .meta{color:var(--muted);font-size:.8rem}
+.site .name a{overflow-wrap:anywhere}
+.site .meta{min-width:0;color:var(--muted);font-size:.8rem;overflow-wrap:anywhere;text-align:right}
 .site .actions{display:flex;align-items:center;gap:.55rem;flex:none}
 .manage{font-size:.78rem;color:var(--brand);font-weight:700}
 .tag{font-size:.7rem;border:1px solid var(--border);border-radius:999px;padding:.1rem .5rem;color:var(--muted);margin-left:.4rem}
 .empty{color:var(--muted);font-size:.9rem}
 .help{margin-top:2.5rem;padding-top:1.5rem;border-top:1px solid var(--border);color:var(--muted);font-size:.85rem}
 code{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.1rem .35rem;font-size:.85em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+@media(max-width:640px){.wrap{padding:1.35rem .9rem}header{display:block}.who{text-align:left;margin-top:.75rem}.site{display:block;padding:.8rem}.site .actions{display:block;margin-top:.55rem}.site .meta{text-align:left}.manage{display:inline-block;margin-top:.3rem}.tag{display:inline-flex;margin:.35rem .25rem 0 0}.help code{overflow-wrap:anywhere}}
 </style></head><body>
 <div class="wrap">
   <header>` + brandLink + `<div class="who">{{.Email}}</div></header>
@@ -271,11 +274,12 @@ var dashboardSitePage = template.Must(template.New("dash-site").Parse(`<!doctype
 <style>` + brandCSS + `
 .wrap{max-width:860px;margin:0 auto;padding:2rem 1.25rem}
 header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:1.5rem}
-.who{color:var(--muted);font-size:.85rem;overflow-wrap:anywhere;text-align:right}
+.who{min-width:0;color:var(--muted);font-size:.85rem;overflow-wrap:anywhere;text-align:right}
 .back{display:inline-flex;margin-bottom:1.1rem;font-size:.86rem;font-weight:700;color:var(--brand)}
 .top{display:flex;justify-content:space-between;align-items:flex-start;gap:1.5rem;margin-bottom:1.75rem}
 h1{font-size:1.75rem;font-weight:700;letter-spacing:-.02em;margin:0;color:var(--ink);overflow-wrap:anywhere}
 .url{color:var(--muted);font-size:.92rem;margin-top:.3rem;overflow-wrap:anywhere}
+.url a{overflow-wrap:anywhere}
 .tags{display:flex;gap:.4rem;flex-wrap:wrap;justify-content:flex-end}
 .tag{font-size:.72rem;border:1px solid var(--border);border-radius:999px;padding:.12rem .5rem;color:var(--muted)}
 .panel{border-top:1px solid var(--border);padding-top:1.35rem;margin-top:1.35rem}
@@ -285,13 +289,13 @@ h1{font-size:1.75rem;font-weight:700;letter-spacing:-.02em;margin:0;color:var(--
 .token:first-of-type{border-top:0}
 .token-main{min-width:0}
 .token-name{font-weight:700;color:var(--ink);overflow-wrap:anywhere}
-.token-meta{color:var(--muted);font-size:.82rem;margin-top:.18rem;overflow-wrap:anywhere}
+.token-meta{color:var(--muted);font-size:.82rem;margin-top:.18rem;overflow-wrap:anywhere;word-break:break-word}
 .empty{color:var(--muted);font-size:.9rem;margin:.8rem 0 0}
 form.create{display:flex;flex-wrap:wrap;align-items:end;gap:.65rem;margin-top:1rem}
 .field{display:grid;gap:.32rem}
 .field.name{flex:1 1 220px}
 label{font-size:.78rem;color:var(--muted)}
-input,select{height:36px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--fg);font:inherit;font-size:.9rem;padding:0 .7rem}
+input,select{width:100%;height:36px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--fg);font:inherit;font-size:.9rem;padding:0 .7rem}
 input:focus,select:focus{outline:2px solid var(--ring);outline-offset:0}
 .btn,.btn-secondary{height:36px;border-radius:9px;border:1px solid var(--border);font-family:var(--font-head);font-size:.86rem;font-weight:700;padding:0 .75rem;cursor:pointer}
 .btn{border-color:var(--btn);background:var(--btn);color:var(--btn-fg)}
@@ -301,7 +305,7 @@ input:focus,select:focus{outline:2px solid var(--ring);outline-offset:0}
 .secret{display:flex;align-items:center;gap:.5rem}
 .secret code{flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:9px;padding:.65rem .75rem;overflow-x:auto;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.84rem}
 code.inline{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.1rem .35rem;font-size:.85em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-@media(max-width:680px){.top{display:block}.tags{justify-content:flex-start;margin-top:.8rem}.token{align-items:flex-start}.who{text-align:left}.secret{display:block}.secret .btn-secondary{margin-top:.55rem}form.create{display:grid}.btn{width:100%}}
+@media(max-width:680px){.wrap{padding:1.35rem .9rem}header{display:block}.top{display:block}.tags{justify-content:flex-start;margin-top:.8rem}.token{display:block}.token form{margin-top:.65rem}.token .btn-secondary{width:100%}.who{text-align:left;margin-top:.75rem}.secret{display:block}.secret .btn-secondary{width:100%;margin-top:.55rem}form.create{display:grid;grid-template-columns:minmax(0,1fr)}.field.name{min-width:0}.btn{width:100%}input,select,.btn,.btn-secondary{height:42px;font-size:1rem}}
 </style></head><body>
 <div class="wrap">
   <header>` + brandLink + `<div class="who">{{.Email}}</div></header>
@@ -338,7 +342,7 @@ code.inline{background:var(--bg);border:1px solid var(--border);border-radius:6p
     <h2>Create token</h2>
     <form class="create" method="post" action="/api/site/{{.Name}}/tokens">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
-      <div class="field name"><label for="token-name">Name</label><input id="token-name" name="name" value="github-actions" maxlength="40" required></div>
+      <div class="field name"><label for="token-name">Name</label><input id="token-name" name="name" placeholder="github-actions" maxlength="40"></div>
       <div class="field"><label for="expires-in">Expires</label><select id="expires-in" name="expires_in"><option value="90d">90 days</option><option value="30d">30 days</option><option value="180d">180 days</option><option value="365d">365 days</option><option value="never">Never</option></select></div>
       <button class="btn" type="submit">Create token</button>
     </form>
@@ -384,6 +388,7 @@ h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 .guide .row+.row{border-top:1px solid var(--border)}
 .guide code{flex:none;background:var(--card);border:1px solid var(--border);border-radius:7px;padding:.18rem .5rem;font-size:.82rem;color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .guide .desc{color:var(--muted);font-size:.9rem}
+@media(max-width:560px){.wrap{padding:1.35rem .9rem}header{display:block;margin-bottom:2.4rem}.nav{display:inline-flex;margin-top:1rem}.cmd{align-items:stretch}.guide .row{display:block}.guide code{display:inline-block;margin-bottom:.35rem}.guide .desc{display:block}}
 </style></head><body>
 <div class="wrap">
   <header>

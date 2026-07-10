@@ -8,6 +8,8 @@ import (
 	"strings"
 )
 
+const skillAutoupdateEnv = "QUICK_NO_SKILL_AUTOUPDATE"
+
 const skillDoc = `---
 name: quick
 description: >-
@@ -15,8 +17,9 @@ description: >-
   Use it when the user wants to put a folder of HTML/assets online and get
   a <name>.<domain> URL, republish a site, change its visibility (public,
   access code, company SSO), lock or delete it, check its status,
-  or understand why a deploy excludes certain files. Covers mirror deploys,
-  .quickignore, the 404.html / 200.html / clean URL conventions, Google login and status.
+  create deploy tokens for CI/agent environments, or understand why a deploy
+  excludes certain files. Covers mirror deploys, .quickignore, the 404.html /
+  200.html / clean URL conventions, Google login, deploy tokens and status.
 ---
 
 # quick CLI
@@ -52,6 +55,9 @@ quick deploy my-site ./build                    # -> https://my-site.quick.examp
 | ` + "`quick unpublish <site>`" + ` | Back behind company SSO (default) |
 | ` + "`quick private <site> [--code X]`" + ` | Access by code (generated if absent) |
 | ` + "`quick lock <site>`" + ` / ` + "`quick unlock <site>`" + ` | Lock/unlock overwrites (owner only) |
+| ` + "`quick token create <site> --name github-actions [--expires 90d]`" + ` | Create a site-scoped deploy token |
+| ` + "`quick token list <site>`" + ` | List deploy tokens for a site |
+| ` + "`quick token revoke <site> <token-id>`" + ` | Revoke a deploy token |
 | ` + "`quick delete <site>`" + ` | Delete the site (irreversible, with confirmation) |
 
 ` + "`<site>`" + ` is optional if the folder has a ` + "`.quick`" + ` file: in that case the name
@@ -72,6 +78,23 @@ present in the package are removed from the site. Consequences:
 
 Useful flags: ` + "`--dry-run`" + ` (show what would be deployed without publishing),
 ` + "`--yes`" + `, ` + "`--force`" + `, ` + "`--public`" + ` / ` + "`--private[=code]`" + ` (visibility right after the deploy).
+
+## CI and web agents
+
+For non-interactive environments such as GitHub Actions, Claude Code web or
+other hosted agents, create a site-scoped deploy token:
+
+` + "```bash" + `
+quick token create my-site --name github-actions --expires 90d
+# Save the printed value as a secret named QUICK_API_TOKEN.
+QUICK_API_TOKEN=qk_... quick deploy my-site ./build --yes
+` + "```" + `
+
+Deploy tokens are intentionally narrow: one token is valid for one site and only
+for deploys. It cannot delete, rollback, change visibility/lock, or create other
+tokens. The cleartext token is shown once; later use ` + "`quick token list`" + ` to see token
+IDs and ` + "`quick token revoke`" + ` to remove them. Expiry choices are ` + "`30d`" + `, ` + "`90d`" + `,
+` + "`180d`" + `, ` + "`365d`" + `, or ` + "`never`" + `.
 
 ## What is NOT published
 
@@ -138,6 +161,36 @@ func skillCmd(args []string) {
 		fmt.Printf("✓ skill published to %s\n", dst)
 	}
 	fmt.Println("  Open SKILL.md format: read by Claude Code, Codex, Gemini, Cursor and others.")
+}
+
+func refreshInstalledSkillsSilent() {
+	if os.Getenv(skillAutoupdateEnv) != "" {
+		return
+	}
+	for _, path := range installedSkillCandidates() {
+		b, err := os.ReadFile(path)
+		if err != nil || string(b) == skillDoc || !looksLikeQuickSkill(string(b)) {
+			continue
+		}
+		_ = os.WriteFile(path, []byte(skillDoc), 0o644)
+	}
+}
+
+func installedSkillCandidates() []string {
+	var out []string
+	for _, t := range []string{"claude", "codex", "gemini"} {
+		out = append(out, filepath.Join("."+t, "skills", "quick", "SKILL.md"))
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		for _, t := range []string{"claude", "codex", "gemini"} {
+			out = append(out, filepath.Join(home, "."+t, "skills", "quick", "SKILL.md"))
+		}
+	}
+	return out
+}
+
+func looksLikeQuickSkill(s string) bool {
+	return strings.Contains(s, "name: quick") && strings.Contains(s, "# quick CLI")
 }
 
 // skillDir builds the skill folder per the cross-vendor schema (Claude, Codex,
