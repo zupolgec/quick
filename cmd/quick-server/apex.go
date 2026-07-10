@@ -231,18 +231,19 @@ var dashboardPage = template.Must(template.New("dash").Parse(`<!doctype html>
 header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:1.5rem}
 .who{min-width:0;color:var(--muted);font-size:.85rem;overflow-wrap:anywhere;text-align:right}
 h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:1.8rem 0 .6rem}
-.site{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.7rem .9rem;background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:.5rem}
-.site>div:first-child{min-width:0}
+.site{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:.85rem;padding:.85rem .95rem;background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:.5rem}
+.site-main{min-width:0}
+.titleline{display:flex;align-items:center;gap:.38rem;flex-wrap:wrap;min-width:0}
 .site .name{font-weight:600;font-family:var(--font-head)}
 .site .name a{overflow-wrap:anywhere}
-.site .meta{min-width:0;color:var(--muted);font-size:.8rem;overflow-wrap:anywhere;text-align:right}
-.site .actions{display:flex;align-items:center;gap:.55rem;flex:none}
-.manage{font-size:.78rem;color:var(--brand);font-weight:700}
-.tag{font-size:.7rem;border:1px solid var(--border);border-radius:999px;padding:.1rem .5rem;color:var(--muted);margin-left:.4rem}
+.site .meta{min-width:0;color:var(--muted);font-size:.8rem;overflow-wrap:anywhere;margin-top:.35rem}
+.manage{display:inline-flex;align-items:center;justify-content:center;min-height:32px;border:1px solid var(--border);border-radius:9px;padding:.25rem .65rem;font-size:.78rem;color:var(--brand);font-weight:700;background:var(--card);white-space:nowrap}
+.manage:hover{text-decoration:none;border-color:var(--brand)}
+.tag{display:inline-flex;align-items:center;font-size:.7rem;line-height:1;border:1px solid var(--border);border-radius:999px;padding:.26rem .5rem;color:var(--muted)}
 .empty{color:var(--muted);font-size:.9rem}
 .help{margin-top:2.5rem;padding-top:1.5rem;border-top:1px solid var(--border);color:var(--muted);font-size:.85rem}
 code{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.1rem .35rem;font-size:.85em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-@media(max-width:640px){.wrap{padding:1.35rem .9rem}header{display:block}.who{text-align:left;margin-top:.75rem}.site{display:block;padding:.8rem}.site .actions{display:block;margin-top:.55rem}.site .meta{text-align:left}.manage{display:inline-block;margin-top:.3rem}.tag{display:inline-flex;margin:.35rem .25rem 0 0}.help code{overflow-wrap:anywhere}}
+@media(max-width:640px){.wrap{padding:1.35rem .9rem}header{display:grid;grid-template-columns:minmax(0,1fr) auto}.who{text-align:left;grid-column:1/-1;margin-top:.75rem}.site{grid-template-columns:minmax(0,1fr) auto;padding:.85rem}.manage{align-self:start}.help code{overflow-wrap:anywhere}}
 </style></head><body>
 <div class="wrap">
   <header>` + brandLink + `<div class="who">{{.Email}}</div></header>
@@ -250,15 +251,15 @@ code{background:var(--bg);border:1px solid var(--border);border-radius:6px;paddi
   <h2>{{.T.DashYourSites}}</h2>
   {{if .Mine}}{{range .Mine}}
   <div class="site">
-    <div><span class="name"><a href="{{.URL}}">{{.Name}}</a></span><span class="tag">{{.Badge}}</span>{{if .Locked}}<span class="tag">{{$.T.DashLocked}}</span>{{end}}</div>
-    <div class="actions"><div class="meta">{{.Updated}}</div><a class="manage" href="{{.Manage}}">Manage</a></div>
+    <div class="site-main"><div class="titleline"><span class="name"><a href="{{.URL}}">{{.Name}}</a></span><span class="tag">{{.Badge}}</span>{{if .Locked}}<span class="tag">{{$.T.DashLocked}}</span>{{end}}</div><div class="meta">{{.Updated}}</div></div>
+    <a class="manage" href="{{.Manage}}">Manage</a>
   </div>{{end}}{{else}}<p class="empty">{{.T.DashEmptyMine}} <code>quick deploy</code>.</p>{{end}}
 
   <h2>{{.T.DashAllSites}}</h2>
   {{if .All}}{{range .All}}
   <div class="site">
-    <div><span class="name"><a href="{{.URL}}">{{.Name}}</a></span><span class="tag">{{.Badge}}</span>{{if .Locked}}<span class="tag">{{$.T.DashLocked}}</span>{{end}}</div>
-    <div class="actions"><div class="meta">{{.Updated}}</div><a class="manage" href="{{.Manage}}">Manage</a></div>
+    <div class="site-main"><div class="titleline"><span class="name"><a href="{{.URL}}">{{.Name}}</a></span><span class="tag">{{.Badge}}</span>{{if .Locked}}<span class="tag">{{$.T.DashLocked}}</span>{{end}}</div><div class="meta">{{.Updated}}</div></div>
+    <a class="manage" href="{{.Manage}}">Manage</a>
   </div>{{end}}{{else}}<p class="empty">{{.T.DashEmptyAll}}</p>{{end}}
 
   <div class="help">
@@ -388,7 +389,7 @@ h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
 .guide .row+.row{border-top:1px solid var(--border)}
 .guide code{flex:none;background:var(--card);border:1px solid var(--border);border-radius:7px;padding:.18rem .5rem;font-size:.82rem;color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .guide .desc{color:var(--muted);font-size:.9rem}
-@media(max-width:560px){.wrap{padding:1.35rem .9rem}header{display:block;margin-bottom:2.4rem}.nav{display:inline-flex;margin-top:1rem}.cmd{align-items:stretch}.guide .row{display:block}.guide code{display:inline-block;margin-bottom:.35rem}.guide .desc{display:block}}
+@media(max-width:560px){.wrap{padding:1.35rem .9rem}header{gap:1rem;margin-bottom:2.4rem}.brand{min-width:0}.nav{margin-left:auto;white-space:nowrap}.cmd{align-items:stretch}.guide .row{display:block}.guide code{display:inline-block;margin-bottom:.35rem}.guide .desc{display:block}}
 </style></head><body>
 <div class="wrap">
   <header>
