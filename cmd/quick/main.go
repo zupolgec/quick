@@ -58,6 +58,8 @@ func main() {
 		ignoreCmd(os.Args[2:])
 	case "skill":
 		skillCmd(os.Args[2:])
+	case "token", "tokens":
+		tokenCmd(os.Args[2:])
 	case "login":
 		fs := flag.NewFlagSet("login", flag.ExitOnError)
 		server := fs.String("server", "", "server URL (or QUICK_SERVER)")
@@ -120,6 +122,7 @@ func printUsage(w io.Writer) {
   quick private   <site> [--code X] # access by code (generated if absent)
   quick lock      <site>            # only you can overwrite it
   quick unlock    <site>
+  quick token create|list|revoke <site>
   quick upgrade   [--check]          # update the CLI to the latest version
   quick version`)
 }
@@ -157,7 +160,7 @@ func deploy(args []string) {
 
 	fs := flag.NewFlagSet("deploy", flag.ExitOnError)
 	server := fs.String("server", "", "server URL (or QUICK_SERVER)")
-	token := fs.String("token", os.Getenv("QUICK_TOKEN"), "Google ID token (default: saved login)")
+	token := fs.String("token", envToken(), "Google ID token or Quick deploy token")
 	public := fs.Bool("public", false, "make the site public (no SSO)")
 	private := fs.String("private", "", "make the site private with this code (--private= empty = generated)")
 	yes := fs.Bool("yes", false, "skip the confirmation prompt")

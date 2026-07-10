@@ -5,7 +5,9 @@ package main
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -25,12 +27,14 @@ import (
 )
 
 const codeAccessTTL = 7 * 24 * time.Hour
+const maxSiteTokens = 20
 
 // Write actions subject to ownership checks.
 const (
 	actDeploy = "deploy"
 	actDelete = "delete"
 	actPolicy = "policy"
+	actToken  = "token"
 )
 
 func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
@@ -60,14 +64,27 @@ func (s *server) canWrite(p policy, email, action string) (bool, string) {
 }
 
 type policy struct {
-	CreatedBy string `json:"created_by,omitempty"`
-	CreatedAt string `json:"created_at,omitempty"`
-	UpdatedBy string `json:"updated_by,omitempty"`
-	UpdatedAt string `json:"updated_at,omitempty"`
-	Owner     string `json:"owner,omitempty"`     // lock owner
-	Locked    bool   `json:"locked,omitempty"`    // only the owner can deploy/policy
-	Access    string `json:"access,omitempty"`    // "" = SSO | "public" | "code"
-	CodeHash  string `json:"code_hash,omitempty"` // HMAC of the code, never plaintext
+	CreatedBy string      `json:"created_by,omitempty"`
+	CreatedAt string      `json:"created_at,omitempty"`
+	UpdatedBy string      `json:"updated_by,omitempty"`
+	UpdatedAt string      `json:"updated_at,omitempty"`
+	Owner     string      `json:"owner,omitempty"`     // lock owner
+	Locked    bool        `json:"locked,omitempty"`    // only the owner can deploy/policy
+	Access    string      `json:"access,omitempty"`    // "" = SSO | "public" | "code"
+	CodeHash  string      `json:"code_hash,omitempty"` // HMAC of the code, never plaintext
+	Tokens    []siteToken `json:"tokens,omitempty"`
+}
+
+type siteToken struct {
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Hash       string   `json:"hash"`
+	Scopes     []string `json:"scopes,omitempty"`
+	CreatedBy  string   `json:"created_by,omitempty"`
+	CreatedAt  string   `json:"created_at,omitempty"`
+	ExpiresAt  string   `json:"expires_at,omitempty"`
+	LastUsedAt string   `json:"last_used_at,omitempty"`
+	LastUsedBy string   `json:"last_used_by,omitempty"`
 }
 
 type cachedPolicy struct {
@@ -145,11 +162,23 @@ func (m *metaStore) hashCode(code string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
+func (m *metaStore) hashToken(site, token string) string {
+	mac := hmac.New(sha256.New, m.secret)
+	mac.Write([]byte("quick-token|" + site + "|" + token))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
 func (m *metaStore) checkCode(p policy, code string) bool {
 	if p.CodeHash == "" || code == "" {
 		return false
 	}
 	return hmac.Equal([]byte(p.CodeHash), []byte(m.hashCode(code)))
+}
+
+func randomID(n int) string {
+	b := make([]byte, n)
+	rand.Read(b)
+	return base64.RawURLEncoding.EncodeToString(b)
 }
 
 // signAccess builds the access cookie value: "<expiry>.<signature>".
@@ -169,6 +198,24 @@ func (m *metaStore) validAccessCookie(sub, val string) bool {
 		return false
 	}
 	return hmac.Equal([]byte(m.signAccess(sub, exp)), []byte(val))
+}
+
+func (m *metaStore) signCSRF(email string, exp int64) string {
+	mac := hmac.New(sha256.New, m.secret)
+	mac.Write([]byte("csrf|" + email + "|" + strconv.FormatInt(exp, 10)))
+	return strconv.FormatInt(exp, 10) + "." + hex.EncodeToString(mac.Sum(nil))
+}
+
+func (m *metaStore) validCSRF(email, val string) bool {
+	expStr, _, ok := strings.Cut(val, ".")
+	if !ok {
+		return false
+	}
+	exp, err := strconv.ParseInt(expStr, 10, 64)
+	if err != nil || time.Now().Unix() > exp {
+		return false
+	}
+	return hmac.Equal([]byte(m.signCSRF(email, exp)), []byte(val))
 }
 
 // subOf extracts the first-level subdomain of a base-domain host.
@@ -279,7 +326,8 @@ func safeRedirect(rd, host string) bool {
 }
 
 func (s *server) handleSiteAPI(w http.ResponseWriter, r *http.Request) {
-	name, action, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/api/site/"), "/")
+	name, tail, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/api/site/"), "/")
+	action, rest, _ := strings.Cut(tail, "/")
 	if !quick.ValidName(name) {
 		http.NotFound(w, r)
 		return
@@ -289,6 +337,8 @@ func (s *server) handleSiteAPI(w http.ResponseWriter, r *http.Request) {
 		s.handlePolicy(w, r, name)
 	case action == "rollback" && r.Method == http.MethodPost:
 		s.handleRollback(w, r, name)
+	case action == "tokens":
+		s.handleTokens(w, r, name, rest)
 	case action == "" && r.Method == http.MethodDelete:
 		s.handleDelete(w, r, name)
 	default:

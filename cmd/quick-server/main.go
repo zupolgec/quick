@@ -7,6 +7,7 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/hmac"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,6 +42,19 @@ type server struct {
 	apexMux      *http.ServeMux
 	noAuth       bool       // local development only
 	locks        keyedMutex // serializes per-site writes (single instance)
+}
+
+type authIdentity struct {
+	Email   string
+	Actor   string
+	Token   bool
+	Site    string
+	TokenID string
+	Scopes  map[string]bool
+}
+
+func (a authIdentity) hasScope(scope string) bool {
+	return a.Scopes != nil && a.Scopes[scope]
 }
 
 // keyedMutex serializes operations per key (here: site name) so the
@@ -136,6 +150,7 @@ func (s *server) buildApexMux() *http.ServeMux {
 	m.HandleFunc("/oauth2/", s.handleOAuth2)
 	m.HandleFunc("/install.sh", s.handleInstallSh)
 	m.HandleFunc("/install.ps1", s.handleInstallPs1)
+	m.HandleFunc("/dashboard/site/", s.handleDashboardSite)
 	m.HandleFunc("/dashboard", s.handleDashboard) // sites dashboard (SSO page for guests)
 	m.HandleFunc("/", s.handleApexRoot)           // public landing: install + usage
 	return m
@@ -188,11 +203,6 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
-	email, err := s.authenticate(r)
-	if err != nil {
-		http.Error(w, "auth: "+err.Error(), http.StatusUnauthorized)
-		return
-	}
 	name := r.URL.Query().Get("name")
 	if !quick.ValidName(name) {
 		http.Error(w, "invalid site name (use a-z, 0-9, hyphen)", http.StatusBadRequest)
@@ -205,7 +215,12 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	if ok, reason := s.canWrite(cur, email, actDeploy); !ok {
+	ident, err := s.authenticateForSite(r, name, cur, quick.TokenScopeDeploy)
+	if err != nil {
+		http.Error(w, "auth: "+err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if ok, reason := s.canWrite(cur, ident.Email, actDeploy); !ok {
 		http.Error(w, reason, http.StatusForbidden)
 		return
 	}
@@ -219,26 +234,35 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "deploy: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	by := ident.Email
+	if ident.Actor != "" {
+		by = ident.Actor
+	}
 	now := nowStamp()
 	if cur.CreatedBy == "" {
-		cur.CreatedBy, cur.CreatedAt = email, now
+		cur.CreatedBy, cur.CreatedAt = ident.Email, now
 	}
-	cur.UpdatedBy, cur.UpdatedAt = email, now
+	cur.UpdatedBy, cur.UpdatedAt = by, now
+	if ident.Token {
+		s.markTokenUsed(&cur, ident.TokenID, by, now)
+	}
 	if err := s.meta.save(name, cur); err != nil {
 		log.Printf("WARNING: deploy %q applied but saving metadata failed: %v", name, err)
 		http.Error(w, "deploy applied but saving state failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	log.Printf("deploy %q by %s", name, email)
+	log.Printf("deploy %q by %s", name, by)
 	_ = json.NewEncoder(w).Encode(quick.DeployResponse{
 		Site: name,
 		URL:  "https://" + name + "." + s.baseDomain,
-		By:   email,
+		By:   by,
 	})
 }
 
-// authenticate validates the Google ID token (Authorization: Bearer) and returns
-// the email, verifying hosted domain and (if set) audience.
+// authenticate validates a Google ID token (Authorization: Bearer) and returns
+// the email, verifying hosted domain and (if set) audience. Quick deploy tokens
+// are intentionally not accepted here; token management, delete and policy
+// changes require a real SSO/Google user.
 func (s *server) authenticate(r *http.Request) (string, error) {
 	if s.noAuth {
 		return "dev@" + def(s.domain, "example.com"), nil
@@ -246,6 +270,9 @@ func (s *server) authenticate(r *http.Request) (string, error) {
 	tok := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if tok == "" {
 		return "", errors.New("missing token")
+	}
+	if strings.HasPrefix(tok, "qk_") {
+		return "", errors.New("quick deploy tokens are not valid for this action")
 	}
 	resp, err := httpClient.Get("https://oauth2.googleapis.com/tokeninfo?id_token=" + tok)
 	if err != nil {
@@ -270,6 +297,62 @@ func (s *server) authenticate(r *http.Request) (string, error) {
 		return "", errors.New("token audience does not match")
 	}
 	return info.Email, nil
+}
+
+func (s *server) authenticateUser(r *http.Request) (string, error) {
+	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
+		return s.authenticate(r)
+	}
+	if email, ok := s.checkSSO(r); ok && email != "" {
+		return email, nil
+	}
+	return "", errors.New("missing user session")
+}
+
+func (s *server) authenticateForSite(r *http.Request, site string, p policy, scope string) (authIdentity, error) {
+	if s.noAuth {
+		email := "dev@" + def(s.domain, "example.com")
+		return authIdentity{Email: email, Actor: email}, nil
+	}
+	tok := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if strings.HasPrefix(tok, "qk_") {
+		for _, st := range p.Tokens {
+			if st.Hash == "" || !hmac.Equal([]byte(st.Hash), []byte(s.meta.hashToken(site, tok))) {
+				continue
+			}
+			if st.ExpiresAt != "" {
+				exp, err := time.Parse(time.RFC3339, st.ExpiresAt)
+				if err != nil || time.Now().After(exp) {
+					return authIdentity{}, errors.New("token expired")
+				}
+			}
+			scopes := map[string]bool{}
+			for _, sc := range st.Scopes {
+				scopes[sc] = true
+			}
+			if !scopes[scope] {
+				return authIdentity{}, errors.New("token missing scope " + scope)
+			}
+			actor := "token:" + st.Name + "@" + site
+			return authIdentity{Email: st.CreatedBy, Actor: actor, Token: true, Site: site, TokenID: st.ID, Scopes: scopes}, nil
+		}
+		return authIdentity{}, errors.New("invalid token")
+	}
+	email, err := s.authenticate(r)
+	if err != nil {
+		return authIdentity{}, err
+	}
+	return authIdentity{Email: email, Actor: email}, nil
+}
+
+func (s *server) markTokenUsed(p *policy, tokenID, by, now string) {
+	for i := range p.Tokens {
+		if p.Tokens[i].ID == tokenID {
+			p.Tokens[i].LastUsedAt = now
+			p.Tokens[i].LastUsedBy = by
+			return
+		}
+	}
 }
 
 // domainAllowed checks the Google hosted domain against QUICK_ALLOWED_DOMAINS:

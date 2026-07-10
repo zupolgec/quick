@@ -68,6 +68,28 @@ la CLI. `SKILL.md` è un formato aperto cross-vendor (Claude Code, Codex, Gemini
 Cursor…): default `~/.claude/skills/quick/`, oppure `--target codex|gemini|…`,
 `--project` (cartella del repo), `--all` (tutti gli agenti noti).
 
+## Deploy da CI e agenti web
+
+Per ambienti senza browser/loopback login (GitHub Actions, Claude Code web,
+runner CI) usa un **deploy token** site-scoped:
+
+```bash
+quick token create foo --name github-actions --expires 90d
+# salva il valore stampato una sola volta come QUICK_API_TOKEN
+QUICK_API_TOKEN=qk_... quick deploy foo ./dist --yes
+```
+
+La dashboard (`/dashboard` → sito → Deploy tokens) offre lo stesso flusso nel
+browser: crea, lista e revoca token. Ogni token vale per **un solo sito** e per
+lo scope `deploy` soltanto: non può cancellare, fare rollback, cambiare
+visibilità/lock o creare altri token. I token sono salvati solo come HMAC nei
+metadata del sito e il valore in chiaro viene mostrato una volta sola.
+
+Limiti intenzionali: default 90 giorni, scadenze ammesse `30d`, `90d`, `180d`,
+`365d` o `never`, massimo 20 token per sito, nome fino a 40 caratteri. In
+`free` mode chi può modificare il sito può anche gestirne i token; in `shared` e
+`owned` valgono le stesse restrizioni delle modifiche di policy.
+
 Al primo deploy viene scritto un file **`.quick`** nella **cartella corrente** (nome
 del sito, server e la sottocartella pubblicata), così da lì puoi ripetere senza
 parametri: `quick deploy`, `quick publish`, ecc. Esempio: `quick deploy foo ./build`

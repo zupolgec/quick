@@ -75,6 +75,38 @@ type DeployResponse struct {
 	By   string `json:"by"`
 }
 
+const (
+	TokenScopeDeploy = "deploy"
+)
+
+type TokenCreateRequest struct {
+	Name      string   `json:"name"`
+	Scopes    []string `json:"scopes,omitempty"`
+	ExpiresIn string   `json:"expires_in,omitempty"` // "30d", "90d", "180d", "365d", or "never"
+}
+
+type TokenInfo struct {
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Scopes     []string `json:"scopes"`
+	CreatedBy  string   `json:"created_by,omitempty"`
+	CreatedAt  string   `json:"created_at,omitempty"`
+	ExpiresAt  string   `json:"expires_at,omitempty"`
+	LastUsedAt string   `json:"last_used_at,omitempty"`
+	LastUsedBy string   `json:"last_used_by,omitempty"`
+}
+
+type TokenCreateResponse struct {
+	Site  string    `json:"site"`
+	Token string    `json:"token"`
+	Info  TokenInfo `json:"info"`
+}
+
+type TokensResponse struct {
+	Site   string      `json:"site"`
+	Tokens []TokenInfo `json:"tokens"`
+}
+
 // ConfigResponse is the public /api/config response: everything the CLI needs
 // to self-configure without hardcoded values.
 type ConfigResponse struct {
