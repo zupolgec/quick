@@ -19,7 +19,8 @@ description: >-
   access code, company SSO), lock or delete it, check its status,
   create deploy tokens for CI/agent environments, or understand why a deploy
   excludes certain files. Covers mirror deploys, .quickignore, the 404.html /
-  200.html / clean URL conventions, Google login, deploy tokens and status.
+  200.html / clean URL / _redirects conventions (redirects, SPA rewrites and
+  same-origin API proxying), Google login, deploy tokens and status.
 ---
 
 # quick CLI
@@ -120,6 +121,19 @@ Use ` + "`quick status`" + ` or ` + "`quick deploy ... --dry-run`" + ` to see in
 - ` + "`200.html`" + ` at the root: app shell for SPAs; served (status 200) for
   any route that doesn't match a file. Without it, missing paths
   give a real 404 (no silent fallback to the home page).
+- ` + "`_redirects`" + ` at the root (Netlify-style): per-path rules, applied only
+  when no file matches (files always win) and before ` + "`200.html`" + `:
+
+  ` + "```" + `
+  /old    /new                            301   # redirect (302/307/308 too; 301 if omitted)
+  /*      /index.html                     200   # local rewrite: SPA catch-all
+  /api/*  https://api.example.com/:splat  200   # proxy: call a non-CORS API same-origin
+  ` + "```" + `
+
+  Only a trailing ` + "`/*`" + ` wildcard, referenced as ` + "`:splat`" + `. Proxying is a
+  pass-through to public https hosts only (no private IPs, no quick subdomains,
+  no injected credentials) and follows the site's visibility. The
+  ` + "`_redirects`" + ` file itself is never served.
 
 ## Notes
 

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/zupolgec/quick/internal/storage"
 )
@@ -35,7 +36,9 @@ func newTestServer(t *testing.T) *server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &server{store: st}
+	s := &server{store: st, rules: newRulesStore(st, 5*time.Second)}
+	s.setupSiteProxy()
+	return s
 }
 
 func get(t *testing.T, s *server, sub, path string) *httptest.ResponseRecorder {

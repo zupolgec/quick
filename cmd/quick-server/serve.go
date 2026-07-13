@@ -67,8 +67,12 @@ func (s *server) serveSite(w http.ResponseWriter, r *http.Request, sub string) {
 		http.Redirect(w, r, withRawQuery(target, r.URL.RawQuery), http.StatusTemporaryRedirect)
 		return
 	}
-	if cand, ok := s.htmlAssetCandidate(sub, p); ok {
+	// _redirects itself is never served: it can reveal upstream hosts.
+	if cand, ok := s.htmlAssetCandidate(sub, p); ok && p != "/_redirects" {
 		s.serveFile(w, r, sub, cand, http.StatusOK)
+		return
+	}
+	if s.applyRedirectRules(w, r, sub, p) {
 		return
 	}
 	// SPA opt-in: 200.html acts as the app shell for non-file routes.
@@ -77,6 +81,32 @@ func (s *server) serveSite(w http.ResponseWriter, r *http.Request, sub string) {
 	}
 	if !s.serveNearest404(w, r, sub, p) {
 		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+// applyRedirectRules applies the site's _redirects rules to a path no static
+// file matched (shadowing: files always win) and reports whether it responded.
+// It runs inside serveSite, i.e. after the access gate, so protected sites
+// keep their protection on redirected/rewritten/proxied paths too.
+func (s *server) applyRedirectRules(w http.ResponseWriter, r *http.Request, sub, p string) bool {
+	if s.rules == nil {
+		return false
+	}
+	m, ok := matchRules(s.rules.load(sub), p)
+	if !ok {
+		return false
+	}
+	switch {
+	case m.rule.status != http.StatusOK:
+		http.Redirect(w, r, appendQuery(m.targetPath(), r.URL.RawQuery), m.rule.status)
+		return true
+	case m.rule.proxy:
+		s.serveRuleProxy(w, r, m.proxyTarget(r.URL.RawQuery))
+		return true
+	default:
+		// Local rewrite: serve the target as-is; if it's missing, fall
+		// through to 200.html/404 (a broken rewrite is not an error page).
+		return s.serveFile(w, r, sub, m.targetPath(), http.StatusOK)
 	}
 }
 

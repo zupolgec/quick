@@ -372,6 +372,7 @@ func (s *server) handleRollback(w http.ResponseWriter, r *http.Request, name str
 		http.Error(w, "no previous version to restore", http.StatusNotFound)
 		return
 	}
+	s.rules.forget(name)
 	cur.UpdatedBy, cur.UpdatedAt = email, nowStamp()
 	if err := s.meta.save(name, cur); err != nil {
 		log.Printf("WARNING: rollback %q applied but saving metadata failed: %v", name, err)
@@ -486,6 +487,7 @@ func (s *server) handleDelete(w http.ResponseWriter, r *http.Request, name strin
 		return
 	}
 	s.meta.forget(name)
+	s.rules.forget(name)
 	if !existed {
 		http.Error(w, "site not found", http.StatusNotFound)
 		return

@@ -39,6 +39,8 @@ type server struct {
 	oauth2URL    string
 	ownership    string // free | shared | owned (QUICK_OWNERSHIP)
 	oauthProxy   *httputil.ReverseProxy
+	rules        *rulesStore            // per-site _redirects, TTL-cached
+	siteProxy    *httputil.ReverseProxy // _redirects 200-to-URL proxying
 	apexMux      *http.ServeMux
 	noAuth       bool       // local development only
 	locks        keyedMutex // serializes per-site writes (single instance)
@@ -100,6 +102,8 @@ func main() {
 		log.Fatal(err)
 	}
 	s.meta = newMetaStore(store, []byte(metaSecret), 5*time.Second)
+	s.rules = newRulesStore(store, 5*time.Second)
+	s.setupSiteProxy()
 	if err := s.setupOAuthProxy(); err != nil {
 		log.Fatal(err)
 	}
@@ -234,6 +238,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "deploy: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	s.rules.forget(name)
 	by := ident.Email
 	if ident.Actor != "" {
 		by = ident.Actor

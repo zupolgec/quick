@@ -62,6 +62,25 @@ cartella più vicina al path mancante (status 404); `200.html` in radice è l'ap
 shell SPA (servita 200 per le rotte che non sono file). Senza `200.html`, un path
 mancante dà un 404 vero.
 
+**`_redirects`** (stile Netlify): un file `_redirects` nella radice del sito
+definisce redirect, rewrite e proxy per path. Le regole si applicano solo quando
+nessun file corrisponde alla richiesta (i file vincono sempre) e prima di
+`200.html`; vince la prima regola che corrisponde. Una riga per regola:
+
+```
+/vecchio   /nuovo                          301   # redirect (anche 302/307/308; 301 se omesso)
+/*         /index.html                     200   # rewrite locale: catch-all SPA
+/api/*     https://api.example.com/:splat  200   # proxy: l'API risponde same-origin (niente CORS)
+```
+
+Il wildcard è solo `/*` finale, richiamato come `:splat` nella destinazione; la
+query string viene preservata; le righe non valide vengono ignorate. Il proxy è
+un pass-through verso host pubblici in `https` (mai IP privati o di rete interna,
+mai sottodomini quick; nessuna chiave iniettata, per ora). I path proxati seguono
+la visibilità del sito (SSO, codice, pubblico), quindi un sito protetto ha anche
+le sue API protette. Il file `_redirects` non viene mai servito; le modifiche si
+propagano entro qualche secondo.
+
 `quick status` mostra server, login, visibilità del sito e cosa salirebbe col deploy.
 `quick skill` pubblica una Agent Skill (`SKILL.md`) che insegna a un agente come usare
 la CLI. `SKILL.md` è un formato aperto cross-vendor (Claude Code, Codex, Gemini,
@@ -162,13 +181,24 @@ ridigitarne il nome.
 
 Convenzioni "via file, zero config" non ancora implementate, in ordine di utilità:
 
-- **`_redirects`** (stile Netlify): regole di redirect/rewrite per sito, incluso il
-  catch-all SPA esplicito (`/* /index.html 200`) come alternativa a `200.html`.
 - **`_headers`**: header per-path (Cache-Control, CSP…) definiti dal sito.
 - **Default di `Cache-Control`**: HTML `no-cache`, asset con `max-age` lungo (al meglio
   con asset con hash nel nome).
-- **Precompressi brotli/gzip**: servire `file.css.br`/`.gz` se presente e il browser
-  lo accetta.
+- **Compressione (gzip + brotli)**: negoziata via `Accept-Encoding`, con `Vary:
+  Accept-Encoding` e un ETag distinto per encoding (una cache non deve servire il
+  corpo brotli a un client che chiede identity). Due livelli complementari:
+  - _On-the-fly_: il server comprime al volo le risposte compressibili (html, css,
+    js, json, svg, wasm…) sopra una soglia (~1 KB). Copre ogni sito senza che
+    l'utente prepari nulla; è il livello che dà il beneficio reale, dato che nessuno
+    carica `.br`/`.gz` a mano. Costa CPU per richiesta e richiede la dipendenza
+    brotli (`github.com/andybalholm/brotli`); per le risposte compresse si rinuncia
+    a `http.ServeContent` (niente Range su corpo codificato, come i CDN).
+  - _Sidecar precompressi_: servire `file.css.br`/`.gz` se presente e accettato.
+    Ha senso **solo** se prodotti in fase di deploy (`PutSite`/CLI) con brotli q=11 —
+    migliore dell'on-the-fly e pagato una volta sola — così il server sa quali file
+    hanno un sidecar e non spreca sonde di esistenza (rilevante su S3, dove ogni
+    candidato è un round-trip). Diventa il percorso veloce, con l'on-the-fly come
+    fallback. Sonda alla cieca `.br`/`.gz` su ogni asset: da evitare.
 
 Lato piattaforma e integrazione agenti:
 
