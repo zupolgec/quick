@@ -117,6 +117,7 @@ type ConfigResponse struct {
 	OAuthClientSecret string `json:"oauth_client_secret,omitempty"`
 	HostedDomain      string `json:"hosted_domain"`
 	BaseDomain        string `json:"base_domain"`
+	Version           string `json:"version,omitempty"`
 }
 
 // Env returns env var k, or def if empty/absent.

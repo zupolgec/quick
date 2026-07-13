@@ -10,7 +10,9 @@ import (
 )
 
 // handleConfig publicly exposes what the CLI needs to self-configure: OAuth
-// client, hosted domain, sites domain. No secrets.
+// client, hosted domain, sites domain, server version. Note the OAuth client
+// secret IS served when set: required by Google's token exchange for Web-type
+// clients. Use a Desktop-type client for the CLI to keep it out of here.
 func (s *server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(quick.ConfigResponse{
@@ -18,6 +20,7 @@ func (s *server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		OAuthClientSecret: s.clientSecret,
 		HostedDomain:      s.domain,
 		BaseDomain:        s.baseDomain,
+		Version:           version,
 	})
 }
 

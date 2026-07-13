@@ -25,6 +25,10 @@ import (
 
 const maxUpload = 200 << 20 // 200 MiB per deploy
 
+// Set at image build time via -ldflags "-X main.version=vX.Y.Z"; exposed in
+// /api/config so a running server can be told apart from the outside.
+var version = "dev"
+
 // Timeout so a hung dependency (Google tokeninfo, oauth2-proxy) can't pin a
 // request goroutine.
 var httpClient = &http.Client{Timeout: 10 * time.Second}
@@ -110,7 +114,7 @@ func main() {
 	s.apexMux = s.buildApexMux()
 
 	addr := quick.Env("QUICK_ADDR", ":8080")
-	log.Printf("quick-server on %s (base=%s, storage=%s, ownership=%s, noauth=%v)", addr, s.baseDomain, quick.Env("QUICK_STORAGE", "local"), s.ownership, s.noAuth)
+	log.Printf("quick-server %s on %s (base=%s, storage=%s, ownership=%s, noauth=%v)", version, addr, s.baseDomain, quick.Env("QUICK_STORAGE", "local"), s.ownership, s.noAuth)
 	log.Fatal(http.ListenAndServe(addr, http.HandlerFunc(s.route)))
 }
 
