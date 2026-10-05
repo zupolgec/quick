@@ -16,16 +16,25 @@ import (
 )
 
 // renderSSOPage shows the sign-in page (no bare redirect): branding + SSO
-// button. The button goes to sign_in on the apex, which after Google login
-// returns to rd. TODO multi-provider: Google only for now.
+// button. The button goes to sign_in on the apex, which after sign-in
+// returns to rd.
 func (s *server) renderSSOPage(w http.ResponseWriter, r *http.Request, host string) {
 	rd := "https://" + host + r.URL.RequestURI()
 	signIn := "https://" + s.baseDomain + "/oauth2/sign_in?rd=" + url.QueryEscape(rd)
 	l := pickLang(r)
+	t := textsFor(l)
+	if s.oidcIssuer != "" {
+		// generic IdP: neutral label, no provider name.
+		if l == langIT {
+			t.SSOButton = "Accedi"
+		} else {
+			t.SSOButton = "Sign in"
+		}
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Add("Vary", "Accept-Language")
 	_ = ssoPage.Execute(w, map[string]any{
-		"Host": host, "SignIn": signIn, "Lang": string(l), "T": textsFor(l),
+		"Host": host, "SignIn": signIn, "Lang": string(l), "T": t,
 	})
 }
 

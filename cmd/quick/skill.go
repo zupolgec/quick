@@ -20,14 +20,14 @@ description: >-
   create deploy tokens for CI/agent environments, or understand why a deploy
   excludes certain files. Covers mirror deploys, .quickignore, the 404.html /
   200.html / clean URL / _redirects conventions (redirects, SPA rewrites and
-  same-origin API proxying), Google login, deploy tokens and status.
+  same-origin API proxying), login, multiple servers, deploy tokens and status.
 ---
 
 # quick CLI
 
 ` + "`quick`" + ` is the CLI for an internal static hosting: you publish a folder of
 HTML/assets and get ` + "`https://<name>.<domain>`" + `. By default a site is visible
-only to accounts in the company domain (Google SSO); you can open it to the public,
+only to accounts in the company domain (company SSO); you can open it to the public,
 protect it with a code, or lock it against overwrites.
 
 The server configures itself: the only required input is the URL, via ` + "`--server`" + `
@@ -39,7 +39,7 @@ arguments.
 
 ` + "```bash" + `
 export QUICK_SERVER=https://quick.example.com   # once (or use --server)
-quick login                                     # opens the browser for Google login
+quick login                                     # opens the browser to log in
 quick deploy my-site ./build                    # -> https://my-site.quick.example.com
 ` + "```" + `
 
@@ -49,7 +49,8 @@ quick deploy my-site ./build                    # -> https://my-site.quick.examp
 |---|---|
 | ` + "`quick`" + ` | Overview (server, login, linked site) + command list |
 | ` + "`quick status`" + ` | Site status: real visibility, lock, and what would be deployed |
-| ` + "`quick login`" + ` | Google login (once; the token is remembered) |
+| ` + "`quick login`" + ` | Log in (once per server; the login is remembered and that server becomes the default) |
+| ` + "`quick servers [use <server>]`" + ` | Known servers with login status; ` + "`use`" + ` changes the default |
 | ` + "`quick deploy [<site>] [folder]`" + ` | Publish a folder (default: the current one) |
 | ` + "`quick ignore [folder]`" + ` | Create an editable ` + "`.quickignore`" + ` with the defaults already inside |
 | ` + "`quick publish <site>`" + ` | Open to the public (no SSO) |
@@ -64,6 +65,14 @@ quick deploy my-site ./build                    # -> https://my-site.quick.examp
 ` + "`<site>`" + ` is optional if the folder has a ` + "`.quick`" + ` file: in that case the name
 and server come from there. Without ` + "`.quick`" + ` and without a name, the site takes the name
 of the current folder.
+
+## Multiple servers
+
+The CLI can work with several quick servers (e.g. one per company). Each server
+keeps its own login. The server is chosen in this order: ` + "`--server`" + `, then
+` + "`QUICK_SERVER`" + `, then the folder's ` + "`.quick`" + `, then the default server.
+` + "`quick login --server X`" + ` makes X the default; ` + "`quick servers`" + ` shows which one it is.
+If the folder is linked to the same site on another server, the CLI asks before acting.
 
 ## Deploy: it's a mirror
 

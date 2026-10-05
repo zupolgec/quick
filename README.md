@@ -2,7 +2,7 @@
 
 Hosting interno in stile [Quick di Shopify](https://shopify.engineering/quick):
 pubblichi una cartella di HTML/asset e ottieni `<nome>.<tuo-dominio>`. Di default
-un sito è visibile solo agli account del dominio aziendale (SSO Google), ma puoi
+un sito è visibile solo agli account del dominio aziendale (SSO Google o un IdP OIDC), ma puoi
 aprirlo al pubblico o proteggerlo con un codice, e bloccarne la sovrascrittura.
 
 Tutto è configurabile da variabili d'ambiente: nessun dominio o credenziale è
@@ -34,9 +34,14 @@ di nuovo `go install …@latest`.
 
 ```bash
 export QUICK_SERVER=https://quick.example.com   # una volta (o usa --server)
-quick login                                     # login Google nel browser
+quick login                                     # login nel browser
 quick deploy foo ./ilmiosito                    # -> https://foo.quick.example.com
 ```
+
+Più server dalla stessa macchina (es. uno per azienda): ognuno ha il suo login.
+Il server si sceglie in quest'ordine: `--server`, `QUICK_SERVER`, il `.quick` della
+cartella, il server di default. `quick login --server X` rende X il default,
+`quick servers` elenca i server noti, `quick servers use X` cambia il default.
 
 La sintassi è `quick deploy <sito> [cartella]` (cartella opzionale, default quella
 corrente). Senza `<sito>` usa il `.quick` della cartella o, in mancanza, il nome
@@ -241,17 +246,24 @@ same-origin, identità già risolta dall'SSO, storage astratto — ma non è imp
 | `internal/quick/` | Contratto condiviso CLI↔server (DTO, validazione nomi, modi di accesso) |
 | `internal/storage/` | Backend storage: `local` (FS) e `s3` (minio-go) |
 | `docker-compose.yaml` | Stack per Coolify (label Caddy + env) |
-| oauth2-proxy (env `OAUTH2_PROXY_*`) | SSO Google |
+| oauth2-proxy (env `OAUTH2_PROXY_*`) | SSO Google o OIDC (`QUICK_SSO_PROVIDER`) |
 
 ## Configurazione (env)
 
 Vedi `.env.example`. In sintesi: `QUICK_BASE_DOMAIN`, `QUICK_ALLOWED_DOMAINS` (uno, lista `a,b`, o `*`),
 `GOOGLE_CLIENT_ID/SECRET` (client OAuth **Web** per oauth2-proxy), `COOKIE_SECRET`,
-`QUICK_META_SECRET`, `QUICK_OWNERSHIP`=`free|shared|owned`, `QUICK_STORAGE`=`local|s3` (+ `QUICK_S3_*`).
+`QUICK_META_SECRET`, `QUICK_OWNERSHIP`=`free|shared|owned`, `QUICK_STORAGE`=`local|s3` (+ `QUICK_S3_*`),
+`QUICK_HOST_DIR` (cartella host dei dati, per più istanze sullo stesso host).
+Con un IdP OIDC (es. Zitadel): `QUICK_SSO_PROVIDER=oidc`, `QUICK_OIDC_ISSUER`, e in
+`GOOGLE_CLIENT_ID/SECRET` il client Web dell'IdP per oauth2-proxy; per la CLI un client
+nativo con PKCE e redirect `http://127.0.0.1:8765/callback`.
 
 Fail-closed: in produzione `QUICK_META_SECRET`, `QUICK_ALLOWED_DOMAINS` e `QUICK_OAUTH_CLIENT_ID`
 sono obbligatorie. Se ne manca una il server non parte (niente default insicuro, niente
-account ammessi a sorpresa). Per ammettere qualsiasi account Google usa `*` esplicito. Solo
+account ammessi a sorpresa). Per ammettere qualsiasi account Google usa `*` esplicito.
+`QUICK_OIDC_ISSUER` (opzionale): issuer di un IdP OIDC generico (es. `https://idp.16bit.it`).
+Vuoto = Google, come prima; impostato, i token sono verificati localmente contro quell'issuer
+e per il dominio vale la parte dopo la `@` della mail (solo se verificata). Solo
 in sviluppo locale `QUICK_DEV_NOAUTH=1` salta questi controlli.
 
 Client OAuth della CLI (`QUICK_CLI_CLIENT_ID` / `QUICK_CLI_CLIENT_SECRET`): due modi

@@ -48,3 +48,25 @@ func confirmSiteMismatch(sf *siteFile, name, verb string) bool {
 	}
 	return true
 }
+
+// resolveSiteConfig resolves the server for a command on site name and asks
+// for confirmation when the folder is linked (via .quick) to the same site on
+// another server. Returns false if the user cancels.
+func resolveSiteConfig(serverFlag string, sf *siteFile, name, verb string) (*cliConfig, bool) {
+	linked := ""
+	if sf != nil {
+		linked = sf.Server
+	}
+	cfg, err := resolveConfig(serverFlag, linked)
+	fatal(err)
+	if linked == "" || sf.Name != name || normalizeServer(linked) == cfg.Server {
+		return cfg, true
+	}
+	fmt.Fprintf(os.Stderr, "⚠️  this folder is linked to %q on %s (.quick), but you are about to %s it on %s.\n", name, linked, verb, cfg.Server)
+	fmt.Fprint(os.Stderr, "Proceed anyway? [y/N]: ")
+	if !yesNo(readLine()) {
+		fmt.Fprintln(os.Stderr, "cancelled")
+		return nil, false
+	}
+	return cfg, true
+}

@@ -50,7 +50,7 @@ func tokenCreateCmd(args []string) {
 	name, args := firstPos(args)
 	fs := flag.NewFlagSet("token create", flag.ExitOnError)
 	server := fs.String("server", "", "server URL (or QUICK_SERVER)")
-	auth := fs.String("token", os.Getenv("QUICK_TOKEN"), "Google ID token (default: saved login)")
+	auth := fs.String("token", os.Getenv("QUICK_TOKEN"), "login ID token (default: saved login)")
 	label := fs.String("name", "deploy", "token label")
 	expires := fs.String("expires", "90d", "30d, 90d, 180d, 365d, or never")
 	fs.Parse(args)
@@ -77,7 +77,7 @@ func tokenListCmd(args []string) {
 	name, args := firstPos(args)
 	fs := flag.NewFlagSet("token list", flag.ExitOnError)
 	server := fs.String("server", "", "server URL (or QUICK_SERVER)")
-	auth := fs.String("token", os.Getenv("QUICK_TOKEN"), "Google ID token (default: saved login)")
+	auth := fs.String("token", os.Getenv("QUICK_TOKEN"), "login ID token (default: saved login)")
 	fs.Parse(args)
 	if name == "" && fs.NArg() > 0 {
 		name = fs.Arg(0)
@@ -111,7 +111,7 @@ func tokenRevokeCmd(args []string) {
 	tokenID, args := firstPos(args)
 	fs := flag.NewFlagSet("token revoke", flag.ExitOnError)
 	server := fs.String("server", "", "server URL (or QUICK_SERVER)")
-	auth := fs.String("token", os.Getenv("QUICK_TOKEN"), "Google ID token (default: saved login)")
+	auth := fs.String("token", os.Getenv("QUICK_TOKEN"), "login ID token (default: saved login)")
 	fs.Parse(args)
 	if name == "" && fs.NArg() > 0 {
 		name = fs.Arg(0)
@@ -131,18 +131,16 @@ func tokenRevokeCmd(args []string) {
 }
 
 func tokenConfigAndAuth(name, server, tok string) (string, *cliConfig, string) {
+	linked := ""
 	if name == "" {
 		if sf := loadSiteFile("."); sf != nil {
-			name = sf.Name
-			if server == "" {
-				server = sf.Server
-			}
+			name, linked = sf.Name, sf.Server
 		}
 	}
 	if name == "" {
 		fatal(errors.New("missing site name (or run inside a folder with a .quick file)"))
 	}
-	cfg, err := resolveConfig(server)
+	cfg, err := resolveConfig(server, linked)
 	fatal(err)
 	if tok == "" {
 		if tok, err = idToken(cfg); err != nil {

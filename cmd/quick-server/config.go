@@ -21,6 +21,7 @@ func (s *server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		HostedDomain:      s.domain,
 		BaseDomain:        s.baseDomain,
 		Version:           version,
+		OIDCIssuer:        s.oidcIssuer,
 	})
 }
 

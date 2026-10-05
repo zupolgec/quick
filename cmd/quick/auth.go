@@ -15,15 +15,25 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 )
 
 const (
-	redirectURI   = "http://127.0.0.1:8765/callback"
-	authEndpoint  = "https://accounts.google.com/o/oauth2/v2/auth"
-	tokenEndpoint = "https://oauth2.googleapis.com/token"
+	redirectURI         = "http://127.0.0.1:8765/callback"
+	googleAuthEndpoint  = "https://accounts.google.com/o/oauth2/v2/auth"
+	googleTokenEndpoint = "https://oauth2.googleapis.com/token"
 )
+
+// endpoints returns the identity provider's authorization and token
+// endpoints: Google unless the server declared an OIDC issuer.
+func endpoints(cfg *cliConfig) (auth, token string) {
+	if cfg.OIDCIssuer == "" {
+		return googleAuthEndpoint, googleTokenEndpoint
+	}
+	return cfg.AuthEndpoint, cfg.TokenEndpoint
+}
 
 type tokenSet struct {
 	IDToken      string    `json:"id_token"`
@@ -39,21 +49,52 @@ func tokenPath() string {
 	return filepath.Join(dir, "quick", "token.json")
 }
 
-func loadToken() (*tokenSet, error) {
-	b, err := os.ReadFile(tokenPath())
-	if err != nil {
-		return nil, err
-	}
-	var t tokenSet
-	return &t, json.Unmarshal(b, &t)
+// tokenFile holds one login per server (normalized URL). The embedded
+// tokenSet mirrors the default server's login: the format of older versions.
+type tokenFile struct {
+	tokenSet
+	Servers map[string]*tokenSet `json:"servers,omitempty"`
 }
 
-func saveToken(t *tokenSet) error {
+// loadTokens reads the logins, migrating a single-server file to the server
+// it belonged to (the default one).
+func loadTokens() *tokenFile {
+	f := &tokenFile{}
+	b, err := os.ReadFile(tokenPath())
+	if err != nil || json.Unmarshal(b, f) != nil {
+		f = &tokenFile{}
+	}
+	if f.Servers == nil {
+		f.Servers = map[string]*tokenSet{}
+		if f.IDToken != "" || f.RefreshToken != "" {
+			if def := loadConfigFile().Default; def != "" {
+				legacy := f.tokenSet
+				f.Servers[def] = &legacy
+			}
+		}
+	}
+	return f
+}
+
+func loadToken(server string) (*tokenSet, error) {
+	if t := loadTokens().Servers[server]; t != nil {
+		return t, nil
+	}
+	return nil, os.ErrNotExist
+}
+
+func saveToken(server string, t *tokenSet) error {
+	f := loadTokens()
+	f.Servers[server] = t
+	f.tokenSet = tokenSet{}
+	if d := f.Servers[loadConfigFile().Default]; d != nil {
+		f.tokenSet = *d
+	}
 	p := tokenPath()
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return err
 	}
-	b, _ := json.MarshalIndent(t, "", "  ")
+	b, _ := json.MarshalIndent(f, "", "  ")
 	return os.WriteFile(p, b, 0o600)
 }
 
@@ -70,18 +111,19 @@ func idToken(cfg *cliConfig) (string, error) {
 	return nt.IDToken, nil
 }
 
-// haveLogin reports whether a saved login exists, without network or checking
-// expiry; for the quick overview.
-func haveLogin() bool {
-	t, err := loadToken()
+// haveLogin reports whether a saved login exists for server, without network
+// or checking expiry; for the quick overview.
+func haveLogin(server string) bool {
+	t, err := loadToken(server)
 	return err == nil && (t.IDToken != "" || t.RefreshToken != "")
 }
 
 // silentToken returns an ID token without interaction (cache, then refresh).
-// ok=false when an interactive login would be needed.
+// ok=false when an interactive login would be needed. A login issued for a
+// different OAuth client is never used (nor sent to this server).
 func silentToken(cfg *cliConfig) (string, bool) {
-	t, err := loadToken()
-	if err != nil {
+	t, err := loadToken(cfg.Server)
+	if err != nil || (t.IDToken != "" && !audienceHas(t.IDToken, cfg.OAuthClientID)) {
 		return "", false
 	}
 	if t.IDToken != "" && time.Now().Before(t.Expiry.Add(-time.Minute)) {
@@ -94,11 +136,11 @@ func silentToken(cfg *cliConfig) (string, bool) {
 			"grant_type":    {"refresh_token"},
 		}
 		withSecret(v, cfg)
-		if nt, rerr := tokenRequest(v); rerr == nil {
+		if nt, rerr := tokenRequest(cfg, v); rerr == nil {
 			if nt.RefreshToken == "" {
 				nt.RefreshToken = t.RefreshToken
 			}
-			saveToken(nt)
+			saveToken(cfg.Server, nt)
 			return nt.IDToken, true
 		}
 	}
@@ -139,20 +181,25 @@ func login(cfg *cliConfig) (*tokenSet, error) {
 		"redirect_uri":          {redirectURI},
 		"response_type":         {"code"},
 		"scope":                 {"openid email profile"},
-		"access_type":           {"offline"},
-		"prompt":                {"consent"},
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
 		"state":                 {state},
 	}
-	// `hd` restricts the Google account picker to one domain; only meaningful
-	// for a single domain (not "*" or a list).
-	if hd := cfg.HostedDomain; hd != "" && hd != "*" && !strings.Contains(hd, ",") {
-		q.Set("hd", hd)
+	if cfg.OIDCIssuer == "" {
+		q.Set("access_type", "offline")
+		q.Set("prompt", "consent")
+		// `hd` restricts the Google account picker to one domain; only meaningful
+		// for a single domain (not "*" or a list).
+		if hd := cfg.HostedDomain; hd != "" && hd != "*" && !strings.Contains(hd, ",") {
+			q.Set("hd", hd)
+		}
+	} else {
+		q.Set("scope", "openid email profile offline_access")
 	}
+	authEndpoint, _ := endpoints(cfg)
 	authURL := authEndpoint + "?" + q.Encode()
 
-	fmt.Println("Opening the browser for Google login…")
+	fmt.Println("Opening the browser for login…")
 	fmt.Println("If it doesn't open, open it yourself:\n  " + authURL)
 	openBrowser(authURL)
 
@@ -173,11 +220,11 @@ func login(cfg *cliConfig) (*tokenSet, error) {
 		"code_verifier": {verifier},
 	}
 	withSecret(v, cfg)
-	t, err := tokenRequest(v)
+	t, err := tokenRequest(cfg, v)
 	if err != nil {
 		return nil, err
 	}
-	return t, saveToken(t)
+	return t, saveToken(cfg.Server, t)
 }
 
 // withSecret adds client_secret to the token exchange only if the server
@@ -188,7 +235,8 @@ func withSecret(v url.Values, cfg *cliConfig) {
 	}
 }
 
-func tokenRequest(v url.Values) (*tokenSet, error) {
+func tokenRequest(cfg *cliConfig, v url.Values) (*tokenSet, error) {
+	_, tokenEndpoint := endpoints(cfg)
 	resp, err := httpClient.PostForm(tokenEndpoint, v)
 	if err != nil {
 		return nil, err
@@ -257,6 +305,30 @@ func emailFromToken(idtok string) string {
 	}
 	json.Unmarshal(b, &c)
 	return c.Email
+}
+
+// audienceHas reports whether the ID token (unverified, local check) was
+// issued for clientID; "aud" may be a string or a list.
+func audienceHas(idtok, clientID string) bool {
+	parts := strings.Split(idtok, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	b, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return false
+	}
+	var c struct {
+		Aud json.RawMessage `json:"aud"`
+	}
+	json.Unmarshal(b, &c)
+	var one string
+	if json.Unmarshal(c.Aud, &one) == nil {
+		return one == clientID
+	}
+	var many []string
+	json.Unmarshal(c.Aud, &many)
+	return slices.Contains(many, clientID)
 }
 
 func localPart(email string) string {

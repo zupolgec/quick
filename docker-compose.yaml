@@ -41,6 +41,9 @@ services:
       QUICK_S3_SECRET_KEY: ${QUICK_S3_SECRET_KEY:-}
       QUICK_S3_PREFIX: ${QUICK_S3_PREFIX:-}
       QUICK_S3_USE_SSL: ${QUICK_S3_USE_SSL:-true}
+      # IdP OIDC generico (es. Zitadel): vuoto = Google, come prima. Lo ricevono
+      # sia quick-server (verifica degli ID token) che oauth2-proxy (login SSO).
+      QUICK_OIDC_ISSUER: ${QUICK_OIDC_ISSUER:-}
     # Routing: label esplicite. Un solo blocco che copre l'APEX (il control plane:
     # API, auth, dashboard) E il wildcard dei siti — quick-server smista per host.
     # ${QUICK_BASE_DOMAIN} lo sostituisce docker compose dall'env della risorsa;
@@ -61,8 +64,9 @@ services:
       start_period: 5s
     volumes:
       # Solo per QUICK_STORAGE=local; con s3 il container è stateless (rimuovili).
-      - /data/coolify/proxy/caddy/data/quick-sites:/srv/quick
-      - /data/coolify/proxy/caddy/data/quick-meta:/srv/quick-meta
+      # QUICK_HOST_DIR separa i dati se sullo stesso host girano più istanze.
+      - ${QUICK_HOST_DIR:-/data/coolify/proxy/caddy/data}/quick-sites:/srv/quick
+      - ${QUICK_HOST_DIR:-/data/coolify/proxy/caddy/data}/quick-meta:/srv/quick-meta
     networks:
       - quicknet
       - coolify
@@ -75,7 +79,11 @@ services:
     restart: unless-stopped
     environment:
       OAUTH2_PROXY_HTTP_ADDRESS: "0.0.0.0:4180"
-      OAUTH2_PROXY_PROVIDER: google
+      # Provider SSO: google di default (config effettiva invariata); per un IdP
+      # non Google metti QUICK_SSO_PROVIDER=oidc e QUICK_OIDC_ISSUER=https://idp....
+      # OAUTH2_PROXY_OIDC_ISSUER_URL vuoto è ignorato dal provider google.
+      OAUTH2_PROXY_PROVIDER: ${QUICK_SSO_PROVIDER:-google}
+      OAUTH2_PROXY_OIDC_ISSUER_URL: ${QUICK_OIDC_ISSUER:-}
       OAUTH2_PROXY_REVERSE_PROXY: "true"
       OAUTH2_PROXY_SET_XAUTHREQUEST: "true"
       OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"

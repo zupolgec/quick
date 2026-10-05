@@ -24,7 +24,7 @@ func policyCmd(action string, args []string) {
 
 	fs := flag.NewFlagSet(action, flag.ExitOnError)
 	server := fs.String("server", "", "server URL (or QUICK_SERVER)")
-	token := fs.String("token", os.Getenv("QUICK_TOKEN"), "Google ID token (default: saved login)")
+	token := fs.String("token", os.Getenv("QUICK_TOKEN"), "login ID token (default: saved login)")
 	var code string
 	if action == "private" {
 		fs.StringVar(&code, "code", "", "access code (if empty, generated)")
@@ -62,13 +62,12 @@ func policyCmd(action string, args []string) {
 		payload.Locked = new(false)
 	}
 
-	srv := *server
-	if srv == "" && sf != nil {
-		srv = sf.Server
+	cfg, ok := resolveSiteConfig(*server, sf, name, "modify")
+	if !ok {
+		return
 	}
-	cfg, err := resolveConfig(srv)
-	fatal(err)
 
+	var err error
 	tok := *token
 	if tok == "" {
 		if tok, err = idToken(cfg); err != nil {

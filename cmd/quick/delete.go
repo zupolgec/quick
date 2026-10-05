@@ -22,7 +22,7 @@ func deleteCmd(args []string) {
 
 	fs := flag.NewFlagSet("delete", flag.ExitOnError)
 	server := fs.String("server", "", "server URL (or QUICK_SERVER)")
-	token := fs.String("token", os.Getenv("QUICK_TOKEN"), "Google ID token (default: saved login)")
+	token := fs.String("token", os.Getenv("QUICK_TOKEN"), "login ID token (default: saved login)")
 	fs.Parse(args)
 	if name == "" && fs.NArg() > 0 {
 		name = fs.Arg(0) // positional placed after the flags
@@ -39,13 +39,12 @@ func deleteCmd(args []string) {
 		return
 	}
 
-	srv := *server
-	if srv == "" && sf != nil {
-		srv = sf.Server
+	cfg, ok := resolveSiteConfig(*server, sf, name, "delete")
+	if !ok {
+		return
 	}
-	cfg, err := resolveConfig(srv)
-	fatal(err)
 
+	var err error
 	tok := *token
 	if tok == "" {
 		if tok, err = idToken(cfg); err != nil {

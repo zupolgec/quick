@@ -72,12 +72,15 @@ func runCmd(cmd string, args []string) {
 		fs := flag.NewFlagSet("login", flag.ExitOnError)
 		server := fs.String("server", "", "server URL (or QUICK_SERVER)")
 		fs.Parse(args)
-		cfg, err := resolveConfig(*server)
+		cfg, err := resolveConfig(*server, "")
 		fatal(err)
 		if _, err := login(cfg); err != nil {
 			fatal(err)
 		}
-		fmt.Println("✓ logged in")
+		saveServerConfig(cfg, true) // the server you log in to becomes the default
+		fmt.Println("✓ logged in to " + cfg.Server)
+	case "servers", "server":
+		serversCmd(args)
 	case "deploy":
 		deploy(args)
 	case "rollback":
@@ -119,7 +122,8 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, `usage (server via --server or QUICK_SERVER):
   quick                             # overview + this help
   quick status                      # status: server, site, visibility, deploy
-  quick login                       # Google login (once)
+  quick login                       # log in (once per server; it becomes the default)
+  quick servers [use <server>]      # known servers, login status; change the default
   quick deploy [<site>] [folder]    # publish a folder (default: current)
   quick rollback  <site>            # restore the previous version
   quick ignore  [folder]            # create an editable .quickignore
@@ -146,7 +150,7 @@ func usage() {
 func overview() {
 	if cfg := loadConfig(); cfg != nil && cfg.Server != "" {
 		auth := "not authenticated (run `quick login`)"
-		if haveLogin() {
+		if haveLogin(cfg.Server) {
 			auth = "authenticated"
 		}
 		fmt.Printf("Server: %s — %s\n", cfg.Server, auth)
@@ -168,7 +172,7 @@ func deploy(args []string) {
 
 	fs := flag.NewFlagSet("deploy", flag.ExitOnError)
 	server := fs.String("server", "", "server URL (or QUICK_SERVER)")
-	token := fs.String("token", envToken(), "Google ID token or Quick deploy token")
+	token := fs.String("token", envToken(), "login ID token or Quick deploy token")
 	public := fs.Bool("public", false, "make the site public (no SSO)")
 	private := fs.String("private", "", "make the site private with this code (--private= empty = generated)")
 	yes := fs.Bool("yes", false, "skip the confirmation prompt")
@@ -248,12 +252,10 @@ func deploy(args []string) {
 		return
 	}
 
-	srv := *server
-	if srv == "" && sf != nil {
-		srv = sf.Server
+	cfg, ok := resolveSiteConfig(*server, sf, *name, "deploy to")
+	if !ok {
+		return
 	}
-	cfg, err := resolveConfig(srv)
-	fatal(err)
 
 	// authenticate now: the identity is needed for the "last deploy" confirmation.
 	tok := *token

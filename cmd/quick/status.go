@@ -33,11 +33,11 @@ func statusCmd(args []string) {
 		name = filepath.Base(abs)
 	}
 
-	srv := *server
-	if srv == "" && sf != nil {
-		srv = sf.Server
+	linked := ""
+	if sf != nil {
+		linked = sf.Server
 	}
-	cfg, err := resolveConfig(srv)
+	cfg, err := resolveConfig(*server, linked)
 	fatal(err)
 
 	fmt.Printf("Server:  %s\n", cfg.Server)

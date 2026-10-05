@@ -23,7 +23,7 @@ func rollbackCmd(args []string) {
 
 	fs := flag.NewFlagSet("rollback", flag.ExitOnError)
 	server := fs.String("server", "", "server URL (or QUICK_SERVER)")
-	token := fs.String("token", os.Getenv("QUICK_TOKEN"), "Google ID token (default: saved login)")
+	token := fs.String("token", os.Getenv("QUICK_TOKEN"), "login ID token (default: saved login)")
 	yes := fs.Bool("yes", false, "skip the confirmation prompt")
 	fs.Parse(args)
 	if name == "" && fs.NArg() > 0 {
@@ -48,13 +48,12 @@ func rollbackCmd(args []string) {
 		}
 	}
 
-	srv := *server
-	if srv == "" && sf != nil {
-		srv = sf.Server
+	cfg, ok := resolveSiteConfig(*server, sf, name, "restore")
+	if !ok {
+		return
 	}
-	cfg, err := resolveConfig(srv)
-	fatal(err)
 
+	var err error
 	tok := *token
 	if tok == "" {
 		if tok, err = idToken(cfg); err != nil {

@@ -6,9 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -43,6 +43,19 @@ type cliConfig struct {
 	OAuthClientSecret string `json:"oauth_client_secret,omitempty"`
 	HostedDomain      string `json:"hosted_domain"`
 	BaseDomain        string `json:"base_domain"`
+	// OIDC issuer and its endpoints; all empty means Google.
+	OIDCIssuer    string `json:"oidc_issuer,omitempty"`
+	AuthEndpoint  string `json:"auth_endpoint,omitempty"`
+	TokenEndpoint string `json:"token_endpoint,omitempty"`
+}
+
+// configFile holds every known server, keyed by normalized URL. The embedded
+// cliConfig mirrors the default server at the top level: it is the format of
+// older versions, which keep working on the default server.
+type configFile struct {
+	cliConfig
+	Default string                `json:"default,omitempty"`
+	Servers map[string]*cliConfig `json:"servers,omitempty"`
 }
 
 func configPath() string {
@@ -53,38 +66,68 @@ func configPath() string {
 	return filepath.Join(dir, "quick", "config.json")
 }
 
-func loadConfig() *cliConfig {
+// loadConfigFile reads the config, migrating the single-server format.
+func loadConfigFile() *configFile {
+	f := &configFile{Servers: map[string]*cliConfig{}}
 	b, err := os.ReadFile(configPath())
-	if err != nil {
-		return nil
+	if err != nil || json.Unmarshal(b, f) != nil {
+		return &configFile{Servers: map[string]*cliConfig{}}
 	}
-	var c cliConfig
-	if json.Unmarshal(b, &c) != nil {
-		return nil
+	if f.Servers == nil {
+		f.Servers = map[string]*cliConfig{}
 	}
-	return &c
+	if len(f.Servers) == 0 && f.Server != "" {
+		legacy := f.cliConfig
+		legacy.Server = normalizeServer(legacy.Server)
+		f.Servers[legacy.Server] = &legacy
+		f.Default = legacy.Server
+	}
+	return f
 }
 
-func saveConfig(c *cliConfig) {
+func (f *configFile) save() {
+	if d := f.Servers[f.Default]; d != nil {
+		f.cliConfig = *d
+	}
 	p := configPath()
 	if os.MkdirAll(filepath.Dir(p), 0o700) != nil {
 		return
 	}
-	b, _ := json.MarshalIndent(c, "", "  ")
+	b, _ := json.MarshalIndent(f, "", "  ")
 	_ = os.WriteFile(p, b, 0o600)
 }
 
-// resolveConfig picks the server (flag > env > cache) and returns the config,
-// reusing the cache for the same server or refetching from /api/config.
-func resolveConfig(serverFlag string) (*cliConfig, error) {
+// loadConfig returns the default server's config (nil if none).
+func loadConfig() *cliConfig {
+	f := loadConfigFile()
+	return f.Servers[f.Default]
+}
+
+// saveServerConfig remembers a server; it becomes the default if asked or if
+// there is no default yet.
+func saveServerConfig(c *cliConfig, makeDefault bool) {
+	f := loadConfigFile()
+	f.Servers[c.Server] = c
+	if makeDefault || f.Servers[f.Default] == nil {
+		f.Default = c.Server
+	}
+	f.save()
+}
+
+// resolveConfig picks the server (flag > env > .quick > default > prompt) and
+// returns its config, from the cache or fetched from /api/config.
+func resolveConfig(serverFlag, siteServer string) (*cliConfig, error) {
 	server := serverFlag
 	if server == "" {
 		server = os.Getenv("QUICK_SERVER")
 	}
-	saved := loadConfig()
 	if server == "" {
-		if saved != nil && saved.OAuthClientID != "" {
-			return saved, nil // no explicit server: use the remembered one
+		server = siteServer
+	}
+	f := loadConfigFile()
+	if server == "" {
+		if d := f.Servers[f.Default]; d != nil && d.OAuthClientID != "" {
+			return d, nil // no explicit server: use the default one
 		}
 		server = promptServer()
 	}
@@ -92,32 +135,34 @@ func resolveConfig(serverFlag string) (*cliConfig, error) {
 		return nil, errors.New("server required (--server, QUICK_SERVER, or enter it at the prompt)")
 	}
 
-	cands := candidates(server)
-	if saved != nil && saved.OAuthClientID != "" && slices.Contains(cands, saved.Server) {
-		return saved, nil
+	server = normalizeServer(server)
+	if c := f.Servers[server]; c != nil && c.OAuthClientID != "" {
+		return c, nil
 	}
-	var lastErr error
-	for _, cand := range cands {
-		c, err := fetchConfig(cand)
-		if err == nil {
-			c.Server = cand
-			saveConfig(c)
-			return c, nil
-		}
-		lastErr = err
+	c, err := fetchConfig(server)
+	if err != nil {
+		return nil, fmt.Errorf("server unreachable (%s): %w", server, err)
 	}
-	return nil, fmt.Errorf("server unreachable (tried: %s): %w", strings.Join(cands, ", "), lastErr)
+	c.Server = server
+	saveServerConfig(c, false)
+	return c, nil
 }
 
-// candidates normalizes the server input: accepts a bare domain or a full URL
-// and adds https:// if missing. API and auth all live on the apex, so there is
-// no deploy.<domain> fallback.
-func candidates(input string) []string {
+// normalizeServer turns the server input (bare domain or URL, any case,
+// trailing slashes) into the canonical URL used as key. API and auth all live
+// on the apex, so there is no deploy.<domain> fallback.
+func normalizeServer(input string) string {
 	input = strings.TrimRight(strings.TrimSpace(input), "/")
 	if !strings.Contains(input, "://") {
 		input = "https://" + input
 	}
-	return []string{input}
+	if u, err := url.Parse(input); err == nil && u.Host != "" {
+		u.Scheme = strings.ToLower(u.Scheme)
+		u.Host = strings.ToLower(u.Host)
+		u.Path = strings.TrimRight(u.Path, "/")
+		return u.String()
+	}
+	return input
 }
 
 func fetchConfig(server string) (*cliConfig, error) {
@@ -134,10 +179,35 @@ func fetchConfig(server string) (*cliConfig, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
 		return nil, err
 	}
-	return &cliConfig{
+	c := &cliConfig{
 		OAuthClientID:     r.OAuthClientID,
 		OAuthClientSecret: r.OAuthClientSecret,
 		HostedDomain:      r.HostedDomain,
 		BaseDomain:        r.BaseDomain,
-	}, nil
+		OIDCIssuer:        r.OIDCIssuer,
+	}
+	if c.OIDCIssuer != "" {
+		if c.AuthEndpoint, c.TokenEndpoint, err = discover(cli, c.OIDCIssuer); err != nil {
+			return nil, err
+		}
+	}
+	return c, nil
+}
+
+// discover reads the authorization and token endpoints from the issuer's
+// OpenID configuration.
+func discover(cli *http.Client, issuer string) (auth, token string, err error) {
+	resp, err := cli.Get(strings.TrimRight(issuer, "/") + "/.well-known/openid-configuration")
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	var d struct {
+		Auth  string `json:"authorization_endpoint"`
+		Token string `json:"token_endpoint"`
+	}
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&d) != nil || d.Auth == "" || d.Token == "" {
+		return "", "", fmt.Errorf("identity provider %s unreachable or misconfigured", issuer)
+	}
+	return d.Auth, d.Token, nil
 }

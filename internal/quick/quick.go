@@ -118,6 +118,9 @@ type ConfigResponse struct {
 	HostedDomain      string `json:"hosted_domain"`
 	BaseDomain        string `json:"base_domain"`
 	Version           string `json:"version,omitempty"`
+	// OIDC issuer of the identity provider; empty means Google (servers
+	// predating generic OIDC never send it).
+	OIDCIssuer string `json:"oidc_issuer,omitempty"`
 }
 
 // Env returns env var k, or def if empty/absent.

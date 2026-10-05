@@ -7,6 +7,7 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"crypto/hmac"
 	"encoding/json"
 	"errors"
@@ -14,11 +15,13 @@ import (
 	"log"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/zupolgec/quick/internal/quick"
 	"github.com/zupolgec/quick/internal/storage"
 )
@@ -29,9 +32,12 @@ const maxUpload = 200 << 20 // 200 MiB per deploy
 // /api/config so a running server can be told apart from the outside.
 var version = "dev"
 
-// Timeout so a hung dependency (Google tokeninfo, oauth2-proxy) can't pin a
+// Timeout so a hung dependency (IdP discovery/JWKS, oauth2-proxy) can't pin a
 // request goroutine.
 var httpClient = &http.Client{Timeout: 10 * time.Second}
+
+// googleIssuer is the default issuer when QUICK_OIDC_ISSUER is unset.
+const googleIssuer = "https://accounts.google.com"
 
 type server struct {
 	store        storage.Backend
@@ -48,6 +54,9 @@ type server struct {
 	apexMux      *http.ServeMux
 	noAuth       bool       // local development only
 	locks        keyedMutex // serializes per-site writes (single instance)
+	oidcIssuer   string     // QUICK_OIDC_ISSUER; empty = Google
+	oidcMu       sync.Mutex // guards oidcVerifier (lazy init)
+	oidcVerifier *oidc.IDTokenVerifier
 }
 
 type authIdentity struct {
@@ -101,6 +110,7 @@ func main() {
 		oauth2URL:    quick.Env("QUICK_OAUTH2_URL", "http://oauth2-proxy:4180"),
 		ownership:    parseOwnership(os.Getenv("QUICK_OWNERSHIP")),
 		noAuth:       os.Getenv("QUICK_DEV_NOAUTH") == "1",
+		oidcIssuer:   strings.TrimSpace(os.Getenv("QUICK_OIDC_ISSUER")),
 	}
 	if err := s.validateConfig(metaSecret); err != nil {
 		log.Fatal(err)
@@ -186,10 +196,39 @@ func (s *server) validateConfig(metaSecret string) error {
 	if len(missing) > 0 {
 		return fmt.Errorf("insecure configuration, missing env vars:\n  - %s\n(set QUICK_DEV_NOAUTH=1 for local development only)", strings.Join(missing, "\n  - "))
 	}
+	if err := validateOIDCIssuer(s.oidcIssuer); err != nil {
+		return err
+	}
 	if strings.TrimSpace(s.domain) == "*" {
-		log.Print(`⚠ QUICK_ALLOWED_DOMAINS="*": any Google account can deploy`)
+		if s.oidcIssuer == "" {
+			log.Print(`⚠ QUICK_ALLOWED_DOMAINS="*": any Google account can deploy`)
+		} else {
+			log.Print(`⚠ QUICK_ALLOWED_DOMAINS="*": any account can deploy`)
+		}
 	}
 	return nil
+}
+
+// validateOIDCIssuer requires an https QUICK_OIDC_ISSUER (http only on
+// loopback, for tests). Empty means Google.
+func validateOIDCIssuer(iss string) error {
+	if iss == "" {
+		return nil
+	}
+	u, err := url.Parse(iss)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return fmt.Errorf("invalid QUICK_OIDC_ISSUER %q: must be an https URL", iss)
+	}
+	if u.Scheme == "https" {
+		return nil
+	}
+	if u.Scheme == "http" {
+		switch u.Hostname() {
+		case "localhost", "127.0.0.1", "::1":
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid QUICK_OIDC_ISSUER %q: must be an https URL (http only for localhost)", iss)
 }
 
 func parseOwnership(v string) string {
@@ -268,10 +307,11 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// authenticate validates a Google ID token (Authorization: Bearer) and returns
-// the email, verifying hosted domain and (if set) audience. Quick deploy tokens
-// are intentionally not accepted here; token management, delete and policy
-// changes require a real SSO/Google user.
+// authenticate verifies an OIDC ID token (Authorization: Bearer) locally
+// against the issuer (Google unless QUICK_OIDC_ISSUER) and returns the email,
+// checking audience and allowed domain. Quick deploy tokens are intentionally
+// not accepted here; token management, delete and policy changes require a
+// real SSO user.
 func (s *server) authenticate(r *http.Request) (string, error) {
 	if s.noAuth {
 		return "dev@" + def(s.domain, "example.com"), nil
@@ -283,29 +323,78 @@ func (s *server) authenticate(r *http.Request) (string, error) {
 	if strings.HasPrefix(tok, "qk_") {
 		return "", errors.New("quick deploy tokens are not valid for this action")
 	}
-	resp, err := httpClient.Get("https://oauth2.googleapis.com/tokeninfo?id_token=" + tok)
+	v, err := s.verifier(r.Context())
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", errors.New("invalid token")
-	}
-	var info struct {
-		Email string `json:"email"`
-		Hd    string `json:"hd"`
-		Aud   string `json:"aud"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+	idToken, err := v.Verify(oidc.ClientContext(r.Context(), httpClient), tok)
+	if err != nil {
 		return "", err
 	}
-	if !s.domainAllowed(info.Hd) {
-		return "", fmt.Errorf("domain %q not allowed", info.Hd)
+	var claims idClaims
+	if err := idToken.Claims(&claims); err != nil {
+		return "", err
 	}
-	if s.clientID != "" && info.Aud != s.clientID {
-		return "", errors.New("token audience does not match")
+	return s.checkIDClaims(claims)
+}
+
+// oidcIssuerURL is the expected issuer: QUICK_OIDC_ISSUER, or Google.
+func (s *server) oidcIssuerURL() string {
+	if s.oidcIssuer != "" {
+		return s.oidcIssuer
 	}
-	return info.Email, nil
+	return googleIssuer
+}
+
+// verifier builds the OIDC verifier on first use and caches it, so the server
+// starts even if the IdP is briefly down.
+func (s *server) verifier(ctx context.Context) (*oidc.IDTokenVerifier, error) {
+	s.oidcMu.Lock()
+	defer s.oidcMu.Unlock()
+	if s.oidcVerifier != nil {
+		return s.oidcVerifier, nil
+	}
+	provider, err := oidc.NewProvider(oidc.ClientContext(ctx, httpClient), s.oidcIssuerURL())
+	if err != nil {
+		return nil, err
+	}
+	cfg := &oidc.Config{ClientID: s.clientID}
+	if s.clientID == "" {
+		cfg.SkipClientIDCheck = true // no client id configured: no audience check
+	}
+	s.oidcVerifier = provider.Verifier(cfg)
+	return s.oidcVerifier, nil
+}
+
+// idClaims are the verified claims that decide access.
+type idClaims struct {
+	Email         string `json:"email"`
+	EmailVerified bool   `json:"email_verified"`
+	Hd            string `json:"hd"`
+}
+
+// checkIDClaims applies the domain check and returns the email. Google: the
+// hosted domain (hd), never the email domain, since consumer Google accounts
+// can use company addresses. Other issuers: a verified email in an allowed
+// domain.
+func (s *server) checkIDClaims(c idClaims) (string, error) {
+	if strings.TrimSpace(c.Email) == "" {
+		return "", errors.New("missing email in token")
+	}
+	if s.oidcIssuerURL() == googleIssuer {
+		if !s.domainAllowed(c.Hd) {
+			return "", fmt.Errorf("domain %q not allowed", c.Hd)
+		}
+		return c.Email, nil
+	}
+	if !c.EmailVerified {
+		return "", errors.New("email not verified")
+	}
+	_, domain, _ := strings.Cut(c.Email, "@")
+	if domain == "" || !s.domainAllowed(domain) {
+		return "", fmt.Errorf("domain %q not allowed", domain)
+	}
+	return c.Email, nil
 }
 
 func (s *server) authenticateUser(r *http.Request) (string, error) {
@@ -364,7 +453,7 @@ func (s *server) markTokenUsed(p *policy, tokenID, by, now string) {
 	}
 }
 
-// domainAllowed checks the Google hosted domain against QUICK_ALLOWED_DOMAINS:
+// domainAllowed checks a domain (Google hd or email domain) against QUICK_ALLOWED_DOMAINS:
 // empty or "*" (any account), a single domain, or a comma-separated list.
 // Mirrors OAUTH2_PROXY_EMAIL_DOMAINS.
 func (s *server) domainAllowed(hd string) bool {
@@ -373,7 +462,7 @@ func (s *server) domainAllowed(hd string) bool {
 		return true
 	}
 	for part := range strings.SplitSeq(d, ",") {
-		if strings.TrimSpace(part) == hd {
+		if p := strings.TrimSpace(part); p != "" && strings.EqualFold(p, hd) {
 			return true
 		}
 	}
