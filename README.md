@@ -42,6 +42,9 @@ Più server dalla stessa macchina (es. uno per azienda): ognuno ha il suo login.
 Il server si sceglie in quest'ordine: `--server`, `QUICK_SERVER`, il `.quick` della
 cartella, il server di default. `quick login --server X` rende X il default,
 `quick servers` elenca i server noti, `quick servers use X` cambia il default.
+Un server già usato si può indicare con una parola del suo indirizzo (`--server 16bit`
+per `quick.16bit.cloud`). Il primo deploy da una cartella salva il server nel `.quick`:
+da lì in poi, in quella cartella, non serve più indicarlo.
 
 La sintassi è `quick deploy <sito> [cartella]` (cartella opzionale, default quella
 corrente). Senza `<sito>` usa il `.quick` della cartella o, in mancanza, il nome

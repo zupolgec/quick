@@ -76,6 +76,14 @@ keeps its own login. The server is chosen in this order: ` + "`--server`" + `, t
 ` + "`quick login --server X`" + ` makes X the default; ` + "`quick servers`" + ` shows which one it is.
 If the folder is linked to the same site on another server, the CLI asks before acting.
 
+A server you have already used can be named by a word of its address:
+` + "`--server acme`" + ` means ` + "`quick.acme.com`" + `, ` + "`quick servers use acme`" + ` makes it the default. A new server needs its full address the first time. The first deploy
+from a folder writes the server into ` + "`.quick`" + `, so later commands there need no flag:
+
+` + "```bash" + `
+quick deploy my-site --server acme    # once; then just: quick deploy
+` + "```" + `
+
 ## Deploy: it's a mirror
 
 **The deploy replaces the entire content of the site**, it does not add: files not

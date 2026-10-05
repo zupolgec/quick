@@ -119,7 +119,7 @@ func printVersion() {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintln(w, `usage (server via --server or QUICK_SERVER):
+	fmt.Fprintln(w, `usage (server via --server or QUICK_SERVER; a known server also by short name, e.g. --server acme):
   quick                             # overview + this help
   quick status                      # status: server, site, visibility, deploy
   quick login                       # log in (once per server; it becomes the default)

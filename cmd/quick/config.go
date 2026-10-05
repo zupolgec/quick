@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -138,6 +139,10 @@ func resolveConfig(serverFlag, siteServer string) (*cliConfig, error) {
 
 	// Always refresh from /api/config (the server may have changed client or
 	// identity provider); the cached copy is only a fallback when it's down.
+	server, err := expandNickname(server, f)
+	if err != nil {
+		return nil, err
+	}
 	server = normalizeServer(server)
 	cached := f.Servers[server]
 	timeout := 15 * time.Second
@@ -156,6 +161,40 @@ func resolveConfig(serverFlag, siteServer string) (*cliConfig, error) {
 		saveServerConfig(c, false)
 	}
 	return c, nil
+}
+
+// expandNickname resolves a bare word (no dot, colon or scheme) to the known
+// server whose host has it as a label: "16bit" → https://quick.16bit.cloud.
+// Anything else is returned unchanged.
+func expandNickname(input string, f *configFile) (string, error) {
+	word := strings.ToLower(strings.TrimSpace(input))
+	if word == "" || strings.ContainsAny(word, ".:/") {
+		return input, nil
+	}
+	var known, matches []string
+	for s := range f.Servers {
+		known = append(known, s)
+		host := s
+		if u, err := url.Parse(s); err == nil {
+			host = u.Hostname()
+		}
+		if slices.Contains(strings.Split(host, "."), word) {
+			matches = append(matches, s)
+		}
+	}
+	slices.Sort(known)
+	slices.Sort(matches)
+	switch len(matches) {
+	case 1:
+		return matches[0], nil
+	case 0:
+		if len(known) == 0 {
+			return "", fmt.Errorf("unknown server %q: use its full address the first time (e.g. quick.example.com)", input)
+		}
+		return "", fmt.Errorf("no known server matches %q (known: %s); use the full address for a new one", input, strings.Join(known, ", "))
+	default:
+		return "", fmt.Errorf("%q matches more than one server (%s): be more specific", input, strings.Join(matches, ", "))
+	}
 }
 
 // normalizeServer turns the server input (bare domain or URL, any case,

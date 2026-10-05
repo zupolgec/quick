@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -161,5 +162,30 @@ func TestConfigRefreshesFromServer(t *testing.T) {
 	srv.Close() // server down: the cached config still works
 	if cfg, err := resolveConfig(srv.URL, ""); err != nil || cfg.OAuthClientID != "new-client" {
 		t.Fatalf("offline fallback failed: %+v %v", cfg, err)
+	}
+}
+
+func TestServerNickname(t *testing.T) {
+	isolate(t)
+	saveServerConfig(&cliConfig{Server: "https://quick.way.invalid", OAuthClientID: "w"}, true)
+	saveServerConfig(&cliConfig{Server: "https://quick.16bit.invalid", OAuthClientID: "b"}, false)
+
+	for in, want := range map[string]string{"16bit": "https://quick.16bit.invalid", "WAY": "https://quick.way.invalid"} {
+		cfg, err := resolveConfig(in, "")
+		if err != nil || cfg.Server != want {
+			t.Errorf("resolveConfig(%q) = %v %v, want %s", in, cfg, err, want)
+		}
+	}
+	t.Setenv("QUICK_SERVER", "16bit")
+	if cfg, err := resolveConfig("", ""); err != nil || cfg.Server != "https://quick.16bit.invalid" {
+		t.Errorf("QUICK_SERVER nickname: %v %v", cfg, err)
+	}
+	t.Setenv("QUICK_SERVER", "")
+
+	if _, err := resolveConfig("quick", ""); err == nil || !strings.Contains(err.Error(), "quick.way.invalid") {
+		t.Errorf("ambiguous nickname should fail listing matches, got %v", err)
+	}
+	if _, err := resolveConfig("acme", ""); err == nil || !strings.Contains(err.Error(), "quick.16bit.invalid") {
+		t.Errorf("unknown nickname should fail listing known servers, got %v", err)
 	}
 }
