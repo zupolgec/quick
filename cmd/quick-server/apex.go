@@ -261,14 +261,14 @@ code{background:var(--bg);border:1px solid var(--border);border-radius:6px;paddi
   {{if .Mine}}{{range .Mine}}
   <div class="site">
     <div class="site-main"><div class="titleline"><span class="name"><a href="{{.URL}}">{{.Name}}</a></span><span class="tag">{{.Badge}}</span>{{if .Locked}}<span class="tag">{{$.T.DashLocked}}</span>{{end}}</div><div class="meta">{{.Updated}}</div></div>
-    <a class="manage" href="{{.Manage}}">Manage</a>
+    <a class="manage" href="{{.Manage}}">{{$.T.DashManage}}</a>
   </div>{{end}}{{else}}<p class="empty">{{.T.DashEmptyMine}} <code>quick deploy</code>.</p>{{end}}
 
   <h2>{{.T.DashAllSites}}</h2>
   {{if .All}}{{range .All}}
   <div class="site">
     <div class="site-main"><div class="titleline"><span class="name"><a href="{{.URL}}">{{.Name}}</a></span><span class="tag">{{.Badge}}</span>{{if .Locked}}<span class="tag">{{$.T.DashLocked}}</span>{{end}}</div><div class="meta">{{.Updated}}</div></div>
-    <a class="manage" href="{{.Manage}}">Manage</a>
+    <a class="manage" href="{{.Manage}}">{{$.T.DashManage}}</a>
   </div>{{end}}{{else}}<p class="empty">{{.T.DashEmptyAll}}</p>{{end}}
 
   <div class="help">
@@ -280,7 +280,7 @@ code{background:var(--bg);border:1px solid var(--border);border-radius:6px;paddi
 var dashboardSitePage = template.Must(template.New("dash-site").Parse(`<!doctype html>
 <html lang="{{.Lang}}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Name}} deploy tokens</title>` + brandHead + `
+<title>{{.Name}} · {{.T.SiteTokens}}</title>` + brandHead + `
 <style>` + brandCSS + `
 .wrap{max-width:860px;margin:0 auto;padding:2rem 1.25rem}
 header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:1.5rem}
@@ -319,42 +319,42 @@ code.inline{background:var(--bg);border:1px solid var(--border);border-radius:6p
 </style></head><body>
 <div class="wrap">
   <header>` + brandLink + `<div class="who">{{.Email}}</div></header>
-  <a class="back" href="/dashboard">Back to dashboard</a>
+  <a class="back" href="/dashboard">{{.T.SiteBack}}</a>
   <div class="top">
     <div><h1>{{.Name}}</h1><div class="url"><a href="{{.URL}}">{{.URL}}</a></div></div>
-    <div class="tags"><span class="tag">{{.Access}}</span>{{if .Locked}}<span class="tag">Locked</span>{{end}}{{if not .Exists}}<span class="tag">No files</span>{{end}}</div>
+    <div class="tags"><span class="tag">{{.Access}}</span>{{if .Locked}}<span class="tag">{{.T.DashLocked}}</span>{{end}}{{if not .Exists}}<span class="tag">{{.T.SiteNoFiles}}</span>{{end}}</div>
   </div>
 
   {{if .Reveal}}<div class="reveal">
-    <strong>Deploy token created.</strong>
-    <p>Store it as <code class="inline">QUICK_API_TOKEN</code>. It will not be shown again.</p>
-    <div class="secret"><code id="new-token">{{.Reveal}}</code><button class="btn-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('new-token').textContent)">Copy</button></div>
+    <strong>{{.T.TokenCreated}}</strong>
+    <p>{{.T.TokenStoreAs}} <code class="inline">QUICK_API_TOKEN</code>. {{.T.TokenNotShown}}</p>
+    <div class="secret"><code id="new-token">{{.Reveal}}</code><button class="btn-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('new-token').textContent)">{{.T.Copy}}</button></div>
   </div>{{end}}
 
   <section class="panel">
-    <h2>Deploy tokens</h2>
-    <p class="hint">Tokens are limited to deploys for this site. They cannot delete, rollback, change visibility, or create other tokens.</p>
+    <h2>{{.T.SiteTokens}}</h2>
+    <p class="hint">{{.T.SiteTokensHint}}</p>
     {{if .Tokens}}{{range .Tokens}}
     <div class="token">
       <div class="token-main">
         <div class="token-name">{{.Name}}</div>
-        <div class="token-meta">ID {{.ID}} · scope {{range $i,$s := .Scopes}}{{if $i}}, {{end}}{{$s}}{{end}} · expires {{if .ExpiresAt}}{{.ExpiresAt}}{{else}}never{{end}} · last {{if .LastUsedAt}}{{.LastUsedAt}}{{else}}never used{{end}}</div>
+        <div class="token-meta">ID {{.ID}} · {{$.T.TokenScope}} {{range $i,$s := .Scopes}}{{if $i}}, {{end}}{{$s}}{{end}} · {{$.T.TokenExpires}} {{if .ExpiresAt}}{{.ExpiresAt}}{{else}}{{$.T.TokenNever}}{{end}} · {{if .LastUsedAt}}{{$.T.TokenLastUsed}} {{.LastUsedAt}}{{else}}{{$.T.TokenNeverUsed}}{{end}}</div>
       </div>
       <form method="post" action="/api/site/{{$.Name}}/tokens/{{.ID}}">
         <input type="hidden" name="_method" value="delete">
         <input type="hidden" name="csrf" value="{{$.CSRF}}">
-        <button class="btn-secondary" type="submit">Revoke</button>
+        <button class="btn-secondary" type="submit">{{$.T.TokenRevoke}}</button>
       </form>
-    </div>{{end}}{{else}}<p class="empty">No deploy tokens yet.</p>{{end}}
+    </div>{{end}}{{else}}<p class="empty">{{.T.SiteTokensEmpty}}</p>{{end}}
   </section>
 
   <section class="panel">
-    <h2>Create token</h2>
+    <h2>{{.T.TokenCreate}}</h2>
     <form class="create" method="post" action="/api/site/{{.Name}}/tokens">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
-      <div class="field name"><label for="token-name">Name</label><input id="token-name" name="name" placeholder="github-actions" maxlength="40"></div>
-      <div class="field"><label for="expires-in">Expires</label><select id="expires-in" name="expires_in"><option value="90d">90 days</option><option value="30d">30 days</option><option value="180d">180 days</option><option value="365d">365 days</option><option value="never">Never</option></select></div>
-      <button class="btn" type="submit">Create token</button>
+      <div class="field name"><label for="token-name">{{.T.TokenName}}</label><input id="token-name" name="name" placeholder="github-actions" maxlength="40"></div>
+      <div class="field"><label for="expires-in">{{.T.TokenExpiry}}</label><select id="expires-in" name="expires_in"><option value="90d">90 {{.T.TokenDays}}</option><option value="30d">30 {{.T.TokenDays}}</option><option value="180d">180 {{.T.TokenDays}}</option><option value="365d">365 {{.T.TokenDays}}</option><option value="never">{{.T.TokenNoExpiry}}</option></select></div>
+      <button class="btn" type="submit">{{.T.TokenCreate}}</button>
     </form>
   </section>
 </div></body></html>`))

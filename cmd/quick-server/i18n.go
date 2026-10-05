@@ -92,6 +92,13 @@ type uiText struct {
 	DashEmptyMine, DashEmptyAll, DashLocked string
 	DashHelpPublish, DashHelpInstall        string
 	BadgePublic, BadgeCode, BadgeSSO        string
+	DashManage                              string
+
+	SiteBack, SiteNoFiles, SiteTokens, SiteTokensHint, SiteTokensEmpty  string
+	TokenCreated, TokenStoreAs, TokenNotShown                           string
+	TokenScope, TokenExpires, TokenNever, TokenLastUsed, TokenNeverUsed string
+	TokenRevoke, TokenCreate, TokenName, TokenExpiry, TokenDays         string
+	TokenNoExpiry                                                       string
 
 	CodeTitle, CodeHeading, CodeIntro string
 	CodeLabel, CodeButton, CodeError  string
@@ -130,6 +137,27 @@ var uiTexts = map[lang]uiText{
 		DashHelpPublish: "Publish a folder:",
 		DashHelpInstall: "Install the CLI with",
 		BadgePublic:     "public",
+		DashManage:      "Manage",
+
+		SiteBack:        "Back to dashboard",
+		SiteNoFiles:     "No files",
+		SiteTokens:      "Deploy tokens",
+		SiteTokensHint:  "Tokens can only deploy this site. They cannot delete it, roll it back, change its visibility or create other tokens.",
+		SiteTokensEmpty: "No deploy tokens yet.",
+		TokenCreated:    "Deploy token created.",
+		TokenStoreAs:    "Store it as",
+		TokenNotShown:   "It will not be shown again.",
+		TokenScope:      "scope",
+		TokenExpires:    "expires",
+		TokenNever:      "never",
+		TokenLastUsed:   "last used",
+		TokenNeverUsed:  "never used",
+		TokenRevoke:     "Revoke",
+		TokenCreate:     "Create token",
+		TokenName:       "Name",
+		TokenExpiry:     "Expires",
+		TokenDays:       "days",
+		TokenNoExpiry:   "Never",
 		BadgeCode:       "code",
 		BadgeSSO:        "SSO",
 
@@ -172,6 +200,27 @@ var uiTexts = map[lang]uiText{
 		DashHelpPublish: "Pubblica una cartella:",
 		DashHelpInstall: "Installa la CLI con",
 		BadgePublic:     "pubblico",
+		DashManage:      "Gestisci",
+
+		SiteBack:        "Torna alla dashboard",
+		SiteNoFiles:     "Nessun file",
+		SiteTokens:      "Token di deploy",
+		SiteTokensHint:  "I token possono solo pubblicare questo sito: non possono eliminarlo, riportarlo alla versione precedente, cambiarne la visibilità o creare altri token.",
+		SiteTokensEmpty: "Nessun token di deploy.",
+		TokenCreated:    "Token di deploy creato.",
+		TokenStoreAs:    "Salvalo come",
+		TokenNotShown:   "Non verrà più mostrato.",
+		TokenScope:      "ambito",
+		TokenExpires:    "scade",
+		TokenNever:      "mai",
+		TokenLastUsed:   "ultimo uso",
+		TokenNeverUsed:  "mai usato",
+		TokenRevoke:     "Revoca",
+		TokenCreate:     "Crea token",
+		TokenName:       "Nome",
+		TokenExpiry:     "Scadenza",
+		TokenDays:       "giorni",
+		TokenNoExpiry:   "Mai",
 		BadgeCode:       "codice",
 		BadgeSSO:        "SSO",
 

@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/zupolgec/quick/internal/storage"
 )
 
 func TestPickLang(t *testing.T) {
@@ -105,5 +107,37 @@ func TestCodeFormLocalized(t *testing.T) {
 	renderCodeForm(it, langIT, "foo.example.test", "https://foo.example.test/", true)
 	if b := it.Body.String(); !strings.Contains(b, `<html lang="it"`) || !strings.Contains(b, "Codice errato, riprova.") {
 		t.Errorf("italian code form not localized:\n%s", b)
+	}
+}
+
+func TestDashboardPagesLocalized(t *testing.T) {
+	st, err := storage.New(storage.Config{Kind: "local", SitesDir: t.TempDir(), MetaDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &server{store: st, baseDomain: "example.test", meta: newMetaStore(st, []byte("secret"), 0)}
+	putSite(t, st, "demo", map[string]string{"index.html": "x"})
+	if err := s.meta.save("demo", policy{CreatedBy: "a@example.test", Tokens: []siteToken{{ID: "t1", Name: "ci", Scopes: []string{"deploy"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	itReq := func() *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.Header.Set("Accept-Language", "it-IT")
+		return r
+	}
+
+	dash := httptest.NewRecorder()
+	s.renderDashboard(dash, langIT, "a@example.test")
+	site := httptest.NewRecorder()
+	s.renderDashboardSitePage(site, itReq(), "demo", "a@example.test", "qk_secret")
+	for name, body := range map[string]string{"dashboard": dash.Body.String(), "site page": site.Body.String()} {
+		for _, en := range []string{">Manage<", "Back to dashboard", "Deploy tokens", "Create token", "Revoke", "never used", "It will not be shown again", ">Name<", ">Expires<", "90 days"} {
+			if strings.Contains(body, en) {
+				t.Errorf("%s in italian still contains %q", name, en)
+			}
+		}
+	}
+	if !strings.Contains(dash.Body.String(), ">Gestisci<") {
+		t.Error("dashboard: missing italian manage label")
 	}
 }

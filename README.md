@@ -274,20 +274,19 @@ Client OAuth della CLI (`QUICK_CLI_CLIENT_ID` / `QUICK_CLI_CLIENT_SECRET`): due 
 
 ## Deploy su Coolify (4.1.x)
 
-1. Crea una risorsa **Docker Compose** dal repo git (Coolify builda `quick-server`),
-   oppure usa l'immagine già pubblicata `image: ghcr.io/zupolgec/quick-server:latest`
-   (versionata a ogni release, multi-arch) invece di `build: .`.
-2. Imposta env/secrets (vedi sopra) e, se `QUICK_STORAGE=local`, i due bind mount.
-3. **Connect to Predefined Network → coolify** (così il proxy raggiunge il container).
-4. `CF_API_TOKEN` deve essere nell'env del proxy (lo usa la label `caddy.tls.dns`).
+1. Crea un'applicazione dal repo git con build pack **Docker Compose** e attiva
+   **Raw Docker Compose**: Coolify usa `docker-compose.yaml` così com'è (immagine
+   `ghcr.io/zupolgec/quick-server:latest`, pubblicata a ogni release). Lascia vuoto il
+   campo dominio: il routing sta nelle label del compose.
+2. Imposta le env (vedi sopra). `SERVICE_BASE64_64_QUICKMETA` la genera Coolify.
+   Con più istanze sullo stesso host dai a ognuna un `QUICK_HOST_DIR` diverso.
+3. DNS: `<BASE_DOMAIN>` e `*.<BASE_DOMAIN>` verso il server. `CF_API_TOKEN` deve stare
+   nell'env del proxy (lo usa la label `caddy.tls.dns` per il certificato wildcard).
+4. Deploy. Gli aggiornamenti: nuovo tag di release, poi redeploy dell'app.
 
-Il routing è tutto nelle label: cambiare contenuto o policy non richiede toccare il
-proxy.
-
-La label `caddy` copre **apex + wildcard** nello stesso blocco (`<BASE_DOMAIN>,
-*.<BASE_DOMAIN>`), così l'apex serve il control plane. L'auth è sull'apex: nel
-client OAuth **Web** di Google il redirect URI è `https://<BASE_DOMAIN>/oauth2/callback`
-(non più un sottodominio `auth.`).
+La label `caddy` copre apex e wildcard nello stesso blocco: l'apex serve API,
+dashboard e login, i sottodomini i siti. Il redirect del client OAuth/OIDC usato da
+oauth2-proxy è `https://<BASE_DOMAIN>/oauth2/callback`.
 
 ## Sviluppo locale
 
