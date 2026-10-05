@@ -17,7 +17,7 @@
 services:
   quick-server:
     # Immagine pubblicata a ogni release (multi-arch). Per un deploy riproducibile
-    # pinna una versione, es. ghcr.io/zupolgec/quick-server:0.8.1.
+    # pinna una versione, es. ghcr.io/zupolgec/quick-server:0.11.0.
     image: ghcr.io/zupolgec/quick-server:latest
     pull_policy: always   # ripulla sempre :latest al deploy (il nodo non riusa l'immagine in cache)
     restart: unless-stopped

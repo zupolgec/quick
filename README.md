@@ -282,7 +282,7 @@ Client OAuth della CLI (`QUICK_CLI_CLIENT_ID` / `QUICK_CLI_CLIENT_SECRET`): due 
 4. `CF_API_TOKEN` deve essere nell'env del proxy (lo usa la label `caddy.tls.dns`).
 
 Il routing è tutto nelle label: cambiare contenuto o policy non richiede toccare il
-proxy. Il vecchio `quick.caddy` in `/dynamic` non serve più (va rimosso al cutover).
+proxy.
 
 La label `caddy` copre **apex + wildcard** nello stesso blocco (`<BASE_DOMAIN>,
 *.<BASE_DOMAIN>`), così l'apex serve il control plane. L'auth è sull'apex: nel

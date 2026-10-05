@@ -23,6 +23,5 @@ func cGreen(s string) string  { return paint("32", s) }
 func cCyan(s string) string   { return paint("36", s) }
 func cYellow(s string) string { return paint("33", s) }
 func cBold(s string) string   { return paint("1", s) }
-func cDim(s string) string    { return paint("2", s) }
 
 func check() string { return cGreen("✓") }

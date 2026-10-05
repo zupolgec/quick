@@ -68,10 +68,6 @@ type authIdentity struct {
 	Scopes  map[string]bool
 }
 
-func (a authIdentity) hasScope(scope string) bool {
-	return a.Scopes != nil && a.Scopes[scope]
-}
-
 // keyedMutex serializes operations per key (here: site name) so the
 // load→modify→save cycle of deploy/policy/delete/rollback is atomic and two
 // requests on the same site can't clobber each other. Zero value ready to use.

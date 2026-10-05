@@ -60,7 +60,9 @@ quick deploy my-site ./build                    # -> https://my-site.quick.examp
 | ` + "`quick token create <site> --name github-actions [--expires 90d]`" + ` | Create a site-scoped deploy token |
 | ` + "`quick token list <site>`" + ` | List deploy tokens for a site |
 | ` + "`quick token revoke <site> <token-id>`" + ` | Revoke a deploy token |
+| ` + "`quick rollback <site>`" + ` | Restore the previous version (with confirmation; ` + "`--yes`" + ` skips it) |
 | ` + "`quick delete <site>`" + ` | Delete the site (irreversible, with confirmation) |
+| ` + "`quick upgrade [--check]`" + ` | Update the CLI to the latest release (` + "`--check`" + ` only checks) |
 
 ` + "`<site>`" + ` is optional if the folder has a ` + "`.quick`" + ` file: in that case the name
 and server come from there. Without ` + "`.quick`" + ` and without a name, the site takes the name
