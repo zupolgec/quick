@@ -3,10 +3,14 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/zupolgec/quick/internal/quick"
 )
 
 // isolate points the user config dir at a temp folder (macOS uses HOME,
@@ -51,15 +55,15 @@ func TestNormalizeServer(t *testing.T) {
 func TestLegacyConfigAndTokenMigrate(t *testing.T) {
 	dir := isolate(t)
 	writeJSON(t, filepath.Join(dir, "config.json"), map[string]string{
-		"server": "https://quick.way.srl", "oauth_client_id": "way-client",
-		"hosted_domain": "wayexperience.it", "base_domain": "quick.way.srl",
+		"server": "https://way.invalid", "oauth_client_id": "way-client",
+		"hosted_domain": "wayexperience.it", "base_domain": "way.invalid",
 	})
 	writeJSON(t, filepath.Join(dir, "token.json"), tokenSet{
 		IDToken: fakeJWT("way-client"), RefreshToken: "r1", Expiry: time.Now().Add(time.Hour),
 	})
 
 	cfg, err := resolveConfig("", "")
-	if err != nil || cfg.Server != "https://quick.way.srl" || cfg.OAuthClientID != "way-client" {
+	if err != nil || cfg.Server != "https://way.invalid" || cfg.OAuthClientID != "way-client" {
 		t.Fatalf("legacy config not used as default: %+v %v", cfg, err)
 	}
 	if !haveLogin(cfg.Server) {
@@ -72,8 +76,8 @@ func TestLegacyConfigAndTokenMigrate(t *testing.T) {
 
 func TestTokensArePerServer(t *testing.T) {
 	isolate(t)
-	way := &cliConfig{Server: "https://quick.way.srl", OAuthClientID: "way-client"}
-	bit := &cliConfig{Server: "https://quick.16bit.cloud", OAuthClientID: "bit-client"}
+	way := &cliConfig{Server: "https://way.invalid", OAuthClientID: "way-client"}
+	bit := &cliConfig{Server: "https://bit.invalid", OAuthClientID: "bit-client"}
 	saveServerConfig(way, true)
 	saveServerConfig(bit, false)
 	saveToken(way.Server, &tokenSet{IDToken: fakeJWT("way-client"), Expiry: time.Now().Add(time.Hour)})
@@ -92,7 +96,7 @@ func TestTokensArePerServer(t *testing.T) {
 
 func TestTokenForOtherClientIsIgnored(t *testing.T) {
 	isolate(t)
-	cfg := &cliConfig{Server: "https://quick.way.srl", OAuthClientID: "new-client"}
+	cfg := &cliConfig{Server: "https://way.invalid", OAuthClientID: "new-client"}
 	saveServerConfig(cfg, true)
 	saveToken(cfg.Server, &tokenSet{IDToken: fakeJWT("old-client"), Expiry: time.Now().Add(time.Hour)})
 	if _, ok := silentToken(cfg); ok {
@@ -123,17 +127,39 @@ func TestServerPrecedence(t *testing.T) {
 
 func TestNewServerDoesNotStealDefault(t *testing.T) {
 	isolate(t)
-	saveServerConfig(&cliConfig{Server: "https://quick.way.srl", OAuthClientID: "w"}, true)
-	saveServerConfig(&cliConfig{Server: "https://quick.16bit.cloud", OAuthClientID: "b"}, false)
+	saveServerConfig(&cliConfig{Server: "https://way.invalid", OAuthClientID: "w"}, true)
+	saveServerConfig(&cliConfig{Server: "https://bit.invalid", OAuthClientID: "b"}, false)
 	cfg, _ := resolveConfig("", "")
-	if cfg.Server != "https://quick.way.srl" {
+	if cfg.Server != "https://way.invalid" {
 		t.Fatalf("default changed to %s", cfg.Server)
 	}
 	// old binaries still read the top-level fields: they must mirror the default.
 	b, _ := os.ReadFile(configPath())
 	var legacy cliConfig
 	json.Unmarshal(b, &legacy)
-	if legacy.Server != "https://quick.way.srl" || legacy.OAuthClientID != "w" {
+	if legacy.Server != "https://way.invalid" || legacy.OAuthClientID != "w" {
 		t.Fatalf("legacy mirror broken: %+v", legacy)
+	}
+}
+
+func TestConfigRefreshesFromServer(t *testing.T) {
+	isolate(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(quick.ConfigResponse{OAuthClientID: "new-client", BaseDomain: "b.example"})
+	}))
+	defer srv.Close()
+	saveServerConfig(&cliConfig{Server: srv.URL, OAuthClientID: "old-client"}, true)
+
+	cfg, err := resolveConfig("", "")
+	if err != nil || cfg.OAuthClientID != "new-client" {
+		t.Fatalf("stale client kept: %+v %v", cfg, err)
+	}
+	if loadConfig().OAuthClientID != "new-client" {
+		t.Fatal("refreshed config not saved")
+	}
+
+	srv.Close() // server down: the cached config still works
+	if cfg, err := resolveConfig(srv.URL, ""); err != nil || cfg.OAuthClientID != "new-client" {
+		t.Fatalf("offline fallback failed: %+v %v", cfg, err)
 	}
 }

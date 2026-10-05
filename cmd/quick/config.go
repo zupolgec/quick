@@ -127,24 +127,34 @@ func resolveConfig(serverFlag, siteServer string) (*cliConfig, error) {
 	f := loadConfigFile()
 	if server == "" {
 		if d := f.Servers[f.Default]; d != nil && d.OAuthClientID != "" {
-			return d, nil // no explicit server: use the default one
+			server = d.Server // no explicit server: use the default one
+		} else {
+			server = promptServer()
 		}
-		server = promptServer()
 	}
 	if server == "" {
 		return nil, errors.New("server required (--server, QUICK_SERVER, or enter it at the prompt)")
 	}
 
+	// Always refresh from /api/config (the server may have changed client or
+	// identity provider); the cached copy is only a fallback when it's down.
 	server = normalizeServer(server)
-	if c := f.Servers[server]; c != nil && c.OAuthClientID != "" {
-		return c, nil
+	cached := f.Servers[server]
+	timeout := 15 * time.Second
+	if cached != nil && cached.OAuthClientID != "" {
+		timeout = 5 * time.Second
 	}
-	c, err := fetchConfig(server)
+	c, err := fetchConfig(server, timeout)
 	if err != nil {
+		if cached != nil && cached.OAuthClientID != "" {
+			return cached, nil
+		}
 		return nil, fmt.Errorf("server unreachable (%s): %w", server, err)
 	}
 	c.Server = server
-	saveServerConfig(c, false)
+	if cached == nil || *cached != *c {
+		saveServerConfig(c, false)
+	}
 	return c, nil
 }
 
@@ -165,8 +175,8 @@ func normalizeServer(input string) string {
 	return input
 }
 
-func fetchConfig(server string) (*cliConfig, error) {
-	cli := &http.Client{Timeout: 15 * time.Second}
+func fetchConfig(server string, timeout time.Duration) (*cliConfig, error) {
+	cli := &http.Client{Timeout: timeout}
 	resp, err := cli.Get(server + "/api/config")
 	if err != nil {
 		return nil, err
