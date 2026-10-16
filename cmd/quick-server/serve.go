@@ -80,7 +80,8 @@ func (s *server) serveSite(w http.ResponseWriter, r *http.Request, sub string) {
 		return
 	}
 	if !s.serveNearest404(w, r, sub, p) {
-		w.WriteHeader(http.StatusNotFound)
+		exists, err := s.store.SiteExists(sub)
+		renderNotFound(w, r, fwdHost(r), exists || err != nil)
 	}
 }
 

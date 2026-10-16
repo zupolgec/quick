@@ -102,6 +102,9 @@ type uiText struct {
 
 	CodeTitle, CodeHeading, CodeIntro string
 	CodeLabel, CodeButton, CodeError  string
+
+	NotFoundTitle, NotFoundSiteHeading, NotFoundSiteIntro string
+	NotFoundPageHeading, NotFoundPageIntro                string
 }
 
 var uiTexts = map[lang]uiText{
@@ -167,6 +170,12 @@ var uiTexts = map[lang]uiText{
 		CodeLabel:   "Code",
 		CodeButton:  "Enter",
 		CodeError:   "Wrong code, try again.",
+
+		NotFoundTitle:       "quick — not found",
+		NotFoundSiteHeading: "Site not found",
+		NotFoundSiteIntro:   "Nothing is published at",
+		NotFoundPageHeading: "Page not found",
+		NotFoundPageIntro:   "This page doesn't exist on",
 	},
 	langIT: {
 		NavDashboard: "Dashboard",
@@ -230,6 +239,12 @@ var uiTexts = map[lang]uiText{
 		CodeLabel:   "Codice",
 		CodeButton:  "Entra",
 		CodeError:   "Codice errato, riprova.",
+
+		NotFoundTitle:       "quick · non trovato",
+		NotFoundSiteHeading: "Sito non trovato",
+		NotFoundSiteIntro:   "Non c'è nessun sito pubblicato su",
+		NotFoundPageHeading: "Pagina non trovata",
+		NotFoundPageIntro:   "Questa pagina non esiste su",
 	},
 }
 

@@ -231,6 +231,37 @@ p{margin:0 0 1.6rem;color:var(--muted);font-size:.9rem;overflow-wrap:anywhere}
   <a class="btn" href="{{.SignIn}}">{{.T.SSOButton}}</a>
 </div></body></html>`))
 
+var notFoundPage = template.Must(template.New("404").Parse(`<!doctype html>
+<html lang="{{.Lang}}"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.T.NotFoundTitle}}</title>` + brandHead + `
+<style>` + brandCSS + `
+body{display:grid;place-items:center;padding:1.5rem}
+.card{width:min(360px,100%);background:var(--card);border:1px solid var(--border);border-radius:18px;padding:2.25rem 1.75rem;text-align:center;box-shadow:0 1px 2px rgba(13,24,50,.05),0 18px 48px rgba(13,24,50,.10)}
+.card .brand{font-size:1.5rem;margin-bottom:.9rem}
+h1{font-size:1.15rem;font-weight:700;margin:0 0 .35rem;color:var(--ink)}
+p{margin:0;color:var(--muted);font-size:.9rem;overflow-wrap:anywhere}
+</style></head><body>
+<div class="card">
+  ` + brandWordmark + `
+  {{if .Page}}<h1>{{.T.NotFoundPageHeading}}</h1>
+  <p>{{.T.NotFoundPageIntro}} <b>{{.Host}}</b>.</p>{{else}}<h1>{{.T.NotFoundSiteHeading}}</h1>
+  <p>{{.T.NotFoundSiteIntro}} <b>{{.Host}}</b>.</p>{{end}}
+</div></body></html>`))
+
+// renderNotFound writes the branded 404: page=false for a site that doesn't
+// exist, true for a missing page on a published site without its own 404.html.
+func renderNotFound(w http.ResponseWriter, r *http.Request, host string, page bool) {
+	l := pickLang(r)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Add("Vary", "Accept-Language")
+	w.WriteHeader(http.StatusNotFound)
+	_ = notFoundPage.Execute(w, map[string]any{
+		"Host": host, "Page": page, "Lang": string(l), "T": textsFor(l),
+	})
+}
+
 var dashboardPage = template.Must(template.New("dash").Parse(`<!doctype html>
 <html lang="{{.Lang}}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
