@@ -219,23 +219,34 @@ func TestConcurrentDeploysOfOneSite(t *testing.T) {
 		t.Fatal("forced takeover not logged")
 	}
 
-	// 4. Ctrl-C during an upload gives the site back: the rerun goes through at
-	// once, without --takeover and without waiting for the idle timeout.
-	a, aOut = startSlow()
-	if err := a.Process.Signal(os.Interrupt); err != nil {
-		t.Fatal(err)
-	}
-	err = a.Wait()
-	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 130 {
-		t.Fatalf("interrupted deploy: %v\n%s", err, aOut.String())
-	}
-	if !strings.Contains(srvLog.String(), `deploy "game": released by its holder`) {
-		t.Fatalf("interrupted deploy didn't release:\n%s", aOut.String())
-	}
-	if out, err := quick(luigi).CombinedOutput(); err != nil {
-		t.Fatalf("deploy right after an interrupted one: %v\n%s", err, out)
-	}
-	if got := served(); got != "luigi" {
-		t.Fatalf("served %q after the interrupted deploy, want luigi", got)
+	// 4. Ctrl-C gives the site back: the rerun goes through at once, without
+	// --takeover and without waiting for the idle timeout. During the upload
+	// (the CLI printed "sending", it has the lease id) and during the plan
+	// (the server opened the lease, its answer may still be on the way).
+	for _, during := range []string{"upload", "plan"} {
+		released := strings.Count(srvLog.String(), `deploy "game": released by its holder`)
+		a, aOut = startSlow()
+		for i := 0; during == "upload" && !strings.Contains(aOut.String(), "sending "); i++ {
+			if i > 400 {
+				t.Fatalf("no upload started:\n%s", aOut.String())
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if err := a.Process.Signal(os.Interrupt); err != nil {
+			t.Fatal(err)
+		}
+		err = a.Wait()
+		if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 130 {
+			t.Fatalf("interrupted during the %s: %v\n%s", during, err, aOut.String())
+		}
+		if strings.Count(srvLog.String(), `deploy "game": released by its holder`) != released+1 {
+			t.Fatalf("interrupted during the %s: no release:\n%s", during, aOut.String())
+		}
+		if out, err := quick(luigi).CombinedOutput(); err != nil {
+			t.Fatalf("deploy right after one interrupted during the %s: %v\n%s", during, err, out)
+		}
+		if got := served(); got != "luigi" {
+			t.Fatalf("served %q after the interrupted deploy, want luigi", got)
+		}
 	}
 }

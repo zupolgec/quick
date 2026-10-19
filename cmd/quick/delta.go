@@ -153,7 +153,14 @@ func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) 
 	switch {
 	case err == nil:
 		held.clear() // the commit released it
-	case !errors.Is(err, errDeltaBusy):
+	case errors.Is(err, errInterrupted):
+		// The interrupt handler releases it and exits.
+	case errors.Is(err, errDeltaBusy):
+		if st.lease == "" {
+			held.clear() // the refused first plan opened nothing
+		}
+		// else the tar fallback carries it
+	default:
 		held.release()
 	}
 	return res, st, err
@@ -171,6 +178,7 @@ func deltaRounds(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) 
 	}
 	st := deltaStats{total: p.totalSize}
 	q := "?name=" + url.QueryEscape(name)
+	held.startPlan(cfg, tok, name) // an interrupt from here waits for the plan's lease
 	for attempt := 1; ; attempt++ {
 		pq := q
 		if takeover && attempt == 1 {
@@ -197,7 +205,12 @@ func deltaRounds(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) 
 			return res, st, err
 		}
 		st.lease = pl.Lease
-		held.set(cfg, tok, name, st.lease)
+		if !held.set(cfg, tok, name, st.lease) {
+			return res, st, errInterrupted
+		}
+		if attempt == 1 {
+			fmt.Printf("  sending %s of %s\n", humanSize(pl.MissingBytes), humanSize(pl.TotalBytes))
+		}
 		n, err := uploadChunks(cfg, tok, q, st.lease, pl.Missing, locs)
 		st.sent += n
 		if errors.Is(err, errReplan) && attempt < commitAttempts {

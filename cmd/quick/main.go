@@ -300,6 +300,9 @@ func deploy(args []string) {
 	// otherwise, or if the server turns out not to have it, the whole tar.
 	catchInterrupts() // from here on Ctrl-C gives the site back (lease.go)
 	res, st, delta, err := publishFolder(cfg, *name, tok, dir, pl, *takeover)
+	if errors.Is(err, errInterrupted) {
+		select {} // the interrupt handler releases the lease and exits
+	}
 	fatal(err)
 	if delta {
 		fmt.Printf("%s uploaded %s of %s\n", check(), humanSize(st.sent), humanSize(st.total))
