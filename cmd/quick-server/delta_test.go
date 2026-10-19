@@ -534,7 +534,7 @@ func TestStageSweepRemovesOldChunks(t *testing.T) {
 	s := newDeltaTestServer(t)
 	b := []byte("abandoned")
 	h := sha256.Sum256(b)
-	if err := s.stage.want("demo", map[[32]byte]int{h: len(b)}); err != nil {
+	if _, err := s.stage.want("demo", map[[32]byte]int{h: len(b)}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.stage.put("demo", h, b, false); err != nil {

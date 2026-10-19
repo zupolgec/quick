@@ -16,15 +16,17 @@
 //     of that site, only as many as needed; one that can't fit at all is
 //     refused without touching existing plans;
 //   - across all sites: maxTotalBytes staged, maxTotalWanted outstanding
-//     requests and maxSites site states, checked before a plan is retained
-//     (refused with 503, no state change). Empty site states are dropped.
+//     requests and maxSites sites with outstanding requests, checked before a
+//     plan is retained (refused with 503, no state change; expired requests
+//     are reclaimed first). Empty site states are dropped.
 //
 // Commit copies of live chunks (non-atomic backends only) skip the plan and the
 // per-site caps (they belong to a commit already authorized and bounded by the
 // manifest caps) but count toward maxTotalBytes, so the disk stays bounded.
 //
-// A commit pins its site: the sweeper leaves pinned sites alone, so verified
-// chunks can't vanish before they're published.
+// A commit pins its site (pins are tracked apart from site states): the
+// sweeper leaves pinned sites alone, so verified chunks can't vanish before
+// they're published.
 package main
 
 import (
@@ -64,7 +66,6 @@ type siteStage struct {
 	staged map[[32]byte]stagedChunk
 	wanted map[[32]byte]wantedChunk
 	bytes  int64 // charged bytes of staged
-	pins   int   // commits in progress
 }
 
 type wantedChunk struct {
@@ -80,13 +81,14 @@ type chunkStage struct {
 	maxTotalBytes int64
 	// maxTotalWanted: outstanding chunk requests across all sites.
 	maxTotalWanted int
-	// maxSites: site states (with something staged or planned).
+	// maxSites: sites with outstanding requests (pending plans).
 	maxSites int
 
 	mu          sync.Mutex
 	sites       map[string]*siteStage
-	total       int64 // charged bytes staged, all sites
-	wantedTotal int   // outstanding requests, all sites
+	pins        map[string]int // commits in progress, per site
+	total       int64          // charged bytes staged, all sites
+	wantedTotal int            // outstanding requests, all sites
 	seq         uint64
 }
 
@@ -95,17 +97,23 @@ func charge(size int) int64 { return (int64(size) + stageBlock - 1) / stageBlock
 // newChunkStage opens the staging dir and rebuilds the accounting from it.
 // Per-site caps fit the largest legal deploy (storage caps); the aggregate cap
 // is a few of those.
+//
+// Largest legal manifest: every chunk but a file's last is at least MinSize,
+// so a file of n bytes has at most n/MinSize+1 chunks and a manifest at most
+// maxBytes/MinSize + maxFiles. Each chunk is charged under its size +
+// stageBlock, so maxBytes + maxChunks*stageBlock covers any legal manifest.
 func newChunkStage(dir string) *chunkStage {
 	maxChunks := int(storage.MaxExtractBytes/chunk.MinSize) + storage.MaxExtractFiles
 	c := &chunkStage{
 		dir:           dir,
-		maxSiteBytes:  storage.MaxExtractBytes + int64(storage.MaxExtractFiles)*stageBlock,
+		maxSiteBytes:  storage.MaxExtractBytes + int64(maxChunks)*stageBlock,
 		maxSiteChunks: maxChunks,
 		maxTotalBytes: 4 * storage.MaxExtractBytes,
 		// A few maximal plans at once; ~100 bytes per request in memory.
 		maxTotalWanted: 4 * maxChunks,
 		maxSites:       1000,
 		sites:          map[string]*siteStage{},
+		pins:           map[string]int{},
 	}
 	sites, _ := os.ReadDir(dir)
 	for _, sd := range sites {
@@ -143,7 +151,7 @@ func (c *chunkStage) site(name string) *siteStage {
 
 // dropIfIdle forgets an empty, unpinned site. Caller holds mu.
 func (c *chunkStage) dropIfIdle(name string) {
-	if ss := c.sites[name]; ss != nil && ss.pins == 0 && len(ss.staged) == 0 && len(ss.wanted) == 0 {
+	if ss := c.sites[name]; ss != nil && c.pins[name] == 0 && len(ss.staged) == 0 && len(ss.wanted) == 0 {
 		delete(c.sites, name)
 		os.Remove(c.siteDir(name)) // only if empty
 	}
@@ -181,46 +189,86 @@ func (c *chunkStage) pruneWanted(ss *siteStage, now time.Time) {
 	}
 }
 
-// want records the chunks a plan asked for. Admission is decided first, on
-// the union with the site's outstanding requests, and a refused plan changes
-// nothing (except dropping expired requests). If the site is over its chunk
-// cap, only the oldest other requests are evicted, as many as needed (their
-// clients get 409 on upload and plan again).
-func (c *chunkStage) want(site string, missing map[[32]byte]int) error {
-	if len(missing) == 0 {
-		return nil
+// reclaim drops expired requests everywhere and the states left idle. Caller
+// holds mu.
+func (c *chunkStage) reclaim(now time.Time) {
+	for name, ss := range c.sites {
+		c.pruneWanted(ss, now)
+		c.dropIfIdle(name)
 	}
+}
+
+// planSites counts sites with outstanding requests (what maxSites bounds).
+// Caller holds mu.
+func (c *chunkStage) planSites() int {
+	n := 0
+	for _, ss := range c.sites {
+		if len(ss.wanted) > 0 {
+			n++
+		}
+	}
+	return n
+}
+
+// want records the chunks a plan asked for and returns those actually
+// admitted: under the lock, chunks staged meanwhile (a concurrent upload) are
+// no longer missing. Admission is decided first, on the union with the site's
+// outstanding requests, and a refused plan changes nothing (except reclaiming
+// expired requests). A site without outstanding requests needs one of the
+// maxSites slots; commits in progress (pins) don't hold or grant one. If the
+// site is over its chunk cap, only its oldest other requests are evicted, as
+// many as needed (their clients get 409 on upload and plan again).
+func (c *chunkStage) want(site string, missing map[[32]byte]int) (map[[32]byte]int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := time.Now()
+	admitted := make(map[[32]byte]int, len(missing))
 	ss := c.sites[site]
-	if ss == nil && len(c.sites) >= c.maxSites {
-		return errStageBusy
+	for h, size := range missing {
+		if ss != nil {
+			if _, ok := ss.staged[h]; ok {
+				continue
+			}
+		}
+		admitted[h] = size
 	}
-	staged, existing, fresh := 0, 0, len(missing)
+	if len(admitted) == 0 {
+		return admitted, nil
+	}
 	if ss != nil {
 		c.pruneWanted(ss, now)
+	}
+	if ss == nil || len(ss.wanted) == 0 {
+		if c.planSites() >= c.maxSites {
+			c.reclaim(now)
+			if c.planSites() >= c.maxSites {
+				return nil, errStageBusy
+			}
+		}
+	}
+	ss = c.sites[site] // reclaim may have dropped an idle state
+	staged, existing, fresh := 0, 0, len(admitted)
+	if ss != nil {
 		staged, existing = len(ss.staged), len(ss.wanted)
-		for h := range missing {
+		for h := range admitted {
 			if _, ok := ss.wanted[h]; ok {
 				fresh--
 			}
 		}
 	}
-	if staged+len(missing) > c.maxSiteChunks {
-		return fmt.Errorf("%w for this site (over %d chunks)", errStageFull, c.maxSiteChunks)
+	if staged+len(admitted) > c.maxSiteChunks {
+		return nil, fmt.Errorf("%w for this site (over %d chunks)", errStageFull, c.maxSiteChunks)
 	}
 	// Evictable = existing requests not in this plan, which always suffice
 	// given the check above.
 	evict := max(0, staged+existing+fresh-c.maxSiteChunks)
 	if c.wantedTotal-evict+fresh > c.maxTotalWanted {
-		for _, other := range c.sites { // expired plans elsewhere free room
-			c.pruneWanted(other, now)
-		}
+		c.reclaim(now) // expired plans elsewhere free room
 		if c.wantedTotal-evict+fresh > c.maxTotalWanted {
-			return errStageBusy
+			return nil, errStageBusy
 		}
 	}
+	missing = admitted
 	ss = c.site(site)
 	if evict > 0 {
 		var old []wantedEntry
@@ -242,7 +290,7 @@ func (c *chunkStage) want(site string, missing map[[32]byte]int) error {
 		}
 		ss.wanted[h] = wantedChunk{size: size, exp: now.Add(planTTL), seq: c.seq}
 	}
-	return nil
+	return admitted, nil
 }
 
 type wantedEntry struct {
@@ -266,6 +314,10 @@ func (c *chunkStage) put(site string, h [32]byte, data []byte, commitCopy bool) 
 	}
 	defer c.dropIfIdle(site)
 	if _, ok := ss.staged[h]; ok {
+		if _, stale := ss.wanted[h]; stale {
+			delete(ss.wanted, h)
+			c.wantedTotal--
+		}
 		return nil
 	}
 	ch := charge(len(data))
@@ -375,13 +427,17 @@ func (c *chunkStage) removeSite(site string) {
 }
 
 // pin keeps the sweeper away from site until the returned func is called.
+// Pins are kept apart from site states: a commit in progress is not a pending
+// plan and gives no admission to one.
 func (c *chunkStage) pin(site string) func() {
 	c.mu.Lock()
-	c.site(site).pins++
+	c.pins[site]++
 	c.mu.Unlock()
 	return func() {
 		c.mu.Lock()
-		c.sites[site].pins--
+		if c.pins[site]--; c.pins[site] <= 0 {
+			delete(c.pins, site)
+		}
 		c.dropIfIdle(site)
 		c.mu.Unlock()
 	}
@@ -394,7 +450,7 @@ func (c *chunkStage) sweep(maxAge time.Duration) {
 	now := time.Now()
 	cutoff := now.Add(-maxAge)
 	for name, ss := range c.sites {
-		if ss.pins > 0 {
+		if c.pins[name] > 0 {
 			continue
 		}
 		for h, sc := range ss.staged {

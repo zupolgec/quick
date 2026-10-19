@@ -238,29 +238,36 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 	}
 	res := quick.DeployPlanResponse{Missing: []string{}}
 	want := map[[32]byte]int{}
-	seen := map[[32]byte]bool{}
+	var order [][32]byte // manifest order, for the response
 	for _, f := range files {
 		res.TotalBytes += f.size
 		for _, c := range f.chunks {
-			if seen[c.Hash] {
+			if _, dup := want[c.Hash]; dup {
 				continue
 			}
-			seen[c.Hash] = true
 			if _, live := idx[c.Hash]; live || s.stage.present(name, c.Hash) {
 				continue
 			}
 			want[c.Hash] = c.Size
-			res.Missing = append(res.Missing, hex.EncodeToString(c.Hash[:]))
-			res.MissingBytes += int64(c.Size)
+			order = append(order, c.Hash)
 		}
 	}
-	if err := s.stage.want(name, want); err != nil {
+	// The staging lock decides what is really missing (an upload may have
+	// landed meanwhile): answer with what was admitted.
+	admitted, err := s.stage.want(name, want)
+	if err != nil {
 		code := http.StatusRequestEntityTooLarge
 		if errors.Is(err, errStageBusy) {
 			code = http.StatusServiceUnavailable
 		}
 		http.Error(w, err.Error(), code)
 		return
+	}
+	for _, h := range order {
+		if size, ok := admitted[h]; ok {
+			res.Missing = append(res.Missing, hex.EncodeToString(h[:]))
+			res.MissingBytes += int64(size)
+		}
 	}
 	_ = json.NewEncoder(w).Encode(res)
 }
