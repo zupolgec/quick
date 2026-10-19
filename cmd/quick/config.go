@@ -48,6 +48,8 @@ type cliConfig struct {
 	OIDCIssuer    string `json:"oidc_issuer,omitempty"`
 	AuthEndpoint  string `json:"auth_endpoint,omitempty"`
 	TokenEndpoint string `json:"token_endpoint,omitempty"`
+	// Server accepts delta deploys (only changed chunks are uploaded).
+	DeltaDeploy bool `json:"delta_deploy,omitempty"`
 }
 
 // configFile holds every known server, keyed by normalized URL. The embedded
@@ -234,6 +236,7 @@ func fetchConfig(server string, timeout time.Duration) (*cliConfig, error) {
 		HostedDomain:      r.HostedDomain,
 		BaseDomain:        r.BaseDomain,
 		OIDCIssuer:        r.OIDCIssuer,
+		DeltaDeploy:       r.DeltaDeploy,
 	}
 	if c.OIDCIssuer != "" {
 		if c.AuthEndpoint, c.TokenEndpoint, err = discover(cli, c.OIDCIssuer); err != nil {

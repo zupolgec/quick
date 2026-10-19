@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -294,26 +295,24 @@ func deploy(args []string) {
 		return
 	}
 
-	payload, err := tarGzFromPlan(dir, pl)
-	fatal(err)
-
-	endpoint := cfg.Server + "/api/deploy?name=" + url.QueryEscape(*name)
-	req, err := http.NewRequest(http.MethodPost, endpoint, payload)
-	fatal(err)
-	req.Header.Set("Content-Type", "application/gzip")
-	req.Header.Set("Authorization", "Bearer "+tok)
-
-	resp, err := deployClient.Do(req)
-	fatal(err)
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "deploy failed (%d): %s\n", resp.StatusCode, strings.TrimSpace(string(respBody)))
-		os.Exit(1)
-	}
-
+	// Delta deploy when the server supports it (only changed chunks travel);
+	// otherwise, or if the server turns out not to have it, the whole tar.
 	var res quick.DeployResponse
-	json.Unmarshal(respBody, &res)
+	delta := cfg.DeltaDeploy
+	if delta {
+		var st deltaStats
+		res, st, err = deltaDeploy(cfg, *name, tok, dir, pl)
+		if errors.Is(err, errNoDelta) {
+			delta = false
+		} else {
+			fatal(err)
+			fmt.Printf("%s uploaded %s of %s\n", check(), humanSize(st.sent), humanSize(st.total))
+		}
+	}
+	if !delta {
+		res, err = tarDeploy(cfg, *name, tok, dir, pl)
+		fatal(err)
+	}
 	fmt.Printf("%s %s published → %s\n", check(), cBold(*name), cCyan(res.URL))
 	relDir := filepath.ToSlash(filepath.Clean(dir))
 	if relDir == "." {
@@ -334,6 +333,32 @@ func deploy(args []string) {
 		callPolicy(cfg, *name, tok, quick.PolicyRequest{Access: new(quick.AccessCode), Code: &code})
 		fmt.Printf("  → private, code: %s\n", code)
 	}
+}
+
+// tarDeploy uploads the whole folder as one tar.gz (servers without delta deploy).
+func tarDeploy(cfg *cliConfig, name, tok, dir string, pl *plan) (quick.DeployResponse, error) {
+	var res quick.DeployResponse
+	payload, err := tarGzFromPlan(dir, pl)
+	if err != nil {
+		return res, err
+	}
+	req, err := http.NewRequest(http.MethodPost, cfg.Server+"/api/deploy?name="+url.QueryEscape(name), payload)
+	if err != nil {
+		return res, err
+	}
+	req.Header.Set("Content-Type", "application/gzip")
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := deployClient.Do(req)
+	if err != nil {
+		return res, err
+	}
+	defer resp.Body.Close()
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return res, fmt.Errorf("deploy failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	}
+	err = json.Unmarshal(respBody, &res)
+	return res, err
 }
 
 func tarGz(dir string) (*bytes.Buffer, error) {

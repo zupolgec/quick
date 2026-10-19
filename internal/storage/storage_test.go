@@ -31,8 +31,8 @@ func newLocalT(t *testing.T) *local {
 
 // Extraction stops past the byte cap (we lower the limit instead of generating 500 MiB).
 func TestPutSiteRejectsTooManyBytes(t *testing.T) {
-	defer func(v int64) { maxExtractBytes = v }(maxExtractBytes)
-	maxExtractBytes = 1024
+	defer func(v int64) { MaxExtractBytes = v }(MaxExtractBytes)
+	MaxExtractBytes = 1024
 
 	l := newLocalT(t)
 	err := l.PutSite("demo", tarOf(map[string]string{
@@ -45,13 +45,30 @@ func TestPutSiteRejectsTooManyBytes(t *testing.T) {
 
 // Extraction stops past the file-count cap.
 func TestPutSiteRejectsTooManyFiles(t *testing.T) {
-	defer func(v int) { maxExtractFiles = v }(maxExtractFiles)
-	maxExtractFiles = 3
+	defer func(v int) { MaxExtractFiles = v }(MaxExtractFiles)
+	MaxExtractFiles = 3
 
 	files := map[string]string{"a.txt": "1", "b.txt": "2", "c.txt": "3", "d.txt": "4"}
 	l := newLocalT(t)
 	if err := l.PutSite("demo", tarOf(files)); err != errTooManyFiles {
 		t.Fatalf("err = %v, want errTooManyFiles", err)
+	}
+}
+
+func TestListFiles(t *testing.T) {
+	l := newLocalT(t)
+	if got, err := l.ListFiles("demo"); err != nil || len(got) != 0 {
+		t.Fatalf("missing site: %v %v", got, err)
+	}
+	if err := l.PutSite("demo", tarOf(map[string]string{"index.html": "a", "css/x.css": "b"})); err != nil {
+		t.Fatal(err)
+	}
+	got, err := l.ListFiles("demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(got, ",") != "css/x.css,index.html" {
+		t.Fatalf("ListFiles = %v", got)
 	}
 }
 

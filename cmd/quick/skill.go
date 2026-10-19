@@ -92,7 +92,13 @@ quick deploy my-site --server acme    # once; then just: quick deploy
 **The deploy replaces the entire content of the site**, it does not add: files not
 present in the package are removed from the site. Consequences:
 
-- To update a single file you still republish the whole folder.
+- To update a single file you still republish the whole folder, but the upload
+  is incremental: only the parts of files the server doesn't already have travel
+  (content-defined chunks, ~64 KiB). Republishing a big build where part of a
+  file changed, or with renamed files, sends little; the CLI reports it as
+  "uploaded X of Y". Against an older server it uploads the whole folder.
+  Builds compressed as a whole (e.g. Unity Gzip/Brotli compression) change
+  everywhere on each build, so they get little benefit.
 - A deploy from an empty folder would wipe the site: the CLI **blocks** it
   (use ` + "`--force`" + ` to empty it on purpose).
 - Before publishing, the CLI shows a summary (file count, size) and

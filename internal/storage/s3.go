@@ -73,7 +73,7 @@ func (s *s3) PutSite(site string, tr *tar.Reader) error {
 		if hdr.Typeflag != tar.TypeReg {
 			continue
 		}
-		rel, err := cleanRel(hdr.Name)
+		rel, err := CleanRel(hdr.Name)
 		if err != nil {
 			return err
 		}
@@ -82,10 +82,10 @@ func (s *s3) PutSite(site string, tr *tar.Reader) error {
 		}
 		// Anti-bomb caps: the declared size is authoritative (tar.Reader reads
 		// exactly hdr.Size per entry, and PutObject consumes the same).
-		if files++; files > maxExtractFiles {
+		if files++; files > MaxExtractFiles {
 			return errTooManyFiles
 		}
-		if hdr.Size < 0 || extracted+hdr.Size > maxExtractBytes {
+		if hdr.Size < 0 || extracted+hdr.Size > MaxExtractBytes {
 			return errArchiveTooBig
 		}
 		extracted += hdr.Size
@@ -118,7 +118,7 @@ func (s *s3) PutSite(site string, tr *tar.Reader) error {
 }
 
 func (s *s3) OpenFile(site, p string) (io.ReadSeekCloser, FileInfo, error) {
-	rel, err := cleanRel(p)
+	rel, err := CleanRel(p)
 	if err != nil {
 		return nil, FileInfo{}, err
 	}
@@ -201,6 +201,20 @@ func (s *s3) ListSites() ([]string, error) {
 		out = append(out, n)
 	}
 	sort.Strings(out)
+	return out, nil
+}
+
+func (s *s3) ListFiles(site string) ([]string, error) {
+	var out []string
+	base := s.sitePrefix(site)
+	for obj := range s.cli.ListObjects(context.Background(), s.bucket, minio.ListObjectsOptions{Prefix: base, Recursive: true}) {
+		if obj.Err != nil {
+			return nil, obj.Err
+		}
+		if rel := strings.TrimPrefix(obj.Key, base); rel != "" && !strings.HasSuffix(rel, "/") {
+			out = append(out, rel)
+		}
+	}
 	return out, nil
 }
 

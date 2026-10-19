@@ -22,6 +22,7 @@ func (s *server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		BaseDomain:        s.baseDomain,
 		Version:           version,
 		OIDCIssuer:        s.oidcIssuer,
+		DeltaDeploy:       s.stage != nil,
 	})
 }
 

@@ -21,16 +21,17 @@ var ErrNotFound = errors.New("storage: not found")
 
 // Anti-bomb caps applied during tar extraction: limiting the incoming gzip
 // stream isn't enough, since a small archive can expand hugely (gzip bomb) or
-// hold a vast number of tiny files. var (not const) so tests can lower them
-// without generating enormous archives.
+// hold a vast number of tiny files. Exported so the delta deploy can check a
+// manifest against the same caps before any upload; var (not const) so tests
+// can lower them without generating enormous archives.
 var (
-	maxExtractBytes int64 = 500 << 20 // total extracted (decompressed) bytes
-	maxExtractFiles       = 20000     // max number of files
+	MaxExtractBytes int64 = 500 << 20 // total extracted (decompressed) bytes
+	MaxExtractFiles       = 20000     // max number of files
 )
 
 var (
-	errArchiveTooBig = fmt.Errorf("storage: archive too large once extracted (over %d MiB)", maxExtractBytes>>20)
-	errTooManyFiles  = fmt.Errorf("storage: archive exceeds the %d-file limit", maxExtractFiles)
+	errArchiveTooBig = fmt.Errorf("storage: archive too large once extracted (over %d MiB)", MaxExtractBytes>>20)
+	errTooManyFiles  = fmt.Errorf("storage: archive exceeds the %d-file limit", MaxExtractFiles)
 )
 
 type FileInfo struct {
@@ -49,6 +50,9 @@ type Backend interface {
 	DeleteSite(site string) (existed bool, err error)
 	SiteExists(site string) (bool, error)
 	ListSites() ([]string, error)
+	// ListFiles lists the live version's regular files (slash-separated paths
+	// relative to the site root); empty if the site has no contents.
+	ListFiles(site string) ([]string, error)
 	// Rollback restores the previous version (the last deploy becomes the "next").
 	// ok=false if there is no previous version to restore.
 	Rollback(site string) (ok bool, err error)
@@ -74,8 +78,8 @@ func New(c Config) (Backend, error) {
 	}
 }
 
-// cleanRel normalizes a relative path and blocks traversal.
-func cleanRel(p string) (string, error) {
+// CleanRel normalizes a relative path and blocks traversal.
+func CleanRel(p string) (string, error) {
 	rel := strings.TrimPrefix(path.Clean("/"+p), "/")
 	if rel == ".." || strings.HasPrefix(rel, "../") {
 		return "", fmt.Errorf("storage: unsafe path: %q", p)
@@ -116,7 +120,7 @@ func (l *local) PutSite(site string, tr *tar.Reader) error {
 		if err != nil {
 			return err
 		}
-		rel, err := cleanRel(hdr.Name)
+		rel, err := CleanRel(hdr.Name)
 		if err != nil {
 			return err
 		}
@@ -130,7 +134,7 @@ func (l *local) PutSite(site string, tr *tar.Reader) error {
 				return err
 			}
 		case tar.TypeReg:
-			if files++; files > maxExtractFiles {
+			if files++; files > MaxExtractFiles {
 				return errTooManyFiles
 			}
 			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
@@ -142,12 +146,12 @@ func (l *local) PutSite(site string, tr *tar.Reader) error {
 			}
 			// Copy capped to the remaining budget (+1 to detect overflow): a
 			// lying size in the header can't fill the disk.
-			n, err := io.Copy(f, io.LimitReader(tr, maxExtractBytes-extracted+1))
+			n, err := io.Copy(f, io.LimitReader(tr, MaxExtractBytes-extracted+1))
 			f.Close()
 			if err != nil {
 				return err
 			}
-			if extracted += n; extracted > maxExtractBytes {
+			if extracted += n; extracted > MaxExtractBytes {
 				return errArchiveTooBig
 			}
 		}
@@ -207,6 +211,28 @@ func (l *local) ListSites() ([]string, error) {
 	return out, nil
 }
 
+func (l *local) ListFiles(site string) ([]string, error) {
+	root := filepath.Join(l.sitesDir, site)
+	var out []string
+	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			if p == root && os.IsNotExist(err) {
+				return filepath.SkipDir
+			}
+			return err
+		}
+		if d.Type().IsRegular() {
+			rel, err := filepath.Rel(root, p)
+			if err != nil {
+				return err
+			}
+			out = append(out, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	return out, err
+}
+
 func (l *local) Rollback(site string) (bool, error) {
 	final := filepath.Join(l.sitesDir, site)
 	prev := l.prevPath(site)
@@ -231,7 +257,7 @@ func (l *local) Rollback(site string) (bool, error) {
 }
 
 func (l *local) OpenFile(site, p string) (io.ReadSeekCloser, FileInfo, error) {
-	rel, err := cleanRel(p)
+	rel, err := CleanRel(p)
 	if err != nil {
 		return nil, FileInfo{}, err
 	}

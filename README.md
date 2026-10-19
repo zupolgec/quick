@@ -56,6 +56,16 @@ conferma** (`--yes` per saltarla, `--dry-run` per vedere cosa salirebbe senza
 pubblicare); un deploy senza file è **bloccato** (`--force` per svuotare di
 proposito). Sottodomini nuovi sono istantanei (il wildcard copre già il certificato).
 
+Il caricamento è **incrementale**: la CLI divide i file in blocchi (in base al
+contenuto, circa 64 KiB l'uno) e invia solo quelli che il server non ha già nella
+versione pubblicata. Ripubblicare una build in cui cambia una parte di un file
+grande (es. il `.data` di Unity) trasferisce pochi blocchi; un file rinominato non
+si ricarica affatto. La CLI riporta quanto ha inviato davvero ("uploaded 1.2 MB of
+44 MB"). Con un server che non lo supporta carica tutta la cartella come prima. Le
+build già compresse per intero (es. Unity con compressione Gzip o Brotli) cambiano
+ovunque a ogni build: per sfruttare l'incrementale conviene pubblicarle non
+compresse.
+
 **Cosa non viene pubblicato**, in tre livelli: (1) sicurezza, sempre — file nascosti
 (`.git`, `.env`, `.quick`… tranne `.well-known`) e segreti (`*.pem`, `*.key`, `id_rsa`,
 keystore); (2) comodità, predefiniti e scavalcabili — `node_modules/`, `vendor/`,
@@ -262,6 +272,7 @@ browser ──https──> coolify-proxy (caddy-docker-proxy, TLS apex + wildcar
                      ▼
                  quick-server (smista per HOST):
                    <BASE_DOMAIN> (apex):  /api/health|config|deploy|sites|site/<n>/{policy,rollback}
+                                          /api/deploy/{plan,chunks,commit} (deploy incrementale)
                                           /oauth2/* -> oauth2-proxy (SSO Google, sign_in + callback)
                                           /         -> dashboard (loggato) | pagina accesso (guest)
                    <sub>.<BASE_DOMAIN>:   policy per-sito (public/code/sso) + serve dallo Storage
@@ -286,6 +297,7 @@ sito (same-origin, dietro lo stesso controllo di accesso dei file): libreria
 | `cmd/quick-server/` | Front unico: serve i siti, policy/gate, deploy, `/oauth2/*`, `/api/config` |
 | `internal/quick/` | Contratto condiviso CLI↔server (DTO, validazione nomi, modi di accesso) |
 | `internal/storage/` | Backend storage: `local` (FS) e `s3` (minio-go) |
+| `internal/chunk/` | Divisione dei file in blocchi per il deploy incrementale (FastCDC) |
 | `docker-compose.yaml` | Stack per Coolify (label Caddy + env) |
 | oauth2-proxy (env `OAUTH2_PROXY_*`) | SSO Google o OIDC (`QUICK_SSO_PROVIDER`) |
 
@@ -294,7 +306,10 @@ sito (same-origin, dietro lo stesso controllo di accesso dei file): libreria
 Vedi `.env.example`. In sintesi: `QUICK_BASE_DOMAIN`, `QUICK_ALLOWED_DOMAINS` (uno, lista `a,b`, o `*`),
 `GOOGLE_CLIENT_ID/SECRET` (client OAuth **Web** per oauth2-proxy), `COOKIE_SECRET`,
 `QUICK_META_SECRET`, `QUICK_OWNERSHIP`=`free|shared|owned`, `QUICK_STORAGE`=`local|s3` (+ `QUICK_S3_*`),
-`QUICK_HOST_DIR` (cartella host dei dati, per più istanze sullo stesso host).
+`QUICK_HOST_DIR` (cartella host dei dati, per più istanze sullo stesso host),
+`QUICK_CHUNK_DIR` (blocchi del deploy incrementale in attesa di pubblicazione;
+default la cartella temporanea di sistema, vengono rimossi alla pubblicazione o
+dopo 24 ore).
 Con un IdP OIDC (es. Zitadel): `QUICK_SSO_PROVIDER=oidc`, `QUICK_OIDC_ISSUER`, e in
 `GOOGLE_CLIENT_ID/SECRET` il client Web dell'IdP per oauth2-proxy; per la CLI un client
 nativo con PKCE e redirect `http://127.0.0.1:8765/callback`.

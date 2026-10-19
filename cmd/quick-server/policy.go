@@ -489,6 +489,9 @@ func (s *server) handleDelete(w http.ResponseWriter, r *http.Request, name strin
 	if s.domains != nil {
 		s.domains.dropSite(name)
 	}
+	if s.stage != nil {
+		s.stage.removeSite(name)
+	}
 	if !existed {
 		http.Error(w, "site not found", http.StatusNotFound)
 		return

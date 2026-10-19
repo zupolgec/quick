@@ -79,6 +79,47 @@ const (
 	TokenScopeDeploy = "deploy"
 )
 
+// Delta deploy (chunk-level transfer). The CLI describes the folder as a
+// manifest of files split into content-defined chunks (internal/chunk):
+//
+//	POST /api/deploy/plan?name=    manifest -> DeployPlanResponse (chunks the server lacks)
+//	POST /api/deploy/chunks?name=  gzip stream of chunk records (only the missing ones)
+//	POST /api/deploy/commit?name=  manifest -> DeployResponse; 409 = re-plan and retry
+//
+// Manifest bodies are JSON, optionally gzip (Content-Encoding: gzip). A chunk
+// record is the raw 32-byte SHA-256, the length as big-endian uint32, then the
+// bytes. Hashes in JSON are lowercase hex.
+type DeployManifest struct {
+	Files []ManifestFile `json:"files"`
+}
+
+type ManifestFile struct {
+	Path   string          `json:"path"`
+	Mode   uint32          `json:"mode,omitempty"` // permission bits; 0 = 0644
+	Size   int64           `json:"size"`
+	SHA256 string          `json:"sha256"` // whole file
+	Chunks []ManifestChunk `json:"chunks"` // in order; empty for an empty file
+}
+
+type ManifestChunk struct {
+	Hash string `json:"h"`
+	Size int    `json:"n"`
+}
+
+type DeployPlanResponse struct {
+	Missing      []string `json:"missing"`       // chunk hashes to upload
+	TotalBytes   int64    `json:"total_bytes"`   // size of the whole folder
+	MissingBytes int64    `json:"missing_bytes"` // size of the missing chunks
+}
+
+type ChunkUploadResponse struct {
+	Stored int   `json:"stored"`
+	Bytes  int64 `json:"bytes"`
+}
+
+// ChunkRecordHeader is the size of a chunk record header (hash + length).
+const ChunkRecordHeader = 32 + 4
+
 type TokenCreateRequest struct {
 	Name      string   `json:"name"`
 	Scopes    []string `json:"scopes,omitempty"`
@@ -121,6 +162,9 @@ type ConfigResponse struct {
 	// OIDC issuer of the identity provider; empty means Google (servers
 	// predating generic OIDC never send it).
 	OIDCIssuer string `json:"oidc_issuer,omitempty"`
+	// The server accepts delta deploys (/api/deploy/plan|chunks|commit);
+	// older servers never send it and get the full tar upload.
+	DeltaDeploy bool `json:"delta_deploy,omitempty"`
 }
 
 // Env returns env var k, or def if empty/absent.

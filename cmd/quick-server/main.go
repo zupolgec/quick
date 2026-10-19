@@ -18,6 +18,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -53,10 +54,11 @@ type server struct {
 	rules        *rulesStore            // per-site _redirects, TTL-cached
 	siteProxy    *httputil.ReverseProxy // _redirects 200-to-URL proxying
 	apexMux      *http.ServeMux
-	noAuth       bool       // local development only
-	locks        keyedMutex // serializes per-site writes (single instance)
-	oidcIssuer   string     // QUICK_OIDC_ISSUER; empty = Google
-	oidcMu       sync.Mutex // guards oidcVerifier (lazy init)
+	noAuth       bool        // local development only
+	locks        keyedMutex  // serializes per-site writes (single instance)
+	stage        *chunkStage // delta deploy staging; nil = delta deploy off
+	oidcIssuer   string      // QUICK_OIDC_ISSUER; empty = Google
+	oidcMu       sync.Mutex  // guards oidcVerifier (lazy init)
 	oidcVerifier *oidc.IDTokenVerifier
 	domains      *domainIndex // custom domain -> site
 	domainsMu    sync.Mutex   // serializes custom domain changes across sites
@@ -121,6 +123,8 @@ func main() {
 		log.Fatal(err)
 	}
 	s.resolver = net.DefaultResolver
+	s.stage = newChunkStage(quick.Env("QUICK_CHUNK_DIR", filepath.Join(os.TempDir(), "quick-chunks")))
+	go s.stage.sweepLoop()
 	s.setupSiteProxy()
 	if err := s.setupOAuthProxy(); err != nil {
 		log.Fatal(err)
@@ -182,6 +186,9 @@ func (s *server) buildApexMux() *http.ServeMux {
 	m.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) { fmt.Fprintln(w, "ok") })
 	m.HandleFunc("/api/config", s.handleConfig)
 	m.HandleFunc("/api/deploy", s.handleDeploy)
+	m.HandleFunc("/api/deploy/plan", s.handleDeployPlan)
+	m.HandleFunc("/api/deploy/chunks", s.handleDeployChunks)
+	m.HandleFunc("/api/deploy/commit", s.handleDeployCommit)
 	m.HandleFunc("/api/sites", s.handleSites)
 	m.HandleFunc("/api/site/", s.handleSiteAPI)
 	m.HandleFunc("/oauth2/", s.handleOAuth2)
@@ -269,25 +276,14 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
-	name := r.URL.Query().Get("name")
-	if !quick.ValidName(name) {
-		http.Error(w, "invalid site name (use a-z, 0-9, hyphen)", http.StatusBadRequest)
+	name, ok := deployName(w, r)
+	if !ok {
 		return
 	}
 	unlock := s.locks.lock(name)
 	defer unlock()
-	cur, err := s.meta.load(name)
-	if err != nil {
-		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	ident, err := s.authenticateForSite(r, name, cur, quick.TokenScopeDeploy)
-	if err != nil {
-		http.Error(w, "auth: "+err.Error(), http.StatusUnauthorized)
-		return
-	}
-	if ok, reason := s.canWrite(cur, ident.Email, actDeploy); !ok {
-		http.Error(w, reason, http.StatusForbidden)
+	cur, ident, ok := s.authorizeDeploy(w, r, name)
+	if !ok {
 		return
 	}
 	body := http.MaxBytesReader(w, r.Body, maxUpload)
@@ -300,6 +296,44 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "deploy: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	s.finishDeploy(w, name, cur, ident)
+}
+
+// deployName reads and validates the ?name= of a deploy request.
+func deployName(w http.ResponseWriter, r *http.Request) (string, bool) {
+	name := r.URL.Query().Get("name")
+	if !quick.ValidName(name) {
+		http.Error(w, "invalid site name (use a-z, 0-9, hyphen)", http.StatusBadRequest)
+		return "", false
+	}
+	return name, true
+}
+
+// authorizeDeploy runs the checks every deploy endpoint shares: readable site
+// state (fail closed), an identity with deploy scope (SSO user or site token),
+// ownership/lock. On failure the response is already written. Writers call it
+// under s.locks so the policy can't change before they publish.
+func (s *server) authorizeDeploy(w http.ResponseWriter, r *http.Request, name string) (policy, authIdentity, bool) {
+	cur, err := s.meta.load(name)
+	if err != nil {
+		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
+		return policy{}, authIdentity{}, false
+	}
+	ident, err := s.authenticateForSite(r, name, cur, quick.TokenScopeDeploy)
+	if err != nil {
+		http.Error(w, "auth: "+err.Error(), http.StatusUnauthorized)
+		return policy{}, authIdentity{}, false
+	}
+	if ok, reason := s.canWrite(cur, ident.Email, actDeploy); !ok {
+		http.Error(w, reason, http.StatusForbidden)
+		return policy{}, authIdentity{}, false
+	}
+	return cur, ident, true
+}
+
+// finishDeploy runs after a successful PutSite: drops cached rules, records
+// who deployed (and the token use), answers with the site URL.
+func (s *server) finishDeploy(w http.ResponseWriter, name string, cur policy, ident authIdentity) {
 	s.rules.forget(name)
 	by := ident.Email
 	if ident.Actor != "" {
