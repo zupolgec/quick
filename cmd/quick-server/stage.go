@@ -7,12 +7,17 @@
 // and no request has to list the directory:
 //
 //   - uploads are accepted only for chunks an outstanding plan of that site
-//     asked for (same hash and size); plans expire after stageTTL and are
-//     bounded per site;
+//     asked for (same hash and size); plans expire after planTTL (an upload
+//     session), staged chunks after stageTTL;
 //   - each chunk is charged its size rounded up to stageBlock (disk blocks,
 //     inode): many tiny chunks cost what they really cost;
 //   - per site: at most maxSiteBytes charged and maxSiteChunks chunks
-//     (planned + staged); across all sites: maxTotalBytes.
+//     (planned + staged). A plan that doesn't fit evicts the oldest requests
+//     of that site, only as many as needed; one that can't fit at all is
+//     refused without touching existing plans;
+//   - across all sites: maxTotalBytes staged, maxTotalWanted outstanding
+//     requests and maxSites site states, checked before a plan is retained
+//     (refused with 503, no state change). Empty site states are dropped.
 //
 // Commit copies of live chunks (non-atomic backends only) skip the plan and the
 // per-site caps (they belong to a commit already authorized and bounded by the
@@ -23,12 +28,14 @@
 package main
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -39,9 +46,13 @@ import (
 
 const stageBlock = 4 << 10 // charge granularity per staged chunk
 
+// planTTL: how long a plan's chunk requests wait for their upload.
+const planTTL = time.Hour
+
 var (
 	errNotPlanned = errors.New("chunk not requested by an outstanding plan: plan again")
 	errStageFull  = errors.New("too much pending upload data")
+	errStageBusy  = errors.New("too many pending deploys on the server, retry later")
 )
 
 type stagedChunk struct {
@@ -59,6 +70,7 @@ type siteStage struct {
 type wantedChunk struct {
 	size int
 	exp  time.Time
+	seq  uint64 // plan order, for oldest-first eviction
 }
 
 type chunkStage struct {
@@ -66,10 +78,16 @@ type chunkStage struct {
 	maxSiteBytes  int64
 	maxSiteChunks int
 	maxTotalBytes int64
+	// maxTotalWanted: outstanding chunk requests across all sites.
+	maxTotalWanted int
+	// maxSites: site states (with something staged or planned).
+	maxSites int
 
-	mu    sync.Mutex
-	sites map[string]*siteStage
-	total int64
+	mu          sync.Mutex
+	sites       map[string]*siteStage
+	total       int64 // charged bytes staged, all sites
+	wantedTotal int   // outstanding requests, all sites
+	seq         uint64
 }
 
 func charge(size int) int64 { return (int64(size) + stageBlock - 1) / stageBlock * stageBlock }
@@ -84,7 +102,10 @@ func newChunkStage(dir string) *chunkStage {
 		maxSiteBytes:  storage.MaxExtractBytes + int64(storage.MaxExtractFiles)*stageBlock,
 		maxSiteChunks: maxChunks,
 		maxTotalBytes: 4 * storage.MaxExtractBytes,
-		sites:         map[string]*siteStage{},
+		// A few maximal plans at once; ~100 bytes per request in memory.
+		maxTotalWanted: 4 * maxChunks,
+		maxSites:       1000,
+		sites:          map[string]*siteStage{},
 	}
 	sites, _ := os.ReadDir(dir)
 	for _, sd := range sites {
@@ -150,31 +171,83 @@ func (c *chunkStage) present(site string, h [32]byte) bool {
 	return ok
 }
 
-// want records the chunks a plan asked for. Expired requests are dropped
-// first; if the site would still exceed its cap, older plans are forgotten
-// (their clients get 409 on upload and plan again).
-func (c *chunkStage) want(site string, missing map[[32]byte]int) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	ss := c.site(site)
-	now := time.Now()
+// pruneWanted drops expired requests. Caller holds mu.
+func (c *chunkStage) pruneWanted(ss *siteStage, now time.Time) {
 	for h, w := range ss.wanted {
 		if now.After(w.exp) {
 			delete(ss.wanted, h)
+			c.wantedTotal--
 		}
 	}
-	room := c.maxSiteChunks - len(ss.staged)
-	if len(ss.wanted)+len(missing) > room {
-		ss.wanted = map[[32]byte]wantedChunk{}
+}
+
+// want records the chunks a plan asked for. Admission is decided first, on
+// the union with the site's outstanding requests, and a refused plan changes
+// nothing (except dropping expired requests). If the site is over its chunk
+// cap, only the oldest other requests are evicted, as many as needed (their
+// clients get 409 on upload and plan again).
+func (c *chunkStage) want(site string, missing map[[32]byte]int) error {
+	if len(missing) == 0 {
+		return nil
 	}
-	if len(missing) > room {
-		c.dropIfIdle(site)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now()
+	ss := c.sites[site]
+	if ss == nil && len(c.sites) >= c.maxSites {
+		return errStageBusy
+	}
+	staged, existing, fresh := 0, 0, len(missing)
+	if ss != nil {
+		c.pruneWanted(ss, now)
+		staged, existing = len(ss.staged), len(ss.wanted)
+		for h := range missing {
+			if _, ok := ss.wanted[h]; ok {
+				fresh--
+			}
+		}
+	}
+	if staged+len(missing) > c.maxSiteChunks {
 		return fmt.Errorf("%w for this site (over %d chunks)", errStageFull, c.maxSiteChunks)
 	}
+	// Evictable = existing requests not in this plan, which always suffice
+	// given the check above.
+	evict := max(0, staged+existing+fresh-c.maxSiteChunks)
+	if c.wantedTotal-evict+fresh > c.maxTotalWanted {
+		for _, other := range c.sites { // expired plans elsewhere free room
+			c.pruneWanted(other, now)
+		}
+		if c.wantedTotal-evict+fresh > c.maxTotalWanted {
+			return errStageBusy
+		}
+	}
+	ss = c.site(site)
+	if evict > 0 {
+		var old []wantedEntry
+		for h, w := range ss.wanted {
+			if _, keep := missing[h]; !keep {
+				old = append(old, wantedEntry{h, w.seq})
+			}
+		}
+		slices.SortFunc(old, func(a, b wantedEntry) int { return cmp.Compare(a.seq, b.seq) })
+		for _, e := range old[:evict] {
+			delete(ss.wanted, e.h)
+		}
+		c.wantedTotal -= evict
+	}
+	c.seq++
 	for h, size := range missing {
-		ss.wanted[h] = wantedChunk{size: size, exp: now.Add(stageTTL)}
+		if _, ok := ss.wanted[h]; !ok {
+			c.wantedTotal++
+		}
+		ss.wanted[h] = wantedChunk{size: size, exp: now.Add(planTTL), seq: c.seq}
 	}
 	return nil
+}
+
+type wantedEntry struct {
+	h   [32]byte
+	seq uint64
 }
 
 // put stages a hash-verified chunk. Uploads (commitCopy=false) must match an
@@ -184,7 +257,13 @@ func (c *chunkStage) want(site string, missing map[[32]byte]int) error {
 func (c *chunkStage) put(site string, h [32]byte, data []byte, commitCopy bool) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	ss := c.site(site)
+	ss := c.sites[site]
+	if ss == nil {
+		if !commitCopy {
+			return errNotPlanned // no state created for unplanned uploads
+		}
+		ss = c.site(site)
+	}
 	defer c.dropIfIdle(site)
 	if _, ok := ss.staged[h]; ok {
 		return nil
@@ -205,7 +284,10 @@ func (c *chunkStage) put(site string, h [32]byte, data []byte, commitCopy bool) 
 	if err := writeAtomic(c.siteDir(site), c.path(site, h), data); err != nil {
 		return err
 	}
-	delete(ss.wanted, h)
+	if _, ok := ss.wanted[h]; ok {
+		delete(ss.wanted, h)
+		c.wantedTotal--
+	}
 	ss.staged[h] = stagedChunk{charge: ch, at: time.Now()}
 	ss.bytes += ch
 	c.total += ch
@@ -285,6 +367,7 @@ func (c *chunkStage) removeSite(site string) {
 	defer c.mu.Unlock()
 	if ss := c.sites[site]; ss != nil {
 		c.total -= ss.bytes
+		c.wantedTotal -= len(ss.wanted)
 		ss.staged, ss.wanted, ss.bytes = map[[32]byte]stagedChunk{}, map[[32]byte]wantedChunk{}, 0
 	}
 	os.RemoveAll(c.siteDir(site))
@@ -322,11 +405,7 @@ func (c *chunkStage) sweep(maxAge time.Duration) {
 				c.total -= sc.charge
 			}
 		}
-		for h, w := range ss.wanted {
-			if now.After(w.exp) {
-				delete(ss.wanted, h)
-			}
-		}
+		c.pruneWanted(ss, now)
 		c.dropIfIdle(name)
 	}
 }
@@ -334,6 +413,6 @@ func (c *chunkStage) sweep(maxAge time.Duration) {
 func (c *chunkStage) sweepLoop() {
 	for {
 		c.sweep(stageTTL)
-		time.Sleep(time.Hour)
+		time.Sleep(10 * time.Minute)
 	}
 }

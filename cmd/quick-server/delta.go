@@ -94,6 +94,7 @@ func parseManifest(m quick.DeployManifest) ([]deltaFile, error) {
 		return nil, fmt.Errorf("too many files (limit %d)", storage.MaxExtractFiles)
 	}
 	seen := map[string]bool{}
+	sizes := map[[32]byte]int{} // a hash has one size across the manifest
 	var total int64
 	out := make([]deltaFile, 0, len(m.Files))
 	for _, f := range m.Files {
@@ -131,6 +132,10 @@ func parseManifest(m quick.DeployManifest) ([]deltaFile, error) {
 			if c.Size < 1 || c.Size > chunk.MaxSize || (!last && c.Size < chunk.MinSize) {
 				return nil, fmt.Errorf("%s: chunk %d has invalid size %d", rel, i, c.Size)
 			}
+			if n, ok := sizes[h]; ok && n != c.Size {
+				return nil, fmt.Errorf("%s: chunk %s listed with sizes %d and %d", rel, c.Hash, n, c.Size)
+			}
+			sizes[h] = c.Size
 			sum += int64(c.Size)
 			df.chunks = append(df.chunks, chunk.Chunk{Hash: h, Size: c.Size})
 		}
@@ -250,7 +255,11 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := s.stage.want(name, want); err != nil {
-		http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+		code := http.StatusRequestEntityTooLarge
+		if errors.Is(err, errStageBusy) {
+			code = http.StatusServiceUnavailable
+		}
+		http.Error(w, err.Error(), code)
 		return
 	}
 	_ = json.NewEncoder(w).Encode(res)
@@ -332,6 +341,7 @@ var beforePublish func(site string)
 var (
 	errChunkMissing = errors.New("chunk not available")
 	errFileHash     = errors.New("file hash mismatch")
+	errChunkSize    = errors.New("chunk or file size does not match its content")
 )
 
 // liveReader reads chunks of the live version keeping at most one file open
@@ -346,7 +356,7 @@ type liveReader struct {
 
 func (l *liveReader) read(c chunk.Chunk, loc chunkLoc) ([]byte, error) {
 	if loc.size != c.Size {
-		return nil, errChunkMissing
+		return nil, errChunkSize
 	}
 	if l.rc == nil || l.path != loc.path {
 		l.close()
@@ -399,6 +409,9 @@ func (s *server) verifyAll(site string, files []deltaFile, idx map[[32]byte]chun
 	defer lr.close()
 	get := func(c chunk.Chunk) ([]byte, error) {
 		b, err := s.stage.read(site, c.Hash)
+		if err == nil && len(b) != c.Size {
+			return nil, errChunkSize // the hash only proves the bytes, not the declared size
+		}
 		if !errors.Is(err, errChunkMissing) {
 			return b, err
 		}
@@ -421,12 +434,17 @@ func (s *server) verifyAll(site string, files []deltaFile, idx map[[32]byte]chun
 	}
 	for _, f := range files {
 		whole := sha256.New()
+		var n int64
 		for _, c := range f.chunks {
 			b, err := get(c)
 			if err != nil {
 				return src, err
 			}
 			whole.Write(b)
+			n += int64(len(b))
+		}
+		if n != f.size {
+			return src, fmt.Errorf("%s: %w", f.rel, errChunkSize)
 		}
 		if !bytes.Equal(whole.Sum(nil), f.hash[:]) {
 			return src, fmt.Errorf("%s: %w", f.rel, errFileHash)
@@ -456,6 +474,9 @@ func (s *server) writeDeltaTar(w io.Writer, site string, files []deltaFile, src 
 			}
 			if err != nil {
 				return err
+			}
+			if len(b) != c.Size {
+				return errChunkSize
 			}
 			if _, err := tw.Write(b); err != nil {
 				return err
@@ -494,7 +515,7 @@ func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, errChunkMissing):
 			http.Error(w, "some chunks are no longer available: plan again", http.StatusConflict)
-		case errors.Is(err, errFileHash):
+		case errors.Is(err, errFileHash), errors.Is(err, errChunkSize):
 			http.Error(w, "deploy: "+err.Error(), http.StatusBadRequest)
 		case errors.Is(err, errStageFull):
 			http.Error(w, "deploy: "+err.Error(), http.StatusServiceUnavailable)
