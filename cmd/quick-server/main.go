@@ -151,6 +151,14 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 		s.handleCodePage(w, r)
 		return
 	}
+	if r.URL.Path == "/__quick/quick.js" || r.URL.Path == "/__quick/quick.d.ts" {
+		s.handleClientLib(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/__quick/api/") {
+		s.handleClientAPI(w, r, sub)
+		return
+	}
 	s.handleSite(w, r) // per-site gate + serve
 }
 

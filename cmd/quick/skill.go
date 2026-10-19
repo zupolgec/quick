@@ -157,6 +157,10 @@ Use ` + "`quick status`" + ` or ` + "`quick deploy ... --dry-run`" + ` to see in
   ` + "`x.json.gz`" + ` are served with the right type and Content-Encoding. Unity WebGL
   builds deploy unchanged with any compression setting (Brotli, Gzip, or
   decompression fallback ` + "`.unityweb`" + `); no server config needed.
+- Every site can import the browser library ` + "`/__quick/quick.js`" + ` (ESM, types at
+  ` + "`/__quick/quick.d.ts`" + `). ` + "`await quick.id.me()`" + ` returns the signed-in user
+  (` + "`{email}`" + `) on SSO sites, ` + "`null`" + ` on public or access-code sites. The
+  ` + "`/__quick/`" + ` path prefix is reserved: site files there are not served.
 
 ## Notes
 

@@ -52,26 +52,35 @@ func (s *server) handleSite(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	p, err := s.meta.load(sub)
-	if err != nil {
+	p, _, ok, err := s.siteAccess(r, sub)
+	switch {
+	case err != nil:
 		http.Error(w, "site temporarily unavailable", http.StatusServiceUnavailable)
-		return
+	case ok:
+		s.serveSite(w, r, sub)
+	case p.Access == "code":
+		s.redirect(w, r, host, "/__quick/code")
+	default: // SSO: if not authenticated, show the sign-in page (no bare redirect)
+		s.renderSSOPage(w, r, host)
+	}
+}
+
+// siteAccess applies the site's visibility to the request: ok reports whether
+// the visitor may see it, email is the SSO user (only checked on SSO sites).
+func (s *server) siteAccess(r *http.Request, sub string) (p policy, email string, ok bool, err error) {
+	p, err = s.meta.load(sub)
+	if err != nil {
+		return p, "", false, err
 	}
 	switch p.Access {
 	case "public":
-		s.serveSite(w, r, sub)
+		return p, "", true, nil
 	case "code":
-		if c, err := r.Cookie("quick_access_" + sub); err == nil && s.meta.validAccessCookie(sub, c.Value) {
-			s.serveSite(w, r, sub)
-			return
-		}
-		s.redirect(w, r, host, "/__quick/code")
-	default: // SSO: if not authenticated, show the sign-in page (no bare redirect)
-		if _, ok := s.checkSSO(r); !ok {
-			s.renderSSOPage(w, r, host)
-			return
-		}
-		s.serveSite(w, r, sub)
+		c, err := r.Cookie("quick_access_" + sub)
+		return p, "", err == nil && s.meta.validAccessCookie(sub, c.Value), nil
+	default:
+		email, ok = s.checkSSO(r)
+		return p, email, ok, nil
 	}
 }
 

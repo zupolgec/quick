@@ -76,6 +76,17 @@ e `Content-Encoding`, così il browser li decomprime da sé. Una build Unity Web
 pubblica così com'è, con qualunque compressione (Brotli, Gzip o "decompression
 fallback" `.unityweb`). Gli altri `.gz` (archivi) restano download normali.
 
+**Libreria `quick.js`**: ogni sito può importare `/__quick/quick.js` (ESM, tipi in
+`/__quick/quick.d.ts`). `await quick.id.me()` restituisce l'utente collegato
+(`{email}`) sui siti SSO, `null` su quelli pubblici o con codice.
+
+```html
+<script type="module">
+  import quick from "/__quick/quick.js";
+  const user = await quick.id.me();
+</script>
+```
+
 **`_redirects`** (stile Netlify): un file `_redirects` nella radice del sito
 definisce redirect, rewrite e proxy per path. Le regole si applicano solo quando
 nessun file corrisponde alla richiesta (i file vincono sempre) e prima di
@@ -242,9 +253,10 @@ CLI quick ── login Google PKCE (loopback) ──> ID token ──> POST <ape
 
 Il proxy fa solo `reverse_proxy` verso quick-server: niente `file_server` né file
 in `/dynamic`. Il routing vive nelle **label** del container (reload graceful, nessun
-restart del proxy). Per il modello "backend" alla Quick (API condivise `quick.db`/
-`quick.storage`/… chiamate dal frontend) il seam è pronto — namespace riservato
-same-origin, identità già risolta dall'SSO, storage astratto — ma non è implementato.
+restart del proxy). Il modello "backend" alla Quick vive sotto `/__quick/` su ogni
+sito (same-origin, dietro lo stesso controllo di accesso dei file): libreria
+`/__quick/quick.js` (+ tipi `/__quick/quick.d.ts`) e API `/__quick/api/*`. Oggi c'è
+`quick.id.me()`; database, email e AI sono in roadmap (`docs/` locale).
 
 ## Componenti
 
