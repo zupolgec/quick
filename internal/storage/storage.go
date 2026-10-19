@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -44,6 +45,10 @@ type Backend interface {
 	// PutSite replaces the whole site tree with the tar contents, keeping the
 	// previous version for a possible Rollback.
 	PutSite(site string, tr *tar.Reader) error
+	// AtomicPutSite reports whether PutSite consumes the whole tar before
+	// touching the live version (so the live files can be read while the tar
+	// is being produced). False for backends that overwrite in place.
+	AtomicPutSite() bool
 	// OpenFile opens a single site file; ErrNotFound if missing or a dir.
 	OpenFile(site, p string) (io.ReadSeekCloser, FileInfo, error)
 	// DeleteSite removes site contents and metadata; existed=false if nothing was there.
@@ -177,6 +182,9 @@ func (l *local) PutSite(site string, tr *tar.Reader) error {
 	return nil
 }
 
+// AtomicPutSite: extraction goes to a temp dir, swapped in only at the end.
+func (l *local) AtomicPutSite() bool { return true }
+
 func (l *local) prevPath(site string) string { return filepath.Join(l.sitesDir, "."+site+".prev") }
 
 // tmpSeq makes temp paths unique: two concurrent operations on the same site
@@ -264,7 +272,12 @@ func (l *local) OpenFile(site, p string) (io.ReadSeekCloser, FileInfo, error) {
 	full := filepath.Join(l.sitesDir, site, rel)
 	f, err := os.Open(full)
 	if err != nil {
-		return nil, FileInfo{}, ErrNotFound
+		// Missing (or a path through a file): not found. Anything else (e.g.
+		// out of descriptors) is a real error, not to be mistaken for absence.
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+			return nil, FileInfo{}, ErrNotFound
+		}
+		return nil, FileInfo{}, err
 	}
 	st, err := f.Stat()
 	if err != nil || st.IsDir() {

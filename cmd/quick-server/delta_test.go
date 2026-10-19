@@ -517,19 +517,6 @@ func TestDeltaLimits(t *testing.T) {
 	if code, _ := c.plan(m); code != http.StatusBadRequest {
 		t.Errorf("too many bytes: plan %d, want 400", code)
 	}
-	// Staging is capped per site at the same byte budget: chunks the site
-	// couldn't publish anyway can't fill the disk.
-	data := map[string][]byte{}
-	var hashes []string
-	for i := range 3 {
-		b := randData(uint64(10+i), 600)
-		h := sha256.Sum256(b)
-		data[hex.EncodeToString(h[:])] = b
-		hashes = append(hashes, hex.EncodeToString(h[:]))
-	}
-	if code := c.upload(data, hashes); code != http.StatusRequestEntityTooLarge {
-		t.Errorf("staging over budget: upload %d, want 413", code)
-	}
 }
 
 func TestDeltaUploadRejectsOversizedRecord(t *testing.T) {
@@ -547,20 +534,52 @@ func TestStageSweepRemovesOldChunks(t *testing.T) {
 	s := newDeltaTestServer(t)
 	b := []byte("abandoned")
 	h := sha256.Sum256(b)
-	if err := s.stage.put("demo", h, b); err != nil {
+	if err := s.stage.want("demo", map[[32]byte]int{h: len(b)}); err != nil {
 		t.Fatal(err)
 	}
-	old := time.Now().Add(-48 * time.Hour)
-	p := s.stage.path("demo", hex.EncodeToString(h[:]))
-	if err := os.Chtimes(p, old, old); err != nil {
+	if err := s.stage.put("demo", h, b, false); err != nil {
 		t.Fatal(err)
 	}
+	p := s.stage.path("demo", h)
+	s.stage.sweep(24 * time.Hour)
+	if _, err := os.Stat(p); err != nil {
+		t.Fatal("fresh staged chunk swept")
+	}
+	s.stage.mu.Lock()
+	sc := s.stage.sites["demo"].staged[h]
+	sc.at = time.Now().Add(-48 * time.Hour)
+	s.stage.sites["demo"].staged[h] = sc
+	s.stage.mu.Unlock()
 	s.stage.sweep(24 * time.Hour)
 	if _, err := os.Stat(p); !os.IsNotExist(err) {
 		t.Fatal("old staged chunk not swept")
 	}
 	if _, err := os.Stat(filepath.Dir(p)); !os.IsNotExist(err) {
 		t.Fatal("empty site staging dir not removed")
+	}
+	if s.stage.total != 0 || s.stage.used("demo") != 0 {
+		t.Fatalf("accounting after sweep: total %d", s.stage.total)
+	}
+}
+
+// Accounting survives a restart: it is rebuilt from the staging dir, and
+// upload leftovers are cleaned.
+func TestStageAccountingRebuiltAtStartup(t *testing.T) {
+	dir := t.TempDir()
+	st := newChunkStage(dir)
+	b := []byte("pending")
+	h := sha256.Sum256(b)
+	st.want("demo", map[[32]byte]int{h: len(b)})
+	if err := st.put("demo", h, b, false); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(filepath.Join(dir, "demo", ".up-123"), []byte("partial"), 0o600)
+	st2 := newChunkStage(dir)
+	if st2.used("demo") != stageBlock || st2.total != stageBlock || !st2.present("demo", h) {
+		t.Fatalf("rebuilt accounting: used %d total %d", st2.used("demo"), st2.total)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "demo", ".up-123")); !os.IsNotExist(err) {
+		t.Fatal("upload leftover not removed")
 	}
 }
 

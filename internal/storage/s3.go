@@ -117,6 +117,9 @@ func (s *s3) PutSite(site string, tr *tar.Reader) error {
 	return nil
 }
 
+// AtomicPutSite: objects are overwritten while the tar is read.
+func (s *s3) AtomicPutSite() bool { return false }
+
 func (s *s3) OpenFile(site, p string) (io.ReadSeekCloser, FileInfo, error) {
 	rel, err := CleanRel(p)
 	if err != nil {

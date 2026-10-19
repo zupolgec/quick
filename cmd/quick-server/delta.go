@@ -8,27 +8,35 @@
 //     (whatever deployed them: delta, tar, or a rollback). Always exact, no
 //     index to go stale; the cost is reading the site once per plan and commit,
 //     fine for local disk and the 500 MiB cap;
-//   - staged ones: uploaded and hash-verified, waiting for a commit, under
-//     QUICK_CHUNK_DIR/<site>/<sha256>. Per site, so a client can never learn
-//     anything about another site's content.
+//   - staged ones (stage.go): uploaded and hash-verified, waiting for a
+//     commit. Per site, so a client can never learn anything about another
+//     site's content; accepted only if a plan asked for them, with per-site
+//     and aggregate caps.
 //
-// GC: a successful commit deletes the staged chunks it consumed; anything left
-// behind by an abandoned deploy expires after stageTTL (hourly sweep), and
-// deleting the site drops its staging dir. Staging per site is capped at the
-// same byte budget as a whole site.
+// GC: a successful commit releases the staged chunks it consumed; anything
+// left by an abandoned deploy expires after stageTTL (hourly sweep); deleting
+// the site drops its staging.
 //
 // Concurrency: plan and chunk upload don't take the site lock (uploads can be
-// long; staged files are content-addressed and written via rename, so
-// concurrent writers are harmless). Commit holds s.locks like handleDeploy and
-// re-checks everything: if a chunk promised by the plan disappeared meanwhile
-// (another deploy changed the live version, a sweep), it answers 409 and the
-// CLI re-plans.
+// long; staging has its own lock and accounting). Commit holds s.locks like
+// handleDeploy and pins the site's staging so the sweeper can't remove
+// verified chunks. If a chunk promised by the plan disappeared meanwhile
+// (another deploy changed the live version, an expiry), it answers 409 and
+// the CLI re-plans.
 //
-// Commit first copies every reused live chunk into staging and verifies every
-// chunk and whole-file hash; only then streams the assembled files as a tar
-// into storage PutSite, the same publish path (limits, atomic swap, rollback
-// copy) as the tar upload. Copying first matters for backends that overwrite
-// in place (s3): a file must never be read after PutSite replaced it.
+// Commit verifies every chunk and every whole-file hash before storage writes
+// anything, then streams the assembled files as a tar into PutSite, the same
+// publish path (limits, atomic swap, rollback copy) as the tar upload. Reused
+// live chunks:
+//
+//   - atomic backends (local): read straight from the live tree in both
+//     passes. PutSite extracts to a temp dir and swaps only at the end, and the
+//     site lock keeps other writers out, so the live files are stable for the
+//     whole commit. Nothing is copied: staging holds only uploads.
+//   - backends that overwrite in place (s3): copied into staging during
+//     verification (a file must never be read after PutSite replaced it). The
+//     copies count toward the aggregate staging cap and are released at the
+//     end of the commit, success or not.
 package main
 
 import (
@@ -44,8 +52,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -58,105 +64,6 @@ const (
 	maxManifest = 32 << 20 // manifest JSON, decompressed
 	stageTTL    = 24 * time.Hour
 )
-
-// chunkStage holds uploaded chunks waiting for a commit, one dir per site.
-type chunkStage struct {
-	dir   string
-	locks keyedMutex // per site: serializes uploads for the quota check
-}
-
-func newChunkStage(dir string) *chunkStage { return &chunkStage{dir: dir} }
-
-func (c *chunkStage) siteDir(site string) string       { return filepath.Join(c.dir, site) }
-func (c *chunkStage) path(site, hexHash string) string { return filepath.Join(c.dir, site, hexHash) }
-
-func (c *chunkStage) has(site, hexHash string) bool {
-	_, err := os.Stat(c.path(site, hexHash))
-	return err == nil
-}
-
-// put writes a chunk atomically (temp file + rename).
-func (c *chunkStage) put(site string, h [32]byte, data []byte) error {
-	dir := c.siteDir(site)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	f, err := os.CreateTemp(dir, ".up-*")
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(data)
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Rename(f.Name(), c.path(site, hex.EncodeToString(h[:])))
-	}
-	if err != nil {
-		os.Remove(f.Name())
-	}
-	return err
-}
-
-// read returns a staged chunk, verified against its name.
-func (c *chunkStage) read(site string, h [32]byte) ([]byte, error) {
-	b, err := os.ReadFile(c.path(site, hex.EncodeToString(h[:])))
-	if err != nil {
-		return nil, err
-	}
-	if sha256.Sum256(b) != h {
-		os.Remove(c.path(site, hex.EncodeToString(h[:])))
-		return nil, fmt.Errorf("staged chunk %x corrupted", h[:6])
-	}
-	return b, nil
-}
-
-// used is the bytes currently staged for site.
-func (c *chunkStage) used(site string) int64 {
-	ents, _ := os.ReadDir(c.siteDir(site))
-	var n int64
-	for _, e := range ents {
-		if fi, err := e.Info(); err == nil {
-			n += fi.Size()
-		}
-	}
-	return n
-}
-
-func (c *chunkStage) remove(site string, hashes map[[32]byte]bool) {
-	for h := range hashes {
-		os.Remove(c.path(site, hex.EncodeToString(h[:])))
-	}
-	os.Remove(c.siteDir(site)) // only if now empty
-}
-
-func (c *chunkStage) removeSite(site string) { os.RemoveAll(c.siteDir(site)) }
-
-// sweep deletes staged chunks (and upload leftovers) older than maxAge.
-func (c *chunkStage) sweep(maxAge time.Duration) {
-	sites, _ := os.ReadDir(c.dir)
-	cutoff := time.Now().Add(-maxAge)
-	for _, sd := range sites {
-		if !sd.IsDir() {
-			continue
-		}
-		dir := filepath.Join(c.dir, sd.Name())
-		ents, _ := os.ReadDir(dir)
-		for _, e := range ents {
-			if fi, err := e.Info(); err == nil && fi.ModTime().Before(cutoff) {
-				os.Remove(filepath.Join(dir, e.Name()))
-			}
-		}
-		os.Remove(dir) // only if now empty
-	}
-}
-
-func (c *chunkStage) sweepLoop() {
-	for {
-		c.sweep(stageTTL)
-		time.Sleep(time.Hour)
-	}
-}
 
 // deltaFile is a validated manifest entry.
 type deltaFile struct {
@@ -269,8 +176,11 @@ func (s *server) liveIndex(site string) (map[[32]byte]chunkLoc, error) {
 	idx := map[[32]byte]chunkLoc{}
 	for _, p := range files {
 		rc, _, err := s.store.OpenFile(site, p)
-		if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
 			continue
+		}
+		if err != nil {
+			return nil, err
 		}
 		var off int64
 		err = chunk.Split(rc, func(b []byte) error {
@@ -322,6 +232,7 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res := quick.DeployPlanResponse{Missing: []string{}}
+	want := map[[32]byte]int{}
 	seen := map[[32]byte]bool{}
 	for _, f := range files {
 		res.TotalBytes += f.size
@@ -330,13 +241,17 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			seen[c.Hash] = true
-			hx := hex.EncodeToString(c.Hash[:])
-			if _, live := idx[c.Hash]; live || s.stage.has(name, hx) {
+			if _, live := idx[c.Hash]; live || s.stage.present(name, c.Hash) {
 				continue
 			}
-			res.Missing = append(res.Missing, hx)
+			want[c.Hash] = c.Size
+			res.Missing = append(res.Missing, hex.EncodeToString(c.Hash[:]))
 			res.MissingBytes += int64(c.Size)
 		}
+	}
+	if err := s.stage.want(name, want); err != nil {
+		http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+		return
 	}
 	_ = json.NewEncoder(w).Encode(res)
 }
@@ -349,10 +264,6 @@ func (s *server) handleDeployChunks(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := s.authorizeDeploy(w, r, name); !ok {
 		return
 	}
-	unlock := s.stage.locks.lock(name)
-	defer unlock()
-	used := s.stage.used(name)
-
 	fail := func(err error, code int) {
 		var mbe *http.MaxBytesError
 		if errors.As(err, &mbe) {
@@ -396,67 +307,116 @@ func (s *server) handleDeployChunks(w http.ResponseWriter, r *http.Request) {
 			fail(fmt.Errorf("chunk %x: hash mismatch", hdr[:6]), http.StatusBadRequest)
 			return
 		}
-		if s.stage.has(name, hex.EncodeToString(h[:])) {
-			continue
-		}
-		if used+int64(n) > storage.MaxExtractBytes {
-			fail(fmt.Errorf("too much pending data for this site (over %d MiB)", storage.MaxExtractBytes>>20), http.StatusRequestEntityTooLarge)
+		switch err := s.stage.put(name, h, data, false); {
+		case err == nil:
+		case errors.Is(err, errNotPlanned):
+			fail(err, http.StatusConflict)
 			return
-		}
-		if err := s.stage.put(name, h, data); err != nil {
+		case errors.Is(err, errStageFull):
+			fail(err, http.StatusRequestEntityTooLarge)
+			return
+		default:
 			fail(err, http.StatusInternalServerError)
 			return
 		}
-		used += int64(n)
 		res.Stored++
 		res.Bytes += int64(n)
 	}
 	_ = json.NewEncoder(w).Encode(res)
 }
 
+// beforePublish is a test seam: called by commit after verification, right
+// before storage starts writing.
+var beforePublish func(site string)
+
 var (
 	errChunkMissing = errors.New("chunk not available")
 	errFileHash     = errors.New("file hash mismatch")
 )
 
-// stageAll makes every chunk of the manifest available in staging (copying
-// reused ones from the live version) and verifies each chunk and each file's
-// hash. Returns the chunks it copied, so a failed commit can drop them.
-func (s *server) stageAll(site string, files []deltaFile, idx map[[32]byte]chunkLoc) (map[[32]byte]bool, error) {
-	copied := map[[32]byte]bool{}
-	open := map[string]io.ReadSeekCloser{}
-	defer func() {
-		for _, rc := range open {
-			rc.Close()
+// liveReader reads chunks of the live version keeping at most one file open
+// (manifests are in file order, so consecutive chunks mostly share a file).
+// Absent or changed data is errChunkMissing; real I/O errors pass through.
+type liveReader struct {
+	s    *server
+	site string
+	path string
+	rc   io.ReadSeekCloser
+}
+
+func (l *liveReader) read(c chunk.Chunk, loc chunkLoc) ([]byte, error) {
+	if loc.size != c.Size {
+		return nil, errChunkMissing
+	}
+	if l.rc == nil || l.path != loc.path {
+		l.close()
+		rc, _, err := l.s.store.OpenFile(l.site, loc.path)
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil, errChunkMissing
 		}
-	}()
+		if err != nil {
+			return nil, err
+		}
+		l.rc, l.path = rc, loc.path
+	}
+	if _, err := l.rc.Seek(loc.off, io.SeekStart); err != nil {
+		return nil, err
+	}
+	b := make([]byte, loc.size)
+	if _, err := io.ReadFull(l.rc, b); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return nil, errChunkMissing
+		}
+		return nil, err
+	}
+	if sha256.Sum256(b) != c.Hash {
+		return nil, errChunkMissing
+	}
+	return b, nil
+}
+
+func (l *liveReader) close() {
+	if l.rc != nil {
+		l.rc.Close()
+		l.rc = nil
+	}
+}
+
+// deltaSource tells where each chunk of a commit is read from in the publish
+// pass: staging, or the live tree (atomic backends only).
+type deltaSource struct {
+	live   map[[32]byte]chunkLoc // read from the live version
+	copied map[[32]byte]bool     // copied into staging by this commit
+}
+
+// verifyAll checks, before anything is published, that every chunk is
+// available and intact and that every file hashes to its manifest value. On
+// non-atomic backends it copies reused live chunks into staging.
+func (s *server) verifyAll(site string, files []deltaFile, idx map[[32]byte]chunkLoc) (deltaSource, error) {
+	src := deltaSource{live: map[[32]byte]chunkLoc{}, copied: map[[32]byte]bool{}}
+	copyLive := !s.store.AtomicPutSite()
+	lr := &liveReader{s: s, site: site}
+	defer lr.close()
 	get := func(c chunk.Chunk) ([]byte, error) {
-		if b, err := s.stage.read(site, c.Hash); err == nil {
-			return b, nil
+		b, err := s.stage.read(site, c.Hash)
+		if !errors.Is(err, errChunkMissing) {
+			return b, err
 		}
 		loc, ok := idx[c.Hash]
-		if !ok || loc.size != c.Size {
+		if !ok {
 			return nil, errChunkMissing
 		}
-		rc := open[loc.path]
-		if rc == nil {
-			var err error
-			if rc, _, err = s.store.OpenFile(site, loc.path); err != nil {
-				return nil, errChunkMissing
+		if b, err = lr.read(c, loc); err != nil {
+			return nil, err
+		}
+		if copyLive {
+			if err := s.stage.put(site, c.Hash, b, true); err != nil {
+				return nil, err
 			}
-			open[loc.path] = rc
+			src.copied[c.Hash] = true
+		} else {
+			src.live[c.Hash] = loc
 		}
-		b := make([]byte, loc.size)
-		if _, err := rc.Seek(loc.off, io.SeekStart); err != nil {
-			return nil, err
-		}
-		if _, err := io.ReadFull(rc, b); err != nil || sha256.Sum256(b) != c.Hash {
-			return nil, errChunkMissing
-		}
-		if err := s.stage.put(site, c.Hash, b); err != nil {
-			return nil, err
-		}
-		copied[c.Hash] = true
 		return b, nil
 	}
 	for _, f := range files {
@@ -464,19 +424,22 @@ func (s *server) stageAll(site string, files []deltaFile, idx map[[32]byte]chunk
 		for _, c := range f.chunks {
 			b, err := get(c)
 			if err != nil {
-				return copied, err
+				return src, err
 			}
 			whole.Write(b)
 		}
 		if !bytes.Equal(whole.Sum(nil), f.hash[:]) {
-			return copied, fmt.Errorf("%s: %w", f.rel, errFileHash)
+			return src, fmt.Errorf("%s: %w", f.rel, errFileHash)
 		}
 	}
-	return copied, nil
+	return src, nil
 }
 
-// writeDeltaTar streams the manifest's files, assembled from staging, as a tar.
-func (s *server) writeDeltaTar(w io.Writer, site string, files []deltaFile) error {
+// writeDeltaTar streams the manifest's files as a tar, each chunk read from
+// where verifyAll found it (and verified again).
+func (s *server) writeDeltaTar(w io.Writer, site string, files []deltaFile, src deltaSource) error {
+	lr := &liveReader{s: s, site: site}
+	defer lr.close()
 	tw := tar.NewWriter(w)
 	now := time.Now()
 	for _, f := range files {
@@ -484,7 +447,13 @@ func (s *server) writeDeltaTar(w io.Writer, site string, files []deltaFile) erro
 			return err
 		}
 		for _, c := range f.chunks {
-			b, err := s.stage.read(site, c.Hash)
+			var b []byte
+			var err error
+			if loc, ok := src.live[c.Hash]; ok {
+				b, err = lr.read(c, loc)
+			} else {
+				b, err = s.stage.read(site, c.Hash)
+			}
 			if err != nil {
 				return err
 			}
@@ -512,46 +481,52 @@ func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	unpin := s.stage.pin(name)
+	defer unpin()
 	idx, err := s.liveIndex(name)
 	if err != nil {
 		http.Error(w, "could not read the live version: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	copied, err := s.stageAll(name, files, idx)
+	src, err := s.verifyAll(name, files, idx)
+	defer s.stage.release(name, src.copied) // commit copies never outlive the commit
 	if err != nil {
-		s.stage.remove(name, copied)
 		switch {
 		case errors.Is(err, errChunkMissing):
 			http.Error(w, "some chunks are no longer available: plan again", http.StatusConflict)
 		case errors.Is(err, errFileHash):
 			http.Error(w, "deploy: "+err.Error(), http.StatusBadRequest)
+		case errors.Is(err, errStageFull):
+			http.Error(w, "deploy: "+err.Error(), http.StatusServiceUnavailable)
 		default:
 			http.Error(w, "deploy: "+err.Error(), http.StatusInternalServerError)
 		}
 		return
 	}
 
+	if beforePublish != nil {
+		beforePublish(name)
+	}
 	pr, pw := io.Pipe()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		pw.CloseWithError(s.writeDeltaTar(pw, name, files))
+		pw.CloseWithError(s.writeDeltaTar(pw, name, files, src))
 	}()
 	err = s.store.PutSite(name, tar.NewReader(pr))
 	pr.Close() // unblocks the writer if PutSite stopped early
 	<-done
+	if err != nil {
+		http.Error(w, "deploy: "+err.Error(), http.StatusBadRequest) // as handleDeploy
+		return
+	}
 	used := map[[32]byte]bool{}
 	for _, f := range files {
 		for _, c := range f.chunks {
 			used[c.Hash] = true
 		}
 	}
-	if err != nil {
-		s.stage.remove(name, copied)
-		http.Error(w, "deploy: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	s.stage.remove(name, used)
+	s.stage.release(name, used)
 	log.Printf("delta deploy %q: %d files", name, len(files))
 	s.finishDeploy(w, name, cur, ident)
 }
