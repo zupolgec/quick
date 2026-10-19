@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -112,19 +114,38 @@ func TestStalledPublishReleasesTheSiteLock(t *testing.T) {
 func TestTricklingUploadHitsTheCap(t *testing.T) {
 	s := newDeltaTestServer(t)
 	s.timeouts.idle = 300 * time.Millisecond
-	s.timeouts.upload = 500 * time.Millisecond
+	s.timeouts.upload = 800 * time.Millisecond
 	srv := httptest.NewServer(s.apexMux)
 	t.Cleanup(srv.Close)
+	start := time.Now()
 	done, pw := stalledPost(t, srv.URL+"/api/deploy?name=demo", "", nil)
+	// A valid tar.gz that never ends: a file header, then a byte every 50 ms,
+	// each flushed (well within the idle timeout).
 	go func() {
-		for range 100 {
-			if _, err := pw.Write([]byte{0}); err != nil {
+		gz := gzip.NewWriter(pw)
+		tw := tar.NewWriter(gz)
+		tw.WriteHeader(&tar.Header{Name: "big.bin", Mode: 0o644, Size: 1 << 20, Typeflag: tar.TypeReg})
+		for range 200 {
+			if _, err := tw.Write([]byte{'x'}); err != nil {
+				return
+			}
+			if err := gz.Flush(); err != nil {
 				return
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
 	}()
-	within(t, "trickling upload", 3*time.Second, done)
+	within(t, "trickling upload", 5*time.Second, done)
+	if took := time.Since(start); took < 700*time.Millisecond || took > 3*time.Second {
+		t.Fatalf("trickling upload ended after %v, want at the %v cap", took, s.timeouts.upload)
+	}
+	// It held the site lock and a lease: both are free again.
+	deleted := make(chan int, 1)
+	go func() {
+		deleted <- (&deltaClient{t: t, s: s, site: "demo"}).do(http.MethodDelete, "/api/site/demo", nil, nil).Code
+	}()
+	within(t, "delete after the capped upload", time.Second, deleted)
+	(&deltaClient{t: t, s: s, site: "demo"}).leased()
 }
 
 // Refused requests read only a bounded part of their body, for a bounded
