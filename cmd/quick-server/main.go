@@ -283,7 +283,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	unlock := s.locks.lock(name)
 	defer unlock()
-	cur, ident, ok := s.authorizeDeploy(w, r, name)
+	cur, ident, ok := s.authorizeDeploy(w, r, name, true)
 	if !ok {
 		return
 	}
@@ -337,9 +337,14 @@ func deployName(w http.ResponseWriter, r *http.Request) (string, bool) {
 // authorizeDeploy runs the checks every deploy endpoint shares: readable site
 // state (fail closed), an identity with deploy scope (SSO user or site token),
 // ownership/lock. On failure the response is already written. Writers call it
-// under s.locks so the policy can't change before they publish.
-func (s *server) authorizeDeploy(w http.ResponseWriter, r *http.Request, name string) (policy, authIdentity, bool) {
-	cur, err := s.meta.load(name)
+// under s.locks (locked=true: the policy is read fresh, since they save it
+// back) so the policy can't change before they publish.
+func (s *server) authorizeDeploy(w http.ResponseWriter, r *http.Request, name string, locked bool) (policy, authIdentity, bool) {
+	load := s.meta.load
+	if locked {
+		load = s.meta.loadFresh
+	}
+	cur, err := load(name)
 	if err != nil {
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return policy{}, authIdentity{}, false

@@ -57,7 +57,7 @@ func (s *server) handleTokenCreate(w http.ResponseWriter, r *http.Request, name 
 	}
 	unlock := s.locks.lock(name)
 	defer unlock()
-	p, err := s.meta.load(name)
+	p, err := s.meta.loadFresh(name)
 	if err != nil {
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return
@@ -119,7 +119,7 @@ func (s *server) handleTokenRevoke(w http.ResponseWriter, r *http.Request, name 
 	}
 	unlock := s.locks.lock(name)
 	defer unlock()
-	p, err := s.meta.load(name)
+	p, err := s.meta.loadFresh(name)
 	if err != nil {
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return

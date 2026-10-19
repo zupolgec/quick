@@ -239,7 +239,7 @@ func (s *server) activateDomain(ctx context.Context, site, d string) bool {
 	defer s.domainsMu.Unlock()
 	unlock := s.locks.lock(site)
 	defer unlock()
-	p, err := s.meta.load(site)
+	p, err := s.meta.loadFresh(site)
 	if err != nil {
 		return false
 	}
@@ -334,7 +334,7 @@ func (s *server) addDomain(w http.ResponseWriter, r *http.Request, name, raw, em
 
 	unlock := s.locks.lock(name)
 	defer unlock()
-	cur, err := s.meta.load(name)
+	cur, err := s.meta.loadFresh(name)
 	if err != nil {
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return
@@ -368,7 +368,7 @@ func (s *server) addDomain(w http.ResponseWriter, r *http.Request, name, raw, em
 func (s *server) dropDomainFromSite(site, d string) error {
 	unlock := s.locks.lock(site)
 	defer unlock()
-	p, err := s.meta.load(site)
+	p, err := s.meta.loadFresh(site)
 	if err != nil {
 		return err
 	}
@@ -386,7 +386,7 @@ func (s *server) removeDomain(w http.ResponseWriter, name, raw, email string) {
 	defer s.domainsMu.Unlock()
 	unlock := s.locks.lock(name)
 	defer unlock()
-	cur, err := s.meta.load(name)
+	cur, err := s.meta.loadFresh(name)
 	if err != nil {
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return

@@ -318,7 +318,7 @@ func (s *server) liveIndexForPlan(site string, cur policy) (map[[32]byte]chunkLo
 	}
 	unlock := s.locks.lock(site)
 	defer unlock()
-	p, err := s.meta.load(site)
+	p, err := s.meta.loadFresh(site)
 	if err != nil {
 		return nil, err
 	}

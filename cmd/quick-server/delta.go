@@ -191,7 +191,7 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	cur, _, ok := s.authorizeDeploy(w, r, name)
+	cur, _, ok := s.authorizeDeploy(w, r, name, false)
 	if !ok {
 		return
 	}
@@ -246,7 +246,7 @@ func (s *server) handleDeployChunks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, _, ok := s.authorizeDeploy(w, r, name); !ok {
+	if _, _, ok := s.authorizeDeploy(w, r, name, false); !ok {
 		return
 	}
 	fail := func(err error, code int) {
@@ -333,7 +333,7 @@ type liveReader struct {
 	rc   io.ReadSeekCloser
 }
 
-//
+// read returns chunk c from its recorded live location, checked.
 // The index can be wrong about a chunk's size too: if it records a size other
 // than the manifest's, the recorded range decides. Bytes hashing to c.Hash
 // there prove the manifest lies (errChunkSize, 400); anything else means the
@@ -491,7 +491,7 @@ func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
 	}
 	unlock := s.locks.lock(name)
 	defer unlock()
-	cur, ident, ok := s.authorizeDeploy(w, r, name)
+	cur, ident, ok := s.authorizeDeploy(w, r, name, true)
 	if !ok {
 		return
 	}

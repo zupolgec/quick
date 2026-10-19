@@ -102,17 +102,22 @@ type metaStore struct {
 	ttl    time.Duration
 	mu     sync.Mutex
 	cache  map[string]cachedPolicy
+	// gen counts cache writes and drops per site: a load caches what it read
+	// only if no save, fresh load or forget happened meanwhile, so a slow
+	// read of old metadata can't overwrite a newer cached policy.
+	gen map[string]uint64
 }
 
 func newMetaStore(be storage.Backend, secret []byte, ttl time.Duration) *metaStore {
-	return &metaStore{be: be, secret: secret, ttl: ttl, cache: map[string]cachedPolicy{}}
+	return &metaStore{be: be, secret: secret, ttl: ttl, cache: map[string]cachedPolicy{}, gen: map[string]uint64{}}
 }
 
 // load returns the site policy. It distinguishes three cases: missing metadata
 // (legitimately empty policy, cached), present and valid (cached), storage error
 // or corrupt JSON (error propagated and NOT cached). Callers on the
 // write/serve path must treat the error as fail-closed: an empty policy from an
-// error would drop lock and ownership (ownership bypass).
+// error would drop lock and ownership (ownership bypass). Callers that save
+// the policy back use loadFresh instead.
 func (m *metaStore) load(site string) (policy, error) {
 	if !quick.ValidName(site) {
 		return policy{}, nil
@@ -122,8 +127,37 @@ func (m *metaStore) load(site string) (policy, error) {
 		m.mu.Unlock()
 		return c.p, nil
 	}
+	g := m.gen[site]
 	m.mu.Unlock()
 
+	p, err := m.read(site)
+	if err != nil {
+		return policy{}, err
+	}
+	m.mu.Lock()
+	if m.gen[site] == g {
+		m.cache[site] = cachedPolicy{p, time.Now()}
+	}
+	m.mu.Unlock()
+	return p, nil
+}
+
+// loadFresh reads the policy from storage, bypassing the cache, and caches
+// it. For read-modify-write callers: they hold the site lock, so what they
+// read is the latest and stays so until they save.
+func (m *metaStore) loadFresh(site string) (policy, error) {
+	if !quick.ValidName(site) {
+		return policy{}, nil
+	}
+	p, err := m.read(site)
+	if err != nil {
+		return policy{}, err
+	}
+	m.put(site, p)
+	return p, nil
+}
+
+func (m *metaStore) read(site string) (policy, error) {
 	b, ok, err := m.be.GetMeta(site)
 	if err != nil {
 		return policy{}, err
@@ -134,10 +168,15 @@ func (m *metaStore) load(site string) (policy, error) {
 			return policy{}, fmt.Errorf("could not read metadata for %q: %w", site, err)
 		}
 	}
+	return p, nil
+}
+
+// put caches p as the newest policy, invalidating loads in flight.
+func (m *metaStore) put(site string, p policy) {
 	m.mu.Lock()
+	m.gen[site]++
 	m.cache[site] = cachedPolicy{p, time.Now()}
 	m.mu.Unlock()
-	return p, nil
 }
 
 func (m *metaStore) save(site string, p policy) error {
@@ -146,16 +185,16 @@ func (m *metaStore) save(site string, p policy) error {
 	}
 	b, _ := json.MarshalIndent(p, "", "  ")
 	if err := m.be.PutMeta(site, b); err != nil {
+		m.forget(site) // the write may have landed anyway
 		return err
 	}
-	m.mu.Lock()
-	m.cache[site] = cachedPolicy{p, time.Now()}
-	m.mu.Unlock()
+	m.put(site, p)
 	return nil
 }
 
 func (m *metaStore) forget(site string) {
 	m.mu.Lock()
+	m.gen[site]++
 	delete(m.cache, site)
 	m.mu.Unlock()
 }
@@ -355,7 +394,7 @@ func (s *server) handleRollback(w http.ResponseWriter, r *http.Request, name str
 	}
 	unlock := s.locks.lock(name)
 	defer unlock()
-	cur, err := s.meta.load(name)
+	cur, err := s.meta.loadFresh(name)
 	if err != nil {
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return
@@ -409,7 +448,7 @@ func (s *server) handlePolicy(w http.ResponseWriter, r *http.Request, name strin
 	}
 	unlock := s.locks.lock(name)
 	defer unlock()
-	cur, err := s.meta.load(name)
+	cur, err := s.meta.loadFresh(name)
 	if err != nil {
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return
@@ -484,7 +523,7 @@ func (s *server) handleDelete(w http.ResponseWriter, r *http.Request, name strin
 	}
 	unlock := s.locks.lock(name)
 	defer unlock()
-	cur, err := s.meta.load(name)
+	cur, err := s.meta.loadFresh(name)
 	if err != nil {
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return
