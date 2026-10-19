@@ -126,6 +126,54 @@ func TestLeaseHolderIsTokenActor(t *testing.T) {
 	}
 }
 
+// The lease belongs to whoever opened it: another identity holding the id
+// (leaked, copied) can't renew, upload, commit or release with it. Taking
+// over stays the only way in for someone else.
+func TestLeaseBoundToItsHolder(t *testing.T) {
+	s := newDeltaTestServer(t)
+	s.noAuth = false
+	p := policy{CreatedBy: "owner@example.com", Tokens: []siteToken{
+		{ID: "t1", Name: "ci", Hash: s.meta.hashToken("demo", "qk_ci"), Scopes: []string{quick.TokenScopeDeploy}, CreatedBy: "owner@example.com"},
+		{ID: "t2", Name: "cd", Hash: s.meta.hashToken("demo", "qk_cd"), Scopes: []string{quick.TokenScopeDeploy}, CreatedBy: "owner@example.com"},
+	}}
+	if err := s.meta.save("demo", p); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]byte{"index.html": []byte("ci")}
+	a := &deltaClient{t: t, s: s, site: "demo", token: "qk_ci"}
+	m, data := manifestOf(t, files)
+	_, pl := a.plan(m)
+
+	b := &deltaClient{t: t, s: s, site: "demo", token: "qk_cd", lease: a.lease}
+	for _, path := range []string{"/api/deploy/plan", "/api/deploy/chunks", "/api/deploy/commit"} {
+		body := mustJSON(m)
+		if path == "/api/deploy/chunks" {
+			body = records(t, data, pl.Missing)
+		}
+		res := lockedBody(t, b, path, body)
+		if res.Holder != "token:ci@demo" || !strings.Contains(res.Message, "deploy owned by token:ci@demo") {
+			t.Fatalf("%s with someone else's lease: %+v", path, res)
+		}
+	}
+	if w := b.do(http.MethodDelete, "/api/deploy/lease", nil, nil); w.Code != http.StatusLocked {
+		t.Fatalf("release with someone else's lease: %d, want 423", w.Code)
+	}
+	if code := a.upload(data, pl.Missing); code != http.StatusOK {
+		t.Fatalf("holder's upload: %d", code)
+	}
+	if w := a.commit(m); w.Code != http.StatusOK {
+		t.Fatalf("holder's commit: %d %s", w.Code, w.Body.String())
+	}
+
+	// Takeover by the other identity works, with or without the old id.
+	a.started(map[string][]byte{"index.html": []byte("ci2")})
+	b.lease, b.takeover = a.lease, true
+	b.deploy(map[string][]byte{"index.html": []byte("cd")})
+	if got := string(readSite(t, s, "demo", "index.html")); got != "cd" {
+		t.Fatalf("live: %q, want cd", got)
+	}
+}
+
 // Chunks and commit belong to the lease: a missing or foreign id is refused
 // before the body is even read.
 func TestLeaseChunksAndCommitNeedTheLease(t *testing.T) {
@@ -265,26 +313,26 @@ func TestLeaseInFlightRequestKeepsIt(t *testing.T) {
 	var lt leaseTable
 	clk := &fakeClock{t: time.Unix(1e9, 0)}
 	lt.now = clk.now
-	l, _, err := lt.begin("demo", "", "a@x", false)
+	l, _, err := lt.begin("demo", "", "a", "a@x", false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	lt.end(l)
-	u, err := lt.join("demo", l.id)
+	u, err := lt.join("demo", l.id, "a")
 	if err != nil {
 		t.Fatal(err)
 	}
 	clk.add(10 * leaseIdle)
-	if _, _, err := lt.begin("demo", "", "b@x", false); err == nil {
+	if _, _, err := lt.begin("demo", "", "b", "b@x", false); err == nil {
 		t.Fatal("lease taken while its upload is in flight")
 	}
 	lt.end(u)
 	clk.add(leaseIdle - time.Second)
-	if _, _, err := lt.begin("demo", "", "b@x", false); err == nil {
+	if _, _, err := lt.begin("demo", "", "b", "b@x", false); err == nil {
 		t.Fatal("lease taken before the idle timeout")
 	}
 	clk.add(2 * time.Second)
-	if _, _, err := lt.begin("demo", "", "b@x", false); err != nil {
+	if _, _, err := lt.begin("demo", "", "b", "b@x", false); err != nil {
 		t.Fatalf("idle lease not expired: %v", err)
 	}
 }

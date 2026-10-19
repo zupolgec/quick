@@ -266,10 +266,11 @@ func (s *server) handleDeployChunks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, _, ok := s.authorizeDeploy(w, r, name, false); !ok {
+	_, ident, ok := s.authorizeDeploy(w, r, name, false)
+	if !ok {
 		return
 	}
-	lease, ok := s.joinLease(w, r, name, maxUpload, nil)
+	lease, ok := s.joinLease(w, r, name, ident, maxUpload, nil)
 	if !ok {
 		return
 	}
@@ -522,7 +523,7 @@ func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	lease, ok := s.joinLease(w, r, name, maxManifest, unlock)
+	lease, ok := s.joinLease(w, r, name, ident, maxManifest, unlock)
 	if !ok {
 		return
 	}

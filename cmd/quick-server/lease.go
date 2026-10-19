@@ -8,6 +8,9 @@
 //   - The plan acquires it and answers with its id (random); the CLI sends the
 //     id back (quick.DeployLeaseHeader) on every chunk upload, the commit and
 //     re-plans of the same deploy, so the 409 re-plan loop keeps it.
+//   - The lease is bound to the identity that opened it (ownerOf): the id
+//     alone is not enough, another identity using it gets 423 "deploy owned
+//     by X"; taking over is the only way in for someone else.
 //   - Every request carrying the id renews it. A request in flight (a long
 //     chunk upload) keeps it alive however long it takes; it expires after
 //     leaseIdle without requests. An expired lease is dead: its holder's later
@@ -64,6 +67,7 @@ const leaseIdle = 2 * time.Minute
 type deployLease struct {
 	id       string
 	holder   string // identity actor: email or token:<name>@<site>
+	owner    string // identity key (ownerOf): only it can use the id
 	started  time.Time
 	last     time.Time // end of the last request
 	inflight int       // requests of this deploy being served
@@ -77,19 +81,34 @@ type leaseTable struct {
 	now  func() time.Time // nil = time.Now (test seam)
 }
 
+// Why a request was refused.
+const (
+	refLocked  = iota // another deploy holds the site
+	refLost           // the request's own lease is gone
+	refForeign        // the id is the live lease, but another identity's
+)
+
 // leaseError is a refusal: the site is someone else's (or nobody's) right now.
 type leaseError struct {
-	lost   bool // the request's own lease is gone
+	kind   int
 	holder string
 	since  time.Time
 }
 
 func (e *leaseError) Error() string {
-	if e.lost {
+	switch e.kind {
+	case refLost:
 		return "this deploy is no longer the active one for this site (another deploy took over, the site was deleted, or it was idle too long): nothing was published, run it again"
+	case refForeign:
+		return fmt.Sprintf("deploy owned by %s: only they can continue it; retry in a moment or use --takeover", e.holder)
 	}
 	return fmt.Sprintf("%s is publishing this site (since %s UTC); retry in a moment or use --takeover", e.holder, e.since.UTC().Format("15:04"))
 }
+
+// ownerOf is the identity a lease is bound to: the actor, and for a deploy
+// token its id too (a revoked and recreated token with the same name is
+// another identity).
+func ownerOf(ident authIdentity) string { return actorOf(ident) + "\x00" + ident.TokenID }
 
 func (t *leaseTable) clock() time.Time {
 	if t.now != nil {
@@ -115,8 +134,8 @@ func (t *leaseTable) current(site string, now time.Time) *deployLease {
 	return nil
 }
 
-func (t *leaseTable) refusal(cur *deployLease, lost bool) *leaseError {
-	e := &leaseError{lost: lost}
+func (t *leaseTable) refusal(cur *deployLease, kind int) *leaseError {
+	e := &leaseError{kind: kind}
 	if cur != nil {
 		e.holder, e.since = cur.holder, cur.started
 	}
@@ -124,29 +143,32 @@ func (t *leaseTable) refusal(cur *deployLease, lost bool) *leaseError {
 }
 
 // begin starts a request that may open a deploy (plan, tar upload): with the
-// site's current id it continues that deploy; without an id it opens a new one
-// if the site is free; takeover replaces whatever lease is there (returned as
-// broken when it was live). Pair with end or release.
-func (t *leaseTable) begin(site, id, actor string, takeover bool) (l, broken *deployLease, err *leaseError) {
+// site's current id (and the identity that opened it) it continues that
+// deploy; without an id it opens a new one if the site is free; takeover
+// replaces whatever lease is there (returned as broken when it was live).
+// Pair with end or release.
+func (t *leaseTable) begin(site, id, owner, holder string, takeover bool) (l, broken *deployLease, err *leaseError) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	now := t.clock()
 	cur := t.current(site, now)
 	switch {
-	case cur != nil && id != "" && cur.id == id:
+	case cur != nil && id != "" && cur.id == id && cur.owner == owner:
 	case takeover:
 		broken = cur
 		cur = nil
+	case cur != nil && id != "" && cur.id == id:
+		return nil, nil, t.refusal(cur, refForeign)
 	case id != "":
-		return nil, nil, t.refusal(cur, true)
+		return nil, nil, t.refusal(cur, refLost)
 	case cur != nil:
-		return nil, nil, t.refusal(cur, false)
+		return nil, nil, t.refusal(cur, refLocked)
 	}
 	if cur == nil {
 		if t.m == nil {
 			t.m = map[string]*deployLease{}
 		}
-		cur = &deployLease{id: randomID(18), holder: actor, started: now}
+		cur = &deployLease{id: randomID(18), holder: holder, owner: owner, started: now}
 		t.m[site] = cur
 	}
 	cur.inflight++
@@ -154,15 +176,29 @@ func (t *leaseTable) begin(site, id, actor string, takeover bool) (l, broken *de
 	return cur, broken, nil
 }
 
+// use checks that id is site's live lease and owner's. Caller holds mu.
+func (t *leaseTable) use(site, id, owner string, now time.Time) (*deployLease, *leaseError) {
+	cur := t.current(site, now)
+	switch {
+	case cur != nil && id != "" && cur.id == id && cur.owner != owner:
+		return nil, t.refusal(cur, refForeign)
+	case cur != nil && id == "":
+		return nil, t.refusal(cur, refLocked)
+	case cur == nil || cur.id != id:
+		return nil, t.refusal(cur, refLost)
+	}
+	return cur, nil
+}
+
 // join starts a request of a deploy in progress (chunks, commit): id must be
-// the site's live lease. Pair with end or release.
-func (t *leaseTable) join(site, id string) (*deployLease, *leaseError) {
+// the site's live lease, opened by owner. Pair with end or release.
+func (t *leaseTable) join(site, id, owner string) (*deployLease, *leaseError) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	now := t.clock()
-	cur := t.current(site, now)
-	if cur == nil || id == "" || cur.id != id {
-		return nil, t.refusal(cur, id != "" || cur == nil)
+	cur, err := t.use(site, id, owner, now)
+	if err != nil {
+		return nil, err
 	}
 	cur.inflight++
 	cur.last = now
@@ -190,16 +226,17 @@ func (t *leaseTable) release(site string, l *deployLease) {
 }
 
 // drop ends the deploy holding id at its holder's request (interrupted CLI).
-// No lease, or a dead one: nothing to do. Another live lease: refused.
-func (t *leaseTable) drop(site, id string) (bool, *leaseError) {
+// No lease, or a dead one: nothing to do. Another live lease, or this one
+// used by another identity: refused.
+func (t *leaseTable) drop(site, id, owner string) (bool, *leaseError) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	cur := t.current(site, t.clock())
-	switch {
-	case cur == nil:
+	now := t.clock()
+	if t.current(site, now) == nil {
 		return false, nil
-	case cur.id != id:
-		return false, t.refusal(cur, true)
+	}
+	if _, err := t.use(site, id, owner, now); err != nil {
+		return false, err
 	}
 	delete(t.m, site)
 	return true, nil
@@ -210,7 +247,7 @@ func (t *leaseTable) busy(site string) *leaseError {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if cur := t.current(site, t.clock()); cur != nil {
-		return t.refusal(cur, false)
+		return t.refusal(cur, refLocked)
 	}
 	return nil
 }
@@ -233,7 +270,7 @@ func leaseRefused(w http.ResponseWriter, r *http.Request, err *leaseError) {
 		return
 	}
 	res := quick.DeployLocked{Error: quick.LeaseLocked, Holder: err.holder, Message: err.Error()}
-	if err.lost {
+	if err.kind == refLost {
 		res.Error = quick.LeaseLost
 	}
 	if !err.since.IsZero() {
@@ -265,7 +302,7 @@ func refuseDeploy(w http.ResponseWriter, r *http.Request, err *leaseError, limit
 // response written.
 func (s *server) beginLease(w http.ResponseWriter, r *http.Request, site string, ident authIdentity, limit int64, unlock func()) (*deployLease, bool) {
 	id := r.Header.Get(quick.DeployLeaseHeader)
-	l, broken, err := s.leases.begin(site, id, actorOf(ident), takeoverRequested(r))
+	l, broken, err := s.leases.begin(site, id, ownerOf(ident), actorOf(ident), takeoverRequested(r))
 	if err != nil {
 		refuseDeploy(w, r, err, limit, unlock)
 		return nil, false
@@ -280,8 +317,8 @@ func (s *server) beginLease(w http.ResponseWriter, r *http.Request, site string,
 }
 
 // joinLease is join for a handler, refusals as in beginLease.
-func (s *server) joinLease(w http.ResponseWriter, r *http.Request, site string, limit int64, unlock func()) (*deployLease, bool) {
-	l, err := s.leases.join(site, r.Header.Get(quick.DeployLeaseHeader))
+func (s *server) joinLease(w http.ResponseWriter, r *http.Request, site string, ident authIdentity, limit int64, unlock func()) (*deployLease, bool) {
+	l, err := s.leases.join(site, r.Header.Get(quick.DeployLeaseHeader), ownerOf(ident))
 	if err != nil {
 		refuseDeploy(w, r, err, limit, unlock)
 		return nil, false
@@ -308,10 +345,11 @@ func (s *server) handleDeployLease(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing "+quick.DeployLeaseHeader, http.StatusBadRequest)
 		return
 	}
-	if _, _, ok := s.authorizeDeploy(w, r, name, false); !ok {
+	_, ident, ok := s.authorizeDeploy(w, r, name, false)
+	if !ok {
 		return
 	}
-	dropped, err := s.leases.drop(name, id)
+	dropped, err := s.leases.drop(name, id, ownerOf(ident))
 	if err != nil {
 		leaseRefused(w, r, err)
 		return
