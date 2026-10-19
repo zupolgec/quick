@@ -129,3 +129,42 @@ func TestIndexRebuildDoesNotResurrectRevokedToken(t *testing.T) {
 		})
 	}
 }
+
+// Cached policies are shared with unlocked readers (auth, dashboard): a writer
+// mutating its copy (revoking a token, marking it used) must never change what
+// those readers already hold or will get from the cache.
+func TestMetaCacheSnapshotsAreIsolated(t *testing.T) {
+	st, err := storage.New(storage.Config{Kind: "local", SitesDir: t.TempDir(), MetaDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := newMetaStore(st, []byte("secret"), time.Minute)
+	orig := policy{
+		Tokens:  []siteToken{{ID: "a", Scopes: []string{"deploy"}}, {ID: "b"}},
+		Domains: []siteDomain{{Name: "www.example.com"}},
+	}
+	if err := m.save("demo", orig); err != nil {
+		t.Fatal(err)
+	}
+	orig.Tokens[0].ID = "mutated-after-save"
+
+	reader, _ := m.load("demo")
+	writer, _ := m.load("demo")
+	writer.Tokens[0].LastUsedBy = "x"
+	writer.Tokens[0].Scopes[0] = "changed"
+	writer.Domains[0].Name = "changed.example.com"
+	writer.Tokens = append(writer.Tokens[:0], writer.Tokens[1:]...)
+
+	for name, p := range map[string]policy{"reader": reader, "reload": must(m.load("demo"))} {
+		if p.Tokens[0].ID != "a" || p.Tokens[0].LastUsedBy != "" || p.Tokens[0].Scopes[0] != "deploy" || p.Domains[0].Name != "www.example.com" {
+			t.Errorf("%s snapshot changed: %+v", name, p)
+		}
+	}
+}
+
+func must(p policy, err error) policy {
+	if err != nil {
+		panic(err)
+	}
+	return p
+}

@@ -17,6 +17,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -125,7 +126,7 @@ func (m *metaStore) load(site string) (policy, error) {
 	m.mu.Lock()
 	if c, ok := m.cache[site]; ok && time.Since(c.at) < m.ttl {
 		m.mu.Unlock()
-		return c.p, nil
+		return c.p.clone(), nil
 	}
 	g := m.gen[site]
 	m.mu.Unlock()
@@ -136,7 +137,7 @@ func (m *metaStore) load(site string) (policy, error) {
 	}
 	m.mu.Lock()
 	if m.gen[site] == g {
-		m.cache[site] = cachedPolicy{p, time.Now()}
+		m.cache[site] = cachedPolicy{p.clone(), time.Now()}
 	}
 	m.mu.Unlock()
 	return p, nil
@@ -175,8 +176,19 @@ func (m *metaStore) read(site string) (policy, error) {
 func (m *metaStore) put(site string, p policy) {
 	m.mu.Lock()
 	m.gen[site]++
-	m.cache[site] = cachedPolicy{p, time.Now()}
+	m.cache[site] = cachedPolicy{p.clone(), time.Now()}
 	m.mu.Unlock()
+}
+
+// clone deep-copies the slices, so a cached policy is never shared with a
+// caller that mutates its copy (writers don't hold readers' locks).
+func (p policy) clone() policy {
+	p.Tokens = slices.Clone(p.Tokens)
+	for i := range p.Tokens {
+		p.Tokens[i].Scopes = slices.Clone(p.Tokens[i].Scopes)
+	}
+	p.Domains = slices.Clone(p.Domains)
+	return p
 }
 
 func (m *metaStore) save(site string, p policy) error {
