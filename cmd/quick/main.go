@@ -299,27 +299,10 @@ func deploy(args []string) {
 	// Delta deploy when the server supports it (only changed chunks travel);
 	// otherwise, or if the server turns out not to have it, the whole tar.
 	catchInterrupts() // from here on Ctrl-C gives the site back (lease.go)
-	var res quick.DeployResponse
-	var st deltaStats
-	delta := cfg.DeltaDeploy
+	res, st, delta, err := publishFolder(cfg, *name, tok, dir, pl, *takeover)
+	fatal(err)
 	if delta {
-		res, st, err = deltaDeploy(cfg, *name, tok, dir, pl, *takeover)
-		switch {
-		case errors.Is(err, errNoDelta):
-			delta = false
-		case errors.Is(err, errDeltaBusy):
-			fmt.Println("  server busy, uploading the whole folder")
-			delta = false
-		default:
-			fatal(err)
-			fmt.Printf("%s uploaded %s of %s\n", check(), humanSize(st.sent), humanSize(st.total))
-		}
-	}
-	if !delta {
-		// The lease of a delta attempt that fell back (busy server) goes along.
-		res, err = tarDeploy(cfg, *name, tok, dir, pl, *takeover && st.lease == "", st.lease)
-		held.clear() // the server ends the lease with the tar upload, either way
-		fatal(err)
+		fmt.Printf("%s uploaded %s of %s\n", check(), humanSize(st.sent), humanSize(st.total))
 	}
 	fmt.Printf("%s %s published → %s\n", check(), cBold(*name), cCyan(res.URL))
 	relDir := filepath.ToSlash(filepath.Clean(dir))
@@ -341,6 +324,30 @@ func deploy(args []string) {
 		callPolicy(cfg, *name, tok, quick.PolicyRequest{Access: new(quick.AccessCode), Code: &code})
 		fmt.Printf("  → private, code: %s\n", code)
 	}
+}
+
+// publishFolder publishes with the delta deploy when the server supports it
+// (only changed chunks travel); otherwise, or if the server turns out not to
+// have it or is busy, with the whole tar. delta tells which one published.
+func publishFolder(cfg *cliConfig, name, tok, dir string, pl *plan, takeover bool) (res quick.DeployResponse, st deltaStats, delta bool, err error) {
+	if cfg.DeltaDeploy {
+		res, st, err = deltaDeploy(cfg, name, tok, dir, pl, takeover)
+		switch {
+		case errors.Is(err, errNoDelta):
+		case errors.Is(err, errDeltaBusy):
+			fmt.Println("  server busy, uploading the whole folder")
+		default:
+			return res, st, true, err
+		}
+	}
+	// The lease of a delta attempt that fell back (busy server) goes along.
+	res, err = tarDeploy(cfg, name, tok, dir, pl, takeover && st.lease == "", st.lease)
+	if err != nil {
+		held.release() // the upload may have failed before the server got it
+	} else {
+		held.clear() // the server ended the lease with the tar upload
+	}
+	return res, st, false, err
 }
 
 // tarDeploy uploads the whole folder as one tar.gz (servers without delta

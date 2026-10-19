@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -183,6 +184,36 @@ func TestInterruptReleasesTheLease(t *testing.T) {
 	sigs <- os.Interrupt
 	if code := <-exited; code != 130 || l.requests() != "" {
 		t.Fatalf("exit %d, requests %q", code, l.requests())
+	}
+}
+
+// Busy server after the lease was acquired: the whole-folder fallback carries
+// the lease; if it fails before the server takes it over (here a file vanished
+// while building the tar), the lease is released, not just forgotten.
+func TestTarFallbackFailureReleasesTheLease(t *testing.T) {
+	dir, p := deltaFixture(t, 2)
+	plans := 0
+	l := &leaseServer{fakeDeltaServer: &fakeDeltaServer{have: map[string]bool{}, commitConflicts: 1}}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/deploy/plan" {
+			if plans++; plans == 2 { // re-plan: busy, and the folder changes meanwhile
+				os.Remove(filepath.Join(dir, p.files[0].rel))
+				http.Error(w, "busy", http.StatusServiceUnavailable)
+				return
+			}
+		}
+		l.ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+	_, _, delta, err := publishFolder(&cliConfig{Server: srv.URL, DeltaDeploy: true}, "demo", "tok", dir, p, false)
+	if err == nil || delta {
+		t.Fatalf("publish: delta %v err %v, want a failed tar fallback", delta, err)
+	}
+	if !strings.Contains(l.requests(), "/api/deploy/lease lease=L1") {
+		t.Fatalf("lease not released after the failed fallback (%v):\n%s", err, l.requests())
+	}
+	if held.held() {
+		t.Fatal("lease still recorded as held")
 	}
 }
 
