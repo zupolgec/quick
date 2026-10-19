@@ -110,10 +110,13 @@ present in the package are removed from the site. Consequences:
   The site frees up as soon as that deploy ends; a deploy interrupted with
   Ctrl-C or that fails gives it back at once (so you can rerun right away), one
   whose CLI was killed or lost the network after 2 minutes without activity.
-  An interrupted deploy never publishes anything. Wait and retry; use ` + "`--takeover`" + ` (on ` + "`deploy`" + ` or ` + "`rollback`" + `) only when
+  A deploy interrupted before publishing publishes nothing; once publishing
+  has started it completes. Wait and retry; use ` + "`--takeover`" + ` (on ` + "`deploy`" + ` or ` + "`rollback`" + `) only when
   you know the other deploy is stale or must be overridden, never by reflex:
-  the other deploy then stops with ` + "`this deploy lost the site ... nothing was published, run it again`" + `.
-  ` + "`--force`" + ` never takes over. Deleting the site always works and ends a deploy in progress.
+  the other deploy then stops with ` + "`this deploy lost the site ... nothing was published, run it again`" + `
+  (unless it was already publishing: then it completes and yours publishes right after).
+  ` + "`--force`" + ` never takes over. Deleting the site always works and ends a deploy in
+  progress (if a publish has already started, the delete waits for it).
 
 Useful flags: ` + "`--dry-run`" + ` (show what would be deployed without publishing),
 ` + "`--yes`" + `, ` + "`--force`" + ` (empty the site on purpose), ` + "`--takeover`" + ` (take over from a

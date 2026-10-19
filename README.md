@@ -207,10 +207,13 @@ rifiutati con un messaggio che dice chi sta pubblicando e da quando, ad esempio
 Il sito si libera appena quel deploy finisce. Se lo interrompi (Ctrl-C) o
 fallisce, la CLI libera subito il sito; se la CLI si chiude di colpo o perde la
 rete, il sito si libera da solo dopo due minuti senza attività. Un deploy
-interrotto non pubblica mai niente.
+interrotto prima di pubblicare non pubblica niente; se la pubblicazione era già
+iniziata, viene completata.
 `--takeover` (su `deploy` e `rollback`) prende il posto del deploy in corso: chi lo
-stava facendo si ferma senza pubblicare e la CLI glielo dice. Eliminare il sito
-è sempre possibile e interrompe il deploy in corso. Anche le CLI meno recenti
+stava facendo si ferma senza pubblicare (a meno che non stesse già pubblicando:
+in quel caso finisce, e il tuo deploy pubblica subito dopo) e la CLI glielo dice.
+Eliminare il sito è sempre possibile e interrompe il deploy in corso; se una
+pubblicazione è già iniziata, l'eliminazione aspetta che finisca. Anche le CLI meno recenti
 rispettano il turno: il loro caricamento viene rifiutato con lo stesso messaggio.
 
 ## Annullare un deploy
