@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -140,6 +141,25 @@ func TestDeltaDeployGivesUpAfterRepeatedConflicts(t *testing.T) {
 	}
 	if f.commits != commitAttempts {
 		t.Fatalf("commits %d, want %d", f.commits, commitAttempts)
+	}
+}
+
+// A busy server (503 on plan: staging caps full) is not an error: the CLI
+// falls back to the whole-folder upload. 413 stays an error (too big).
+func TestDeltaDeployPlanStatusHandling(t *testing.T) {
+	dir, p := deltaFixture(t, 1)
+	for code, wantFallback := range map[int]bool{http.StatusServiceUnavailable: true, http.StatusRequestEntityTooLarge: false} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "nope", code)
+		}))
+		_, _, err := deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p)
+		srv.Close()
+		if errors.Is(err, errDeltaBusy) != wantFallback || err == nil {
+			t.Errorf("plan %d: err = %v, fallback want %v", code, err, wantFallback)
+		}
+		if !wantFallback && !strings.Contains(err.Error(), "413") {
+			t.Errorf("plan 413: unclear error %v", err)
+		}
 	}
 }
 

@@ -302,9 +302,13 @@ func deploy(args []string) {
 	if delta {
 		var st deltaStats
 		res, st, err = deltaDeploy(cfg, *name, tok, dir, pl)
-		if errors.Is(err, errNoDelta) {
+		switch {
+		case errors.Is(err, errNoDelta):
 			delta = false
-		} else {
+		case errors.Is(err, errDeltaBusy):
+			fmt.Println("  server busy, uploading the whole folder")
+			delta = false
+		default:
 			fatal(err)
 			fmt.Printf("%s uploaded %s of %s\n", check(), humanSize(st.sent), humanSize(st.total))
 		}

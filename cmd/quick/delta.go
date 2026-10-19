@@ -25,6 +25,10 @@ import (
 // errNoDelta: the server has no delta endpoints (older server): use the tar.
 var errNoDelta = errors.New("server does not support delta deploy")
 
+// errDeltaBusy: the server can't take a delta deploy right now (staging caps
+// full): use the tar.
+var errDeltaBusy = errors.New("server busy with other deploys")
+
 // errReplan: the server refused chunks not covered by an outstanding plan.
 var errReplan = errors.New("chunk upload failed (409): the server asks to plan again")
 
@@ -108,6 +112,9 @@ func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan) (quick.DeployRe
 		}
 		if (code == http.StatusNotFound || code == http.StatusMethodNotAllowed) && attempt == 1 {
 			return res, st, errNoDelta
+		}
+		if code == http.StatusServiceUnavailable {
+			return res, st, errDeltaBusy
 		}
 		if code != http.StatusOK {
 			return res, st, fmt.Errorf("deploy failed (%d): %s", code, strings.TrimSpace(string(out)))

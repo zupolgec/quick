@@ -61,8 +61,8 @@ contenuto, circa 64 KiB l'uno) e invia solo quelli che il server non ha già nel
 versione pubblicata. Ripubblicare una build in cui cambia una parte di un file
 grande (es. il `.data` di Unity) trasferisce pochi blocchi; un file rinominato non
 si ricarica affatto. La CLI riporta quanto ha inviato davvero ("uploaded 1.2 MB of
-44 MB"). Con un server che non lo supporta carica tutta la cartella come prima. Le
-build già compresse per intero (es. Unity con compressione Gzip o Brotli) cambiano
+44 MB"). Con un server che non lo supporta, o momentaneamente occupato, carica
+tutta la cartella come prima. Le build già compresse per intero (es. Unity con compressione Gzip o Brotli) cambiano
 ovunque a ogni build: per sfruttare l'incrementale conviene pubblicarle non
 compresse.
 
