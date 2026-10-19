@@ -73,6 +73,9 @@ type Backend interface {
 	PruneIndexes(site string, keep ...string) error
 }
 
+// MaxIndexBlob caps what GetIndex reads (var so tests can lower it).
+var MaxIndexBlob int64 = 64 << 20
+
 // checkVersion keeps index versions safe in paths and object keys.
 func checkVersion(v string) error {
 	if v == "" || len(v) > 64 || strings.Trim(v, "0123456789abcdef") != "" {
@@ -371,14 +374,31 @@ func (l *local) GetIndex(site, version string) ([]byte, bool, error) {
 	if err := checkVersion(version); err != nil {
 		return nil, false, err
 	}
-	b, err := os.ReadFile(l.indexPath(site, version))
+	f, err := os.Open(l.indexPath(site, version))
 	if os.IsNotExist(err) {
 		return nil, false, nil
 	}
 	if err != nil {
 		return nil, false, err
 	}
+	defer f.Close()
+	b, err := readIndexBlob(f)
+	if err != nil {
+		return nil, false, err
+	}
 	return b, true, nil
+}
+
+// readIndexBlob reads r whole, failing past MaxIndexBlob.
+func readIndexBlob(r io.Reader) ([]byte, error) {
+	b, err := io.ReadAll(io.LimitReader(r, MaxIndexBlob+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(b)) > MaxIndexBlob {
+		return nil, fmt.Errorf("storage: index blob over %d bytes", MaxIndexBlob)
+	}
+	return b, nil
 }
 
 func (l *local) PutIndex(site, version string, data []byte) error {

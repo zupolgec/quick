@@ -57,9 +57,12 @@ import (
 )
 
 const (
-	indexFormat  = 1
-	maxIndexSize = 64 << 20 // decompressed; a full 500 MiB site is ~1 MiB of JSON
+	indexFormat = 1
 )
+
+// maxIndexSize caps a decoded index (a full 500 MiB site is a few MiB of
+// JSON); var so tests can lower it.
+var maxIndexSize int64 = 64 << 20
 
 type indexChunk struct {
 	Hash string `json:"h"`
@@ -100,15 +103,28 @@ func encodeIndex(version string, files []indexFile) ([]byte, error) {
 
 // decodeIndex parses and validates a blob: right format and version, clean
 // unique paths, valid hashes, chunk sizes within the chunker's bounds,
-// contiguous offsets adding up to the file size.
+// contiguous offsets adding up to the file size. The gzip stream is read to
+// its end (checksum verified) within maxIndexSize, and must hold exactly one
+// JSON document.
 func decodeIndex(b []byte, version string) ([]indexFile, error) {
 	gz, err := gzip.NewReader(bytes.NewReader(b))
 	if err != nil {
 		return nil, err
 	}
-	var ix indexBlob
-	if err := json.NewDecoder(io.LimitReader(gz, maxIndexSize)).Decode(&ix); err != nil {
+	raw, err := io.ReadAll(io.LimitReader(gz, maxIndexSize+1))
+	if err != nil {
 		return nil, err
+	}
+	if int64(len(raw)) > maxIndexSize {
+		return nil, fmt.Errorf("index over %d bytes", maxIndexSize)
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	var ix indexBlob
+	if err := dec.Decode(&ix); err != nil {
+		return nil, err
+	}
+	if err := dec.Decode(&json.RawMessage{}); err != io.EOF {
+		return nil, errors.New("index: trailing data")
 	}
 	if ix.Format != indexFormat || ix.Version != version {
 		return nil, fmt.Errorf("index format %d version %q, want %d %q", ix.Format, ix.Version, indexFormat, version)

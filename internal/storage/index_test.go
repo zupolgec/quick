@@ -55,6 +55,25 @@ func TestLocalIndexBlobs(t *testing.T) {
 	}
 }
 
+// GetIndex never reads more than MaxIndexBlob.
+func TestGetIndexBounded(t *testing.T) {
+	defer func(v int64) { MaxIndexBlob = v }(MaxIndexBlob)
+	MaxIndexBlob = 16
+	l := newLocalT(t)
+	if err := l.PutIndex("demo", "aa", bytes.Repeat([]byte("x"), 16)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, err := l.GetIndex("demo", "aa"); !ok || err != nil {
+		t.Fatalf("blob at the cap: ok=%v err=%v", ok, err)
+	}
+	if err := l.PutIndex("demo", "bb", bytes.Repeat([]byte("x"), 17)); err != nil {
+		t.Fatal(err)
+	}
+	if b, _, err := l.GetIndex("demo", "bb"); err == nil {
+		t.Fatalf("blob over the cap read (%d bytes)", len(b))
+	}
+}
+
 // Versions end up in paths and keys: only lowercase hex is accepted.
 func TestIndexVersionValidated(t *testing.T) {
 	l := newLocalT(t)

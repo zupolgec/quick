@@ -282,7 +282,7 @@ func (s *s3) GetIndex(site, version string) ([]byte, bool, error) {
 		return nil, false, err
 	}
 	defer obj.Close()
-	b, err := io.ReadAll(obj)
+	b, err := readIndexBlob(obj)
 	if err != nil {
 		if errors.Is(s3OpenErr(err), ErrNotFound) {
 			return nil, false, nil
