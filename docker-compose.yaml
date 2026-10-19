@@ -56,20 +56,14 @@ services:
       - "caddy.tls.dns=cloudflare {env.CF_API_TOKEN}"
       - "caddy.reverse_proxy={{upstreams 8080}}"
       - "caddy_ingress_network=coolify"
-      # Domini personalizzati (TLS on-demand): spenti di default, le label
-      # quick_off_* il proxy le ignora. Per accenderli, SOLO su un'istanza per
-      # proxy: QUICK_CD_PREFIX=caddy e QUICK_CD_ASK_HOST=<nome del container
-      # quick-server> (l'alias di servizio è condiviso tra istanze). Il proxy
-      # ha acme_dns globale: la challenge passa per DNS-01 delegato con il CNAME
-      # _acme-challenge.<dominio> → _acme-challenge.domains.${QUICK_BASE_DOMAIN}.
-      # Prima va spento il catch-all 503 di Coolify (default redirect), che
-      # altrimenti vince sul blocco "https://".
+      # Domini personalizzati (TLS on-demand, challenge HTTP): spenti di default,
+      # le label quick_off_* il proxy le ignora. Per accenderli, SOLO su
+      # un'istanza per proxy: QUICK_CD_PREFIX=caddy. Richiede sul proxy
+      # on_demand_tls.ask verso questo container, niente acme_dns globale e
+      # niente catch-all 503 di Coolify (vedi docs).
       - "${QUICK_CD_PREFIX:-quick_off}_1=https://"
       - "${QUICK_CD_PREFIX:-quick_off}_1.tls.on_demand="
-      - "${QUICK_CD_PREFIX:-quick_off}_1.tls.dns=cloudflare {env.CF_API_TOKEN}"
-      - "${QUICK_CD_PREFIX:-quick_off}_1.tls.dns_challenge_override_domain=_acme-challenge.domains.${QUICK_BASE_DOMAIN}"
       - "${QUICK_CD_PREFIX:-quick_off}_1.reverse_proxy={{upstreams 8080}}"
-      - "${QUICK_CD_PREFIX:-quick_off}_2.on_demand_tls.ask=http://${QUICK_CD_ASK_HOST:-quick-server}:8080/api/domains/check"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/api/health"]
       interval: 15s

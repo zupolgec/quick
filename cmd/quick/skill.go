@@ -122,13 +122,11 @@ IDs and ` + "`quick token revoke`" + ` to remove them. Expiry choices are ` + "`
 ## Custom domains
 
 ` + "`quick domains add my-site www.example.com`" + ` attaches a domain and prints the DNS
-records to create at the domain's DNS provider (DNS only, no CDN proxy):
+record to create at the domain's DNS provider (any provider; DNS only, no CDN
+proxy): ` + "`www.example.com CNAME my-site.<domain>`" + `. An apex like ` + "`example.com`" + `
+can't CNAME: use ALIAS/CNAME flattening or the same A record.
 
-- ` + "`www.example.com CNAME my-site.<domain>`" + ` (an apex like ` + "`example.com`" + ` can't
-  CNAME: use ALIAS/CNAME flattening or the same A record);
-- ` + "`_acme-challenge.www.example.com CNAME _acme-challenge.domains.<domain>`" + ` (HTTPS certificate).
-
-The domain stays "waiting for DNS" until both records resolve, then becomes
+The domain stays "waiting for DNS" until the record resolves, then becomes
 active on its own (` + "`quick domains my-site`" + ` shows the state); the HTTPS certificate
 is issued on the first visit. A domain belongs to one site; it moves to another
 site only when its DNS points there. Public and access-code sites are served on

@@ -43,12 +43,7 @@ func (f *fakeDNS) LookupIPAddr(_ context.Context, host string) ([]net.IPAddr, er
 	return out, nil
 }
 
-// point sets up a domain the way the user would: target record plus the
-// certificate challenge delegation.
-func (f *fakeDNS) point(d, site string) {
-	f.cname[d] = site + ".quick.test"
-	f.cname["_acme-challenge."+d] = "_acme-challenge.domains.quick.test"
-}
+func (f *fakeDNS) point(d, site string) { f.cname[d] = site + ".quick.test" }
 
 func newDomainTestServer(t *testing.T) (*server, *fakeDNS) {
 	t.Helper()
@@ -116,8 +111,7 @@ func TestCustomDomainServesPublicSite(t *testing.T) {
 		t.Fatalf("add: code %d res %+v", code, res)
 	}
 	recs := res.Domains[0].Records
-	if len(recs) != 2 || recs[0].Type != "CNAME" || recs[0].Value != "app.quick.test" ||
-		recs[1].Name != "_acme-challenge.www.example.com" || recs[1].Value != "_acme-challenge.domains.quick.test" {
+	if len(recs) != 1 || recs[0].Type != "CNAME" || recs[0].Name != "www.example.com" || recs[0].Value != "app.quick.test" {
 		t.Errorf("records %+v", recs)
 	}
 	if w := hostGet(s, "www.example.com", "/"); w.Code != http.StatusOK || w.Body.String() != "<h1>app</h1>" {
@@ -181,22 +175,11 @@ func TestCustomDomainApexByARecord(t *testing.T) {
 	s, dns := newDomainTestServer(t)
 	dns.ips["example.com"] = []string{"203.0.113.10"}
 	dns.ips["shop.example.com"] = []string{"203.0.113.10"}
-	dns.cname["_acme-challenge.example.com"] = "_acme-challenge.domains.quick.test"
-	dns.cname["_acme-challenge.shop.example.com"] = "_acme-challenge.domains.quick.test"
 	if _, res := addDomain(t, s, "app", "example.com"); len(res.Domains) != 1 || !res.Domains[0].Active || res.Domains[0].Records[0].Type != "A" {
 		t.Errorf("apex: %+v", res)
 	}
 	if _, res := addDomain(t, s, "app", "shop.example.com"); len(res.Domains) != 2 || res.Domains[1].Active {
 		t.Errorf("subdomain by A record must stay pending: %+v", res)
-	}
-}
-
-// Without the challenge delegation HTTPS can't work: the domain stays pending.
-func TestCustomDomainNeedsChallengeRecord(t *testing.T) {
-	s, dns := newDomainTestServer(t)
-	dns.cname["www.example.com"] = "app.quick.test"
-	if _, res := addDomain(t, s, "app", "www.example.com"); len(res.Domains) != 1 || res.Domains[0].Active {
-		t.Errorf("active without _acme-challenge: %+v", res)
 	}
 }
 

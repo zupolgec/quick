@@ -137,14 +137,10 @@ func isApexDomain(d string) bool {
 }
 
 // verifyDNS reports whether d points to the site: a CNAME to <site>.<base>,
-// or, for apex domains that can't CNAME, the same addresses. The certificate
-// challenge must be delegated too, otherwise HTTPS could never work.
+// or, for apex domains that can't CNAME, the same addresses.
 func (s *server) verifyDNS(ctx context.Context, d, site string) bool {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	if !s.cnameIs(ctx, "_acme-challenge."+d, "_acme-challenge.domains."+s.baseDomain) {
-		return false
-	}
 	target := site + "." + s.baseDomain
 	if s.cnameIs(ctx, d, target) {
 		return true
@@ -180,7 +176,7 @@ func (s *server) domainRecords(d, site string) []quick.DNSRecord {
 		// A CNAME isn't allowed on an apex: ALIAS/flattening, or the same address.
 		first = quick.DNSRecord{Type: "A", Name: d, Value: "same address as " + target + " (or ALIAS/CNAME flattening)"}
 	}
-	return []quick.DNSRecord{first, {Type: "CNAME", Name: "_acme-challenge." + d, Value: "_acme-challenge.domains." + s.baseDomain}}
+	return []quick.DNSRecord{first}
 }
 
 func (s *server) domainInfos(site string, ds []siteDomain) []quick.DomainInfo {

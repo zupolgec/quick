@@ -83,7 +83,7 @@ func printDomains(site string, ds []quick.DomainInfo) {
 			continue
 		}
 		pending = true
-		fmt.Printf("  %s  waiting for DNS. Create these records (DNS only, no proxy):\n", cBold(d.Domain))
+		fmt.Printf("  %s  waiting for DNS. Create this record (DNS only, no proxy):\n", cBold(d.Domain))
 		for _, r := range d.Records {
 			fmt.Printf("    %-5s %s → %s\n", r.Type, r.Name, r.Value)
 		}
