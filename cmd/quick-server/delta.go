@@ -333,10 +333,29 @@ type liveReader struct {
 	rc   io.ReadSeekCloser
 }
 
+//
+// The index can be wrong about a chunk's size too: if it records a size other
+// than the manifest's, the recorded range decides. Bytes hashing to c.Hash
+// there prove the manifest lies (errChunkSize, 400); anything else means the
+// index is stale.
 func (l *liveReader) read(c chunk.Chunk, loc chunkLoc) ([]byte, error) {
+	b, err := l.readAt(loc)
+	if err != nil {
+		return nil, err
+	}
+	if sha256.Sum256(b) != c.Hash {
+		return nil, errIndexStale
+	}
 	if loc.size != c.Size {
 		return nil, errChunkSize
 	}
+	return b, nil
+}
+
+// readAt reads the recorded range. Every way of not finding it there (file
+// gone, Seek or Read hitting the end: s3 fails Seek past the end with io.EOF)
+// is errIndexStale.
+func (l *liveReader) readAt(loc chunkLoc) ([]byte, error) {
 	if l.rc == nil || l.path != loc.path {
 		l.close()
 		rc, _, err := l.s.store.OpenFile(l.site, loc.path)
@@ -348,18 +367,18 @@ func (l *liveReader) read(c chunk.Chunk, loc chunkLoc) ([]byte, error) {
 		}
 		l.rc, l.path = rc, loc.path
 	}
+	eof := func(err error) error {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return errIndexStale
+		}
+		return err
+	}
 	if _, err := l.rc.Seek(loc.off, io.SeekStart); err != nil {
-		return nil, err
+		return nil, eof(err)
 	}
 	b := make([]byte, loc.size)
 	if _, err := io.ReadFull(l.rc, b); err != nil {
-		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-			return nil, errIndexStale
-		}
-		return nil, err
-	}
-	if sha256.Sum256(b) != c.Hash {
-		return nil, errIndexStale
+		return nil, eof(err)
 	}
 	return b, nil
 }
