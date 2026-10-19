@@ -22,7 +22,7 @@
 //     naming the holder and since when: a plan without the id (even by the
 //     same person from another terminal), chunks or commit with another or no
 //     id, the legacy tar upload (which holds the lease itself while it
-//     uploads), rollback. ?force=1 on a plan, tar upload or rollback breaks
+//     uploads), rollback. ?takeover=1 on a plan, tar upload or rollback breaks
 //     the lease after the usual auth and ownership checks (logged); the
 //     broken holder's next request gets 423 lease lost. A commit already
 //     publishing when the lease is broken completes; the forcing deploy's own
@@ -86,7 +86,7 @@ func (e *leaseError) Error() string {
 	if e.lost {
 		return "this deploy is no longer the active one for this site (another deploy took over, the site was deleted, or it was idle too long): nothing was published, run it again"
 	}
-	return fmt.Sprintf("%s is publishing this site (since %s UTC); retry in a moment or use --force", e.holder, e.since.UTC().Format("15:04"))
+	return fmt.Sprintf("%s is publishing this site (since %s UTC); retry in a moment or use --takeover", e.holder, e.since.UTC().Format("15:04"))
 }
 
 func (t *leaseTable) clock() time.Time {
@@ -123,16 +123,16 @@ func (t *leaseTable) refusal(cur *deployLease, lost bool) *leaseError {
 
 // begin starts a request that may open a deploy (plan, tar upload): with the
 // site's current id it continues that deploy; without an id it opens a new one
-// if the site is free; force replaces whatever lease is there (returned as
+// if the site is free; takeover replaces whatever lease is there (returned as
 // broken when it was live). Pair with end or release.
-func (t *leaseTable) begin(site, id, actor string, force bool) (l, broken *deployLease, err *leaseError) {
+func (t *leaseTable) begin(site, id, actor string, takeover bool) (l, broken *deployLease, err *leaseError) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	now := t.clock()
 	cur := t.current(site, now)
 	switch {
 	case cur != nil && id != "" && cur.id == id:
-	case force:
+	case takeover:
 		broken = cur
 		cur = nil
 	case id != "":
@@ -226,7 +226,7 @@ func leaseRefused(w http.ResponseWriter, r *http.Request, err *leaseError) {
 	_ = json.NewEncoder(w).Encode(res)
 }
 
-func forceRequested(r *http.Request) bool { return r.URL.Query().Get("force") == "1" }
+func takeoverRequested(r *http.Request) bool { return r.URL.Query().Get("takeover") == "1" }
 
 // refuseDeploy answers a deploy request refused by the lease. The body is
 // read first (up to limit, discarded): a client still sending a large upload
@@ -242,12 +242,12 @@ func refuseDeploy(w http.ResponseWriter, r *http.Request, err *leaseError, limit
 	leaseRefused(w, r, err)
 }
 
-// beginLease is begin for a handler: the request's id and force flag, the
+// beginLease is begin for a handler: the request's id and takeover flag, the
 // refusal written (see refuseDeploy), a broken lease logged. ok=false:
 // response written.
 func (s *server) beginLease(w http.ResponseWriter, r *http.Request, site string, ident authIdentity, limit int64, unlock func()) (*deployLease, bool) {
 	id := r.Header.Get(quick.DeployLeaseHeader)
-	l, broken, err := s.leases.begin(site, id, actorOf(ident), forceRequested(r))
+	l, broken, err := s.leases.begin(site, id, actorOf(ident), takeoverRequested(r))
 	if err != nil {
 		refuseDeploy(w, r, err, limit, unlock)
 		return nil, false

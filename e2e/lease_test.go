@@ -75,7 +75,7 @@ func slowProxy(t *testing.T, target string, rate int) string {
 }
 
 // Two people deploying the same site at once: the second is refused with who
-// is publishing, the first publishes; with --force the second takes over and
+// is publishing, the first publishes; with --takeover the second takes over and
 // the first stops without publishing.
 func TestConcurrentDeploysOfOneSite(t *testing.T) {
 	if testing.Short() {
@@ -178,8 +178,12 @@ func TestConcurrentDeploysOfOneSite(t *testing.T) {
 	if err == nil {
 		t.Fatalf("second deploy succeeded during the first:\n%s", out)
 	}
-	if !strings.Contains(string(out), "dev@example.com is publishing this site (since ") || !strings.Contains(string(out), "use --force") {
+	if !strings.Contains(string(out), "dev@example.com is publishing this site (since ") || !strings.Contains(string(out), "use --takeover") {
 		t.Fatalf("second deploy message:\n%s", out)
+	}
+	// --force (empty folders) never takes over someone's deploy.
+	if out, err := quick(luigi, "--force").CombinedOutput(); err == nil || !strings.Contains(string(out), "is publishing this site") {
+		t.Fatalf("--force during the first deploy: %v\n%s", err, out)
 	}
 	if err := a.Wait(); err != nil {
 		t.Fatalf("first deploy: %v\n%s", err, aOut.String())
@@ -199,7 +203,7 @@ func TestConcurrentDeploysOfOneSite(t *testing.T) {
 	// 3. Luigi forces during Mario's next upload: Luigi publishes, Mario's
 	// deploy stops and publishes nothing.
 	a, aOut = startSlow()
-	if out, err := quick(luigi, "--force").CombinedOutput(); err != nil {
+	if out, err := quick(luigi, "--takeover").CombinedOutput(); err != nil {
 		t.Fatalf("forced deploy: %v\n%s", err, out)
 	}
 	if err := a.Wait(); err == nil {

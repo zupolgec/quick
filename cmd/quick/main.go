@@ -181,7 +181,8 @@ func deploy(args []string) {
 	private := fs.String("private", "", "make the site private with this code (--private= empty = generated)")
 	yes := fs.Bool("yes", false, "skip the confirmation prompt")
 	dryRun := fs.Bool("dry-run", false, "show what would be published without doing it")
-	force := fs.Bool("force", false, "publish even if the folder is empty or someone else is publishing this site right now")
+	force := fs.Bool("force", false, "proceed even if there are no files to publish")
+	takeover := fs.Bool("takeover", false, "publish even if someone is publishing this site right now (their deploy stops)")
 	fs.Parse(args)
 	// flag.Parse stops at the first positional; recover those placed after the
 	// flags, else `quick deploy --server X site ./build` would silently drop them.
@@ -301,7 +302,7 @@ func deploy(args []string) {
 	var st deltaStats
 	delta := cfg.DeltaDeploy
 	if delta {
-		res, st, err = deltaDeploy(cfg, *name, tok, dir, pl, *force)
+		res, st, err = deltaDeploy(cfg, *name, tok, dir, pl, *takeover)
 		switch {
 		case errors.Is(err, errNoDelta):
 			delta = false
@@ -315,7 +316,7 @@ func deploy(args []string) {
 	}
 	if !delta {
 		// The lease of a delta attempt that fell back (busy server) goes along.
-		res, err = tarDeploy(cfg, *name, tok, dir, pl, *force && st.lease == "", st.lease)
+		res, err = tarDeploy(cfg, *name, tok, dir, pl, *takeover && st.lease == "", st.lease)
 		fatal(err)
 	}
 	fmt.Printf("%s %s published → %s\n", check(), cBold(*name), cCyan(res.URL))
@@ -341,17 +342,17 @@ func deploy(args []string) {
 }
 
 // tarDeploy uploads the whole folder as one tar.gz (servers without delta
-// deploy, or busy). force breaks another deploy's lease; lease continues a
+// deploy, or busy). takeover breaks another deploy's lease; lease continues a
 // delta attempt's.
-func tarDeploy(cfg *cliConfig, name, tok, dir string, pl *plan, force bool, lease string) (quick.DeployResponse, error) {
+func tarDeploy(cfg *cliConfig, name, tok, dir string, pl *plan, takeover bool, lease string) (quick.DeployResponse, error) {
 	var res quick.DeployResponse
 	payload, err := tarGzFromPlan(dir, pl)
 	if err != nil {
 		return res, err
 	}
 	u := cfg.Server + "/api/deploy?name=" + url.QueryEscape(name)
-	if force {
-		u += "&force=1"
+	if takeover {
+		u += "&takeover=1"
 	}
 	req, err := http.NewRequest(http.MethodPost, u, payload)
 	if err != nil {

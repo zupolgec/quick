@@ -416,8 +416,8 @@ func (s *server) handleRollback(w http.ResponseWriter, r *http.Request, name str
 		return
 	}
 	// Not during a deploy (it would publish over the rollback anyway), unless
-	// forced: the deploy loses the site (lease.go).
-	if forceRequested(r) {
+	// taken over: the deploy loses the site (lease.go).
+	if takeoverRequested(r) {
 		if broken := s.leases.clear(name); broken != nil {
 			logBroken(name, broken, email)
 		}

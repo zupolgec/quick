@@ -118,7 +118,7 @@ type DeployPlanResponse struct {
 // One deploy at a time per site: the plan hands out a lease id that the CLI
 // sends back in DeployLeaseHeader on its chunks, commit and re-plans. Any
 // other deploy of the site meanwhile (plan, tar upload, rollback) gets 423
-// Locked with a DeployLocked body; ?force=1 on a plan, tar upload or rollback
+// Locked with a DeployLocked body; ?takeover=1 on a plan, tar upload or rollback
 // breaks the lease. Idle leases expire on their own.
 const DeployLeaseHeader = "X-Quick-Deploy"
 

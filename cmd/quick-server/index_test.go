@@ -243,7 +243,7 @@ func TestPlanDuringTarDeployIsNotAnError(t *testing.T) {
 	m, _ := manifestOf(t, map[string][]byte{"big.bin": big, "index.html": []byte("v2")})
 	planned := make(chan int, 1)
 	// The tar holds the site's lease: only a forced plan can race it now.
-	f := &deltaClient{t: t, s: s, site: "demo", force: true}
+	f := &deltaClient{t: t, s: s, site: "demo", takeover: true}
 	go func() { code, _ := f.plan(m); planned <- code }()
 	var code int
 	select {
@@ -277,8 +277,8 @@ func TestPlanConcurrentWithTarDeploys(t *testing.T) {
 	tarDeploy(t, c, files)
 	m, _ := manifestOf(t, files)
 	// Each side breaks the other's lease: the only way they can still race.
-	ct := &deltaClient{t: t, s: s, site: "demo", force: true}
-	c.force = true
+	ct := &deltaClient{t: t, s: s, site: "demo", takeover: true}
+	c.takeover = true
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
 	deployCode := http.StatusOK

@@ -194,7 +194,7 @@ func TestLeaseRollbackRefusedUnlessForced(t *testing.T) {
 	if got := string(readSite(t, s, "demo", "index.html")); got != "v2" {
 		t.Fatalf("live: %q, want v2", got)
 	}
-	b.force = true
+	b.takeover = true
 	if w := b.do(http.MethodPost, "/api/site/demo/rollback", nil, nil); w.Code != http.StatusOK {
 		t.Fatalf("forced rollback: %d %s", w.Code, w.Body.String())
 	}
@@ -289,7 +289,7 @@ func TestLeaseInFlightRequestKeepsIt(t *testing.T) {
 	}
 }
 
-// --force breaks another deploy's lease (auth and ownership still apply); the
+// --takeover breaks another deploy's lease (auth and ownership still apply); the
 // broken holder's next requests are refused as lost, not retried.
 func TestLeaseForceBreaksIt(t *testing.T) {
 	s := newDeltaTestServer(t)
@@ -298,7 +298,7 @@ func TestLeaseForceBreaksIt(t *testing.T) {
 	m, data := manifestOf(t, files)
 	_, pl := a.plan(m)
 
-	b := &deltaClient{t: t, s: s, site: "demo", force: true}
+	b := &deltaClient{t: t, s: s, site: "demo", takeover: true}
 	b.deploy(map[string][]byte{"index.html": []byte("forced")})
 
 	w := a.do(http.MethodPost, "/api/deploy/chunks", records(t, data, pl.Missing), map[string]string{"Accept": "application/json"})
@@ -317,7 +317,7 @@ func TestLeaseForceBreaksIt(t *testing.T) {
 	if err := s.meta.save("other", policy{CreatedBy: "someone-else@example.com"}); err != nil {
 		t.Fatal(err)
 	}
-	o := &deltaClient{t: t, s: s, site: "other", force: true}
+	o := &deltaClient{t: t, s: s, site: "other", takeover: true}
 	if code, _ := o.plan(m); code != http.StatusForbidden {
 		t.Fatalf("forced plan on someone else's site: %d, want 403", code)
 	}
@@ -386,7 +386,7 @@ func TestLeaseForcedTarDeploy(t *testing.T) {
 	s := newDeltaTestServer(t)
 	a := &deltaClient{t: t, s: s, site: "demo"}
 	m := a.started(map[string][]byte{"index.html": []byte("a")})
-	b := &deltaClient{t: t, s: s, site: "demo", force: true}
+	b := &deltaClient{t: t, s: s, site: "demo", takeover: true}
 	tarDeploy(t, b, map[string][]byte{"index.html": []byte("tar")})
 	if res := lockedBody(t, a, "/api/deploy/commit", mustJSON(m)); res.Error != quick.LeaseLost {
 		t.Fatalf("broken holder's commit: %+v", res)

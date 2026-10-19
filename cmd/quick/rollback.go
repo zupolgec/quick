@@ -25,7 +25,7 @@ func rollbackCmd(args []string) {
 	server := fs.String("server", "", "server URL (or QUICK_SERVER)")
 	token := fs.String("token", os.Getenv("QUICK_TOKEN"), "login ID token (default: saved login)")
 	yes := fs.Bool("yes", false, "skip the confirmation prompt")
-	force := fs.Bool("force", false, "roll back even if someone is publishing this site right now")
+	takeover := fs.Bool("takeover", false, "roll back even if someone is publishing this site right now (their deploy stops)")
 	fs.Parse(args)
 	if name == "" && fs.NArg() > 0 {
 		name = fs.Arg(0) // positional placed after the flags
@@ -62,18 +62,18 @@ func rollbackCmd(args []string) {
 		}
 	}
 
-	res, err := postRollback(cfg, name, tok, *force)
+	res, err := postRollback(cfg, name, tok, *takeover)
 	fatal(err)
 	fmt.Printf("%s %s restored to the previous version → %s\n", check(), cBold(name), cCyan(res.URL))
 }
 
-// postRollback asks the server to swap the live and previous versions. force
+// postRollback asks the server to swap the live and previous versions. takeover
 // breaks the lease of a deploy in progress.
-func postRollback(cfg *cliConfig, name, tok string, force bool) (quick.RollbackResponse, error) {
+func postRollback(cfg *cliConfig, name, tok string, takeover bool) (quick.RollbackResponse, error) {
 	var res quick.RollbackResponse
 	endpoint := cfg.Server + "/api/site/" + url.PathEscape(name) + "/rollback"
-	if force {
-		endpoint += "?force=1"
+	if takeover {
+		endpoint += "?takeover=1"
 	}
 	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(nil))
 	if err != nil {

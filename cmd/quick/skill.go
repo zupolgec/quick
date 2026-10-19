@@ -63,7 +63,7 @@ quick deploy my-site ./build                    # -> https://my-site.quick.examp
 | ` + "`quick domains <site>`" + ` | List custom domains and the DNS records still missing |
 | ` + "`quick domains add <site> <domain>`" + ` | Attach a custom domain (e.g. www.example.com) |
 | ` + "`quick domains rm <site> <domain>`" + ` | Detach a custom domain |
-| ` + "`quick rollback <site>`" + ` | Restore the previous version (with confirmation; ` + "`--yes`" + ` skips it; ` + "`--force`" + ` even during someone's deploy) |
+| ` + "`quick rollback <site>`" + ` | Restore the previous version (with confirmation; ` + "`--yes`" + ` skips it; ` + "`--takeover`" + ` even during someone's deploy) |
 | ` + "`quick delete <site>`" + ` | Delete the site (irreversible, with confirmation) |
 | ` + "`quick upgrade [--check]`" + ` | Update the CLI to the latest release (` + "`--check`" + ` only checks) |
 
@@ -106,17 +106,17 @@ present in the package are removed from the site. Consequences:
   without ` + "`--yes`" + ` the deploy is refused, for safety.
 - One deploy at a time per site. While someone is publishing it, another deploy
   of the same site (yours from another terminal too) or a rollback is refused
-  with ` + "`<who> is publishing this site (since 14:02); retry in a moment or use --force`" + `.
+  with ` + "`<who> is publishing this site (since 14:02); retry in a moment or use --takeover`" + `.
   The site frees up as soon as that deploy ends, or after 2 minutes without
   activity if it was interrupted (an interrupted deploy never publishes
-  anything). Wait and retry; use ` + "`--force`" + ` (on ` + "`deploy`" + ` or ` + "`rollback`" + `) only when
+  anything). Wait and retry; use ` + "`--takeover`" + ` (on ` + "`deploy`" + ` or ` + "`rollback`" + `) only when
   you know the other deploy is stale or must be overridden, never by reflex:
   the other deploy then stops with ` + "`this deploy lost the site ... nothing was published, run it again`" + `.
-  Deleting the site always works and ends a deploy in progress.
+  ` + "`--force`" + ` never takes over. Deleting the site always works and ends a deploy in progress.
 
 Useful flags: ` + "`--dry-run`" + ` (show what would be deployed without publishing),
-` + "`--yes`" + `, ` + "`--force`" + ` (empty the site on purpose, or take over from a deploy in
-progress), ` + "`--public`" + ` / ` + "`--private[=code]`" + ` (visibility right after the deploy).
+` + "`--yes`" + `, ` + "`--force`" + ` (empty the site on purpose), ` + "`--takeover`" + ` (take over from a
+deploy in progress), ` + "`--public`" + ` / ` + "`--private[=code]`" + ` (visibility right after the deploy).
 
 ## CI and web agents
 

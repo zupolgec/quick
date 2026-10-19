@@ -64,7 +64,7 @@ func (e *lockedError) Error() string {
 		if e.Holder != "" {
 			lost += " to " + e.Holder
 		}
-		return lost + " (taken over with --force, site deleted, or idle too long): nothing was published, run it again"
+		return lost + " (taken over with --takeover, site deleted, or idle too long): nothing was published, run it again"
 	}
 	who := e.Holder
 	if who == "" {
@@ -79,7 +79,7 @@ func (e *lockedError) Error() string {
 		}
 		since = " (since " + t.Format(layout) + ")"
 	}
-	return who + " is publishing this site" + since + "; retry in a moment or use --force"
+	return who + " is publishing this site" + since + "; retry in a moment or use --takeover"
 }
 
 // lockedResponse turns a 423 into a lockedError; nil for any other status.
@@ -144,9 +144,9 @@ func buildManifest(dir string, p *plan) (quick.DeployManifest, map[string]localC
 
 // deltaDeploy publishes the folder sending only the chunks the server lacks.
 // errNoDelta if the server doesn't have the endpoints. The first plan opens
-// the site's deploy lease (force breaks another deploy's); every later
+// the site's deploy lease (takeover breaks another deploy's); every later
 // request, re-plans included, carries it.
-func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan, force bool) (quick.DeployResponse, deltaStats, error) {
+func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) (quick.DeployResponse, deltaStats, error) {
 	var res quick.DeployResponse
 	m, locs, err := buildManifest(dir, p)
 	if err != nil {
@@ -160,8 +160,8 @@ func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan, force bool) (qu
 	q := "?name=" + url.QueryEscape(name)
 	for attempt := 1; ; attempt++ {
 		pq := q
-		if force && attempt == 1 {
-			pq += "&force=1"
+		if takeover && attempt == 1 {
+			pq += "&takeover=1"
 		}
 		code, out, err := deltaPost(cfg, tok, "/api/deploy/plan"+pq, st.lease, body, true)
 		if err != nil {

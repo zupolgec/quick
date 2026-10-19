@@ -18,15 +18,15 @@ import (
 type leaseServer struct {
 	*fakeDeltaServer
 	mu       sync.Mutex
-	seen     []string // "<path> lease=<id> force=<0|1> accept=<json?>"
+	seen     []string // "<path> lease=<id> takeover=<bool> accept=<json?>"
 	lockedOn string   // endpoint answering 423
 	locked   quick.DeployLocked
 }
 
 func (l *leaseServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	l.mu.Lock()
-	l.seen = append(l.seen, fmt.Sprintf("%s lease=%s force=%v json=%v", r.URL.Path, r.Header.Get(quick.DeployLeaseHeader),
-		r.URL.Query().Get("force") == "1", strings.Contains(r.Header.Get("Accept"), "application/json")))
+	l.seen = append(l.seen, fmt.Sprintf("%s lease=%s takeover=%v json=%v", r.URL.Path, r.Header.Get(quick.DeployLeaseHeader),
+		r.URL.Query().Get("takeover") == "1", strings.Contains(r.Header.Get("Accept"), "application/json")))
 	locked := r.URL.Path == l.lockedOn
 	l.mu.Unlock()
 	if locked {
@@ -47,17 +47,17 @@ func (l *leaseServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	l.fakeDeltaServer.ServeHTTP(w, r)
 }
 
-func runLease(t *testing.T, l *leaseServer, force bool) error {
+func runLease(t *testing.T, l *leaseServer, takeover bool) error {
 	t.Helper()
 	dir, p := deltaFixture(t, 3)
 	srv := httptest.NewServer(l)
 	defer srv.Close()
-	_, _, err := deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p, force)
+	_, _, err := deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p, takeover)
 	return err
 }
 
 // The plan's lease travels on every later request of the deploy, re-plans
-// included; --force only on the first plan (a re-plan must not break a lease
+// included; --takeover only on the first plan (a re-plan must not break a lease
 // someone else may have forced meanwhile).
 func TestDeltaDeployCarriesTheLease(t *testing.T) {
 	l := &leaseServer{fakeDeltaServer: &fakeDeltaServer{have: map[string]bool{}, commitConflicts: 1}}
@@ -65,12 +65,12 @@ func TestDeltaDeployCarriesTheLease(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"/api/deploy/plan lease= force=true json=true",
-		"/api/deploy/chunks lease=L1 force=false json=true",
-		"/api/deploy/commit lease=L1 force=false json=true",
-		"/api/deploy/plan lease=L1 force=false json=true",
-		"/api/deploy/chunks lease=L1 force=false json=true",
-		"/api/deploy/commit lease=L1 force=false json=true",
+		"/api/deploy/plan lease= takeover=true json=true",
+		"/api/deploy/chunks lease=L1 takeover=false json=true",
+		"/api/deploy/commit lease=L1 takeover=false json=true",
+		"/api/deploy/plan lease=L1 takeover=false json=true",
+		"/api/deploy/chunks lease=L1 takeover=false json=true",
+		"/api/deploy/commit lease=L1 takeover=false json=true",
 	}
 	if strings.Join(l.seen, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("requests:\n%s\nwant:\n%s", strings.Join(l.seen, "\n"), strings.Join(want, "\n"))
@@ -83,7 +83,7 @@ func TestDeltaDeployLockedMessage(t *testing.T) {
 	l := &leaseServer{fakeDeltaServer: &fakeDeltaServer{have: map[string]bool{}}, lockedOn: "/api/deploy/plan",
 		locked: quick.DeployLocked{Error: quick.LeaseLocked, Holder: "mario@example.com", Since: since.Format(time.RFC3339), Message: "server text"}}
 	err := runLease(t, l, false)
-	want := "mario@example.com is publishing this site (since " + since.Local().Format("15:04") + "); retry in a moment or use --force"
+	want := "mario@example.com is publishing this site (since " + since.Local().Format("15:04") + "); retry in a moment or use --takeover"
 	if err == nil || err.Error() != want {
 		t.Fatalf("err = %v, want %q", err, want)
 	}
@@ -132,7 +132,7 @@ func TestTarDeployAndRollbackLocked(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "token:ci@demo is publishing this site") {
 		t.Fatalf("tar: err = %v", err)
 	}
-	if l.seen[0] != "/api/deploy lease=L9 force=true json=true" {
+	if l.seen[0] != "/api/deploy lease=L9 takeover=true json=true" {
 		t.Fatalf("tar request: %s", l.seen[0])
 	}
 
@@ -141,7 +141,7 @@ func TestTarDeployAndRollbackLocked(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "token:ci@demo is publishing this site") {
 		t.Fatalf("rollback: err = %v", err)
 	}
-	if l.seen[1] != "/api/site/demo/rollback lease= force=false json=true" {
+	if l.seen[1] != "/api/site/demo/rollback lease= takeover=false json=true" {
 		t.Fatalf("rollback request: %s", l.seen[1])
 	}
 }

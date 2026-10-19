@@ -55,12 +55,12 @@ func randData(seed uint64, n int) []byte {
 
 // deltaClient plays the CLI side of the protocol against the test server.
 type deltaClient struct {
-	t     *testing.T
-	s     *server
-	site  string
-	token string
-	lease string // from the last plan, sent back like the CLI does
-	force bool   // ?force=1 (break another deploy's lease)
+	t        *testing.T
+	s        *server
+	site     string
+	token    string
+	lease    string // from the last plan, sent back like the CLI does
+	takeover bool   // ?takeover=1 (break another deploy's lease)
 }
 
 // manifestOf chunks the files like the CLI does and returns the manifest plus
@@ -96,8 +96,8 @@ func manifestOf(t *testing.T, files map[string][]byte) (quick.DeployManifest, ma
 func (c *deltaClient) do(method, path string, body []byte, hdr map[string]string) *httptest.ResponseRecorder {
 	c.t.Helper()
 	q := "?name=" + c.site
-	if c.force {
-		q += "&force=1"
+	if c.takeover {
+		q += "&takeover=1"
 	}
 	r := httptest.NewRequest(method, path+q, bytes.NewReader(body))
 	if c.token != "" {
@@ -328,7 +328,7 @@ func TestDeltaCommitWithoutUploadIsConflict(t *testing.T) {
 }
 
 // Another deploy can replace the live version between plan and commit only by
-// breaking the lease (--force): the first commit is refused (lease lost), the
+// breaking the lease (--takeover): the first commit is refused (lease lost), the
 // live site is the other deploy's, and a fresh run succeeds reusing what the
 // first one staged.
 func TestDeltaCommitAfterConcurrentDeployIsRefused(t *testing.T) {
@@ -341,7 +341,7 @@ func TestDeltaCommitAfterConcurrentDeployIsRefused(t *testing.T) {
 	m, data := manifestOf(t, files)
 	_, pl := c.plan(m)
 	c.upload(data, pl.Missing) // only index.html: big.bin is live
-	o := &deltaClient{t: t, s: s, site: "demo", force: true}
+	o := &deltaClient{t: t, s: s, site: "demo", takeover: true}
 	o.deploy(map[string][]byte{"index.html": []byte("theirs")})
 
 	if w := c.commit(m); w.Code != http.StatusLocked {
