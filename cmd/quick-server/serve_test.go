@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -245,5 +246,67 @@ func TestServeNotFoundUsesNearestCustom404(t *testing.T) {
 	}
 	if w.Body.String() != "root 404" {
 		t.Fatalf("body %q, want root 404", w.Body.String())
+	}
+}
+
+// Unity WebGL builds ship precompressed files (Build/x.wasm.br, x.js.gz…): the
+// browser must get the inner type plus Content-Encoding, otherwise the loader
+// fails ("Content-Encoding header missing") or the wasm can't stream-compile.
+func TestServePrecompressedUnityBuild(t *testing.T) {
+	s := newTestServer(t)
+	putSite(t, s.store, "game", map[string]string{
+		"Build/game.wasm.br":         "BRWASM",
+		"Build/game.framework.js.gz": "GZJS",
+		"Build/game.data.br":         "BRDATA",
+		"Build/game.symbols.json.gz": "GZSYM",
+		"Build/game.loader.js":       "loader",
+		"Build/game.wasm.unityweb":   "UWEB",
+		"downloads/archive.tar.gz":   "TARGZ",
+		"Build/game.data.gz":         "GZDATA",
+	})
+	cases := []struct {
+		path, ct, enc string
+	}{
+		{"/Build/game.wasm.br", "application/wasm", "br"},
+		{"/Build/game.framework.js.gz", "text/javascript; charset=utf-8", "gzip"},
+		{"/Build/game.data.br", "application/octet-stream", "br"},
+		{"/Build/game.data.gz", "application/octet-stream", "gzip"},
+		{"/Build/game.symbols.json.gz", "application/json", "gzip"},
+		{"/Build/game.loader.js", "text/javascript; charset=utf-8", ""},
+		// Decompression fallback: the loader inflates it, no encoding header.
+		{"/Build/game.wasm.unityweb", "application/octet-stream", ""},
+		// A generic archive stays a download, never transparently decoded.
+		{"/downloads/archive.tar.gz", "application/gzip", ""},
+	}
+	for _, c := range cases {
+		w := get(t, s, "game", c.path)
+		if w.Code != http.StatusOK {
+			t.Errorf("%s: code %d", c.path, w.Code)
+			continue
+		}
+		if got := w.Header().Get("Content-Type"); got != c.ct {
+			t.Errorf("%s: Content-Type %q, want %q", c.path, got, c.ct)
+		}
+		if got := w.Header().Get("Content-Encoding"); got != c.enc {
+			t.Errorf("%s: Content-Encoding %q, want %q", c.path, got, c.enc)
+		}
+		if c.enc != "" {
+			// The loader's progress bar reads Content-Length.
+			if got := w.Header().Get("Content-Length"); got != strconv.Itoa(w.Body.Len()) {
+				t.Errorf("%s: Content-Length %q, body %d bytes", c.path, got, w.Body.Len())
+			}
+			if got := w.Header().Get("Vary"); got != "Accept-Encoding" {
+				t.Errorf("%s: Vary %q", c.path, got)
+			}
+		}
+	}
+
+	// Range on a precompressed file works on the stored bytes.
+	r := httptest.NewRequest(http.MethodGet, "/Build/game.wasm.br", nil)
+	r.Header.Set("Range", "bytes=0-1")
+	w := httptest.NewRecorder()
+	s.serveSite(w, r, "game")
+	if w.Code != http.StatusPartialContent || w.Body.String() != "BR" || w.Header().Get("Content-Length") != "2" {
+		t.Errorf("range: code %d body %q len %q", w.Code, w.Body.String(), w.Header().Get("Content-Length"))
 	}
 }

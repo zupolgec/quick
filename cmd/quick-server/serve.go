@@ -5,6 +5,7 @@ import (
 	"mime"
 	"net/http"
 	"path"
+	"strconv"
 	"strings"
 )
 
@@ -13,6 +14,33 @@ import (
 func init() {
 	mime.AddExtensionType(".wasm", "application/wasm")
 	mime.AddExtensionType(".webmanifest", "application/manifest+json")
+	// Unity WebGL with decompression fallback: the loader inflates it itself.
+	mime.AddExtensionType(".unityweb", "application/octet-stream")
+}
+
+// precompressedTypes are the inner extensions served with Content-Encoding when
+// stored as name.<ext>.br / .gz (Unity WebGL builds, any precompressed bundle).
+// Other .gz files (archives) stay plain downloads.
+var precompressedTypes = map[string]string{
+	".js":   "text/javascript; charset=utf-8",
+	".wasm": "application/wasm",
+	".data": "application/octet-stream",
+	".json": "application/json",
+}
+
+// precompressed reports the Content-Type and Content-Encoding for a
+// precompressed asset like game.wasm.br, or ok=false for anything else.
+func precompressed(p string) (ct, enc string, ok bool) {
+	switch path.Ext(p) {
+	case ".br":
+		enc = "br"
+	case ".gz":
+		enc = "gzip"
+	default:
+		return "", "", false
+	}
+	ct, ok = precompressedTypes[path.Ext(strings.TrimSuffix(p, path.Ext(p)))]
+	return ct, enc, ok
 }
 
 // handleSite is the catch-all: resolves the site from the host, applies policy
@@ -240,6 +268,17 @@ func (s *server) serveFile(w http.ResponseWriter, r *http.Request, sub, cand str
 	// No MIME sniffing: a public site must not be able to get a file interpreted
 	// as the wrong type (XSS vector). The octet-stream fallback downloads, not renders.
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if ct, enc, ok := precompressed(cand); ok {
+		w.Header().Set("Content-Type", ct)
+		w.Header().Set("Content-Encoding", enc)
+		w.Header().Add("Vary", "Accept-Encoding")
+		// ServeContent omits Content-Length when an encoding is set (it does
+		// set it on ranges); Unity's loader needs it for the progress bar.
+		if size, err := rc.Seek(0, io.SeekEnd); err == nil {
+			w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+		}
+		rc.Seek(0, io.SeekStart)
+	}
 	if status == http.StatusOK {
 		if fi.ETag != "" {
 			w.Header().Set("ETag", fi.ETag)
@@ -247,7 +286,7 @@ func (s *server) serveFile(w http.ResponseWriter, r *http.Request, sub, cand str
 		http.ServeContent(w, r, fi.Name, fi.ModTime, rc)
 		return true
 	}
-	if ct := mime.TypeByExtension(path.Ext(cand)); ct != "" {
+	if ct := mime.TypeByExtension(path.Ext(cand)); ct != "" && w.Header().Get("Content-Type") == "" {
 		w.Header().Set("Content-Type", ct)
 	}
 	w.WriteHeader(status)

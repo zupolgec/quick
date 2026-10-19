@@ -70,6 +70,12 @@ cartella più vicina al path mancante (status 404); `200.html` in radice è l'ap
 shell SPA (servita 200 per le rotte che non sono file). Senza `200.html`, un path
 mancante dà un 404 vero.
 
+**File precompressi e Unity WebGL**: `x.js.br`, `x.wasm.gz`, `x.data.br`,
+`x.json.gz` (Brotli `.br` o gzip `.gz`) vengono serviti col tipo del file interno
+e `Content-Encoding`, così il browser li decomprime da sé. Una build Unity WebGL si
+pubblica così com'è, con qualunque compressione (Brotli, Gzip o "decompression
+fallback" `.unityweb`). Gli altri `.gz` (archivi) restano download normali.
+
 **`_redirects`** (stile Netlify): un file `_redirects` nella radice del sito
 definisce redirect, rewrite e proxy per path. Le regole si applicano solo quando
 nessun file corrisponde alla richiesta (i file vincono sempre) e prima di

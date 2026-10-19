@@ -153,6 +153,10 @@ Use ` + "`quick status`" + ` or ` + "`quick deploy ... --dry-run`" + ` to see in
   pass-through to public https hosts only (no private IPs, no quick subdomains,
   no injected credentials) and follows the site's visibility. The
   ` + "`_redirects`" + ` file itself is never served.
+- Precompressed assets work as-is: ` + "`x.js.br`" + `, ` + "`x.wasm.gz`" + `, ` + "`x.data.br`" + `,
+  ` + "`x.json.gz`" + ` are served with the right type and Content-Encoding. Unity WebGL
+  builds deploy unchanged with any compression setting (Brotli, Gzip, or
+  decompression fallback ` + "`.unityweb`" + `); no server config needed.
 
 ## Notes
 
