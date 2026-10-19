@@ -72,13 +72,25 @@ func newCountingProxy(t *testing.T, target string) *countingProxy {
 				}
 				defer s.Close()
 				go func() { io.Copy(c, s); c.Close() }()
-				n, _ := io.Copy(s, c)
-				p.up.Add(n)
+				// Count as bytes flow: keep-alive connections are still open
+				// when the test reads the counter.
+				io.Copy(countingWriter{s, &p.up}, c)
 			}()
 		}
 	}()
 	t.Cleanup(func() { l.Close() })
 	return p
+}
+
+type countingWriter struct {
+	w io.Writer
+	n *atomic.Int64
+}
+
+func (c countingWriter) Write(b []byte) (int, error) {
+	n, err := c.w.Write(b)
+	c.n.Add(int64(n))
+	return n, err
 }
 
 func randData(seed uint64, n int) []byte {
