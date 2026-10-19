@@ -309,7 +309,10 @@ Vedi `.env.example`. In sintesi: `QUICK_BASE_DOMAIN`, `QUICK_ALLOWED_DOMAINS` (u
 `QUICK_HOST_DIR` (cartella host dei dati, per più istanze sullo stesso host),
 `QUICK_CHUNK_DIR` (blocchi del deploy incrementale in attesa di pubblicazione;
 default la cartella temporanea di sistema, vengono rimossi alla pubblicazione o
-dopo 24 ore).
+dopo 24 ore). Accanto ai metadati il server tiene la mappa dei blocchi della
+versione pubblicata e di quella precedente (`<sito>.<versione>.idx` nella cartella
+dei metadati, `index/<sito>/` su S3), così il deploy incrementale non rilegge il
+sito; se manca o non è valida viene ricostruita dai file pubblicati.
 Con un IdP OIDC (es. Zitadel): `QUICK_SSO_PROVIDER=oidc`, `QUICK_OIDC_ISSUER`, e in
 `GOOGLE_CLIENT_ID/SECRET` il client Web dell'IdP per oauth2-proxy; per la CLI un client
 nativo con PKCE e redirect `http://127.0.0.1:8765/callback`.

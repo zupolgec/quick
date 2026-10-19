@@ -74,6 +74,9 @@ type policy struct {
 	CodeHash  string       `json:"code_hash,omitempty"` // HMAC of the code, never plaintext
 	Tokens    []siteToken  `json:"tokens,omitempty"`
 	Domains   []siteDomain `json:"domains,omitempty"`
+	// Index ids of the live and the rollback tree ("" = not indexed), see index.go.
+	Version     string `json:"version,omitempty"`
+	PrevVersion string `json:"prev_version,omitempty"`
 }
 
 type siteToken struct {
@@ -361,7 +364,16 @@ func (s *server) handleRollback(w http.ResponseWriter, r *http.Request, name str
 		http.Error(w, reason, http.StatusForbidden)
 		return
 	}
+	old, err := s.clearVersions(name, &cur)
+	if err != nil {
+		http.Error(w, "could not update site state: "+err.Error(), http.StatusServiceUnavailable)
+		return
+	}
 	ok, err := s.store.Rollback(name)
+	if err != nil || !ok {
+		// Rollback leaves the trees as they were when it fails.
+		s.restoreVersions(name, &cur, old)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -370,6 +382,8 @@ func (s *server) handleRollback(w http.ResponseWriter, r *http.Request, name str
 		http.Error(w, "no previous version to restore", http.StatusNotFound)
 		return
 	}
+	// The trees swapped places, their indexes with them.
+	cur.Version, cur.PrevVersion = old.prev, old.live
 	s.rules.forget(name)
 	cur.UpdatedBy, cur.UpdatedAt = email, nowStamp()
 	if err := s.meta.save(name, cur); err != nil {

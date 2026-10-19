@@ -4,10 +4,10 @@
 // Where chunks come from. There is no persistent chunk store to keep in sync or
 // garbage-collect. The chunks the server "has" for a site are:
 //
-//   - the live version's, re-derived on demand by chunking the published files
-//     (whatever deployed them: delta, tar, or a rollback). Always exact, no
-//     index to go stale; the cost is reading the site once per plan and commit,
-//     fine for local disk and the 500 MiB cap;
+//   - the live version's, from its persisted index (index.go), written by
+//     every publish (delta, tar, rollback) and rebuilt from the published
+//     files under the site lock if missing, stale or corrupt. Advisory: the
+//     commit re-reads and re-checks every reused chunk;
 //   - staged ones (stage.go): uploaded and hash-verified, waiting for a
 //     commit. Per site, so a client can never learn anything about another
 //     site's content; accepted only if a plan asked for them, with per-site
@@ -18,11 +18,12 @@
 // the site drops its staging.
 //
 // Concurrency: plan and chunk upload don't take the site lock (uploads can be
-// long; staging has its own lock and accounting). Commit holds s.locks like
-// handleDeploy and pins the site's staging so the sweeper can't remove
-// verified chunks. If a chunk promised by the plan disappeared meanwhile
-// (another deploy changed the live version, an expiry), it answers 409 and
-// the CLI re-plans.
+// long; staging has its own lock and accounting), except a plan that has to
+// rebuild the live index, so it never walks a tree being swapped. Commit holds
+// s.locks like handleDeploy and pins the site's staging so the sweeper can't
+// remove verified chunks. If a chunk promised by the plan disappeared
+// meanwhile (another deploy changed the live version, an expiry, a live tree
+// out of sync with its index), it answers 409 and the CLI re-plans.
 //
 // Commit verifies every chunk and every whole-file hash before storage writes
 // anything, then streams the assembled files as a tar into PutSite, the same
@@ -171,39 +172,6 @@ type chunkLoc struct {
 	size int
 }
 
-// liveIndex chunks the site's published files. Files vanishing mid-walk (an
-// unlocked plan racing a deploy) are skipped: they just don't count as present.
-func (s *server) liveIndex(site string) (map[[32]byte]chunkLoc, error) {
-	files, err := s.store.ListFiles(site)
-	if err != nil {
-		return nil, err
-	}
-	idx := map[[32]byte]chunkLoc{}
-	for _, p := range files {
-		rc, _, err := s.store.OpenFile(site, p)
-		if errors.Is(err, storage.ErrNotFound) {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		var off int64
-		err = chunk.Split(rc, func(b []byte) error {
-			h := sha256.Sum256(b)
-			if _, ok := idx[h]; !ok {
-				idx[h] = chunkLoc{path: p, off: off, size: len(b)}
-			}
-			off += int64(len(b))
-			return nil
-		})
-		rc.Close()
-		if err != nil {
-			return nil, err
-		}
-	}
-	return idx, nil
-}
-
 // deltaRequest runs the checks shared by the delta endpoints before auth:
 // method, feature enabled, valid name.
 func (s *server) deltaRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -223,7 +191,8 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if _, _, ok := s.authorizeDeploy(w, r, name); !ok {
+	cur, _, ok := s.authorizeDeploy(w, r, name)
+	if !ok {
 		return
 	}
 	files, err := readManifest(w, r)
@@ -231,7 +200,7 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	idx, err := s.liveIndex(name)
+	idx, err := s.liveIndexForPlan(name, cur)
 	if err != nil {
 		http.Error(w, "could not read the live version: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -351,9 +320,12 @@ var (
 	errChunkSize    = errors.New("chunk or file size does not match its content")
 )
 
+// errIndexStale: the live index points at data that isn't there.
+var errIndexStale = fmt.Errorf("%w: live files differ from their index", errChunkMissing)
+
 // liveReader reads chunks of the live version keeping at most one file open
 // (manifests are in file order, so consecutive chunks mostly share a file).
-// Absent or changed data is errChunkMissing; real I/O errors pass through.
+// Absent or changed data is errIndexStale; real I/O errors pass through.
 type liveReader struct {
 	s    *server
 	site string
@@ -369,7 +341,7 @@ func (l *liveReader) read(c chunk.Chunk, loc chunkLoc) ([]byte, error) {
 		l.close()
 		rc, _, err := l.s.store.OpenFile(l.site, loc.path)
 		if errors.Is(err, storage.ErrNotFound) {
-			return nil, errChunkMissing
+			return nil, errIndexStale
 		}
 		if err != nil {
 			return nil, err
@@ -382,12 +354,12 @@ func (l *liveReader) read(c chunk.Chunk, loc chunkLoc) ([]byte, error) {
 	b := make([]byte, loc.size)
 	if _, err := io.ReadFull(l.rc, b); err != nil {
 		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-			return nil, errChunkMissing
+			return nil, errIndexStale
 		}
 		return nil, err
 	}
 	if sha256.Sum256(b) != c.Hash {
-		return nil, errChunkMissing
+		return nil, errIndexStale
 	}
 	return b, nil
 }
@@ -511,7 +483,7 @@ func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
 	}
 	unpin := s.stage.pin(name)
 	defer unpin()
-	idx, err := s.liveIndex(name)
+	idx, stored, err := s.liveIndexLocked(name, cur)
 	if err != nil {
 		http.Error(w, "could not read the live version: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -519,6 +491,9 @@ func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
 	src, err := s.verifyAll(name, files, idx)
 	defer s.stage.release(name, src.copied) // commit copies never outlive the commit
 	if err != nil {
+		if stored && errors.Is(err, errIndexStale) {
+			s.dropLiveVersion(name, &cur) // the next plan rebuilds it
+		}
 		switch {
 		case errors.Is(err, errChunkMissing):
 			http.Error(w, "some chunks are no longer available: plan again", http.StatusConflict)
@@ -535,6 +510,11 @@ func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
 	if beforePublish != nil {
 		beforePublish(name)
 	}
+	old, err := s.clearVersions(name, &cur)
+	if err != nil {
+		http.Error(w, "could not update site state: "+err.Error(), http.StatusServiceUnavailable)
+		return
+	}
 	pr, pw := io.Pipe()
 	done := make(chan struct{})
 	go func() {
@@ -545,9 +525,11 @@ func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
 	pr.Close() // unblocks the writer if PutSite stopped early
 	<-done
 	if err != nil {
+		s.publishFailed(name, &cur, old)
 		http.Error(w, "deploy: "+err.Error(), http.StatusBadRequest) // as handleDeploy
 		return
 	}
+	cur.Version, cur.PrevVersion = s.saveIndex(name, indexOfManifest(files)), old.live
 	used := map[[32]byte]bool{}
 	for _, f := range files {
 		for _, c := range f.chunks {

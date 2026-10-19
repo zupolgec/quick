@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -292,9 +293,33 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "gzip: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := s.store.PutSite(name, tar.NewReader(gz)); err != nil {
+	old, err := s.clearVersions(name, &cur)
+	if err != nil {
+		http.Error(w, "could not update site state: "+err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	// The files are chunked as they stream into PutSite: the new version's
+	// index without reading it back.
+	pr, pw := io.Pipe()
+	var files []indexFile
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		var err error
+		files, err = indexingTar(pw, tar.NewReader(gz))
+		pw.CloseWithError(err)
+	}()
+	err = s.store.PutSite(name, tar.NewReader(pr))
+	pr.Close() // unblocks the indexer if PutSite stopped early
+	<-done
+	if err != nil {
+		s.publishFailed(name, &cur, old)
 		http.Error(w, "deploy: "+err.Error(), http.StatusBadRequest)
 		return
+	}
+	cur.PrevVersion = old.live
+	if files != nil {
+		cur.Version = s.saveIndex(name, files)
 	}
 	s.finishDeploy(w, name, cur, ident)
 }
@@ -332,7 +357,8 @@ func (s *server) authorizeDeploy(w http.ResponseWriter, r *http.Request, name st
 }
 
 // finishDeploy runs after a successful PutSite: drops cached rules, records
-// who deployed (and the token use), answers with the site URL.
+// who deployed (and the token use) along with the index versions the caller
+// set in cur, prunes older indexes, answers with the site URL.
 func (s *server) finishDeploy(w http.ResponseWriter, name string, cur policy, ident authIdentity) {
 	s.rules.forget(name)
 	by := ident.Email
@@ -352,6 +378,7 @@ func (s *server) finishDeploy(w http.ResponseWriter, name string, cur policy, id
 		http.Error(w, "deploy applied but saving state failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.pruneIndexes(name, cur)
 	log.Printf("deploy %q by %s", name, by)
 	_ = json.NewEncoder(w).Encode(quick.DeployResponse{
 		Site: name,

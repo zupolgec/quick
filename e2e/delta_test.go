@@ -241,4 +241,22 @@ func TestDeltaDeployEndToEnd(t *testing.T) {
 	if bytes.Equal(get("/Build/game.data"), data) {
 		t.Fatal("rollback did not restore the previous version")
 	}
+
+	// Redeploying the folder on top of the rolled-back version reuses its
+	// chunks (its own index is live again): again only the changed parts travel.
+	proxy.up.Store(0)
+	out3 := deploy()
+	sent3 := proxy.up.Load()
+	t.Logf("deploy after rollback: %d bytes upstream\n%s", sent3, out3)
+	if sent3 > 2<<20 {
+		t.Fatalf("deploy after rollback sent %d bytes, want well under 2 MiB", sent3)
+	}
+	if !bytes.Equal(get("/Build/game.data"), data) || !bytes.Equal(get("/Build/game.wasm"), wasm) {
+		t.Fatal("served content differs from the folder after redeploying over a rollback")
+	}
+	// The live and previous versions each have a persisted index.
+	idx, _ := filepath.Glob(filepath.Join(tmp, "meta", "game.*.idx"))
+	if len(idx) != 2 {
+		t.Fatalf("index blobs: %v, want live and previous", idx)
+	}
 }

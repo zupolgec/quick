@@ -1,6 +1,7 @@
 // S3-compatible backend (Hetzner Object Storage / MinIO / R2, ...) via minio-go.
 // Object layout: <prefix>sites/<site>/<path...> for contents,
-// <prefix>meta/<site>.json for policy. With this backend the container is
+// <prefix>meta/<site>.json for policy, <prefix>index/<site>/<version> for the
+// delta deploy chunk index. With this backend the container is
 // stateless (no volume).
 package storage
 
@@ -13,6 +14,7 @@ import (
 	"net/http"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -57,6 +59,9 @@ func newS3(c S3Config) (*s3, error) {
 func (s *s3) siteKey(site, rel string) string { return s.prefix + "sites/" + site + "/" + rel }
 func (s *s3) sitePrefix(site string) string   { return s.prefix + "sites/" + site + "/" }
 func (s *s3) metaKey(site string) string      { return s.prefix + "meta/" + site + ".json" }
+
+// Index blobs live under their own prefix: ListSites reads only sites/ and meta/.
+func (s *s3) indexPrefix(site string) string { return s.prefix + "index/" + site + "/" }
 
 func (s *s3) PutSite(site string, tr *tar.Reader) error {
 	ctx := context.Background()
@@ -163,6 +168,9 @@ func (s *s3) DeleteSite(site string) (bool, error) {
 		}
 		existed = true
 	}
+	if err := s.PruneIndexes(site); err != nil {
+		return existed, err
+	}
 	if _, ok, _ := s.GetMeta(site); ok {
 		existed = true
 	}
@@ -260,4 +268,53 @@ func (s *s3) PutMeta(site string, data []byte) error {
 		bytes.NewReader(data), int64(len(data)),
 		minio.PutObjectOptions{ContentType: "application/json"})
 	return err
+}
+
+func (s *s3) GetIndex(site, version string) ([]byte, bool, error) {
+	if err := checkVersion(version); err != nil {
+		return nil, false, err
+	}
+	obj, err := s.cli.GetObject(context.Background(), s.bucket, s.indexPrefix(site)+version, minio.GetObjectOptions{})
+	if err != nil {
+		if errors.Is(s3OpenErr(err), ErrNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	defer obj.Close()
+	b, err := io.ReadAll(obj)
+	if err != nil {
+		if errors.Is(s3OpenErr(err), ErrNotFound) {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return b, true, nil
+}
+
+func (s *s3) PutIndex(site, version string, data []byte) error {
+	if err := checkVersion(version); err != nil {
+		return err
+	}
+	_, err := s.cli.PutObject(context.Background(), s.bucket, s.indexPrefix(site)+version,
+		bytes.NewReader(data), int64(len(data)),
+		minio.PutObjectOptions{ContentType: "application/octet-stream"})
+	return err
+}
+
+func (s *s3) PruneIndexes(site string, keep ...string) error {
+	ctx := context.Background()
+	base := s.indexPrefix(site)
+	for obj := range s.cli.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{Prefix: base, Recursive: true}) {
+		if obj.Err != nil {
+			return obj.Err
+		}
+		if slices.Contains(keep, strings.TrimPrefix(obj.Key, base)) {
+			continue
+		}
+		if err := s.cli.RemoveObject(ctx, s.bucket, obj.Key, minio.RemoveObjectOptions{}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

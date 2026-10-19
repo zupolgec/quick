@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -63,6 +64,21 @@ type Backend interface {
 	Rollback(site string) (ok bool, err error)
 	GetMeta(site string) (data []byte, ok bool, err error)
 	PutMeta(site string, data []byte) error
+	// GetIndex, PutIndex and PruneIndexes keep opaque per-version blobs next
+	// to the metadata (the delta deploy's chunk index of a published version).
+	// version is lowercase hex. PruneIndexes removes the site's blobs whose
+	// version is not in keep; DeleteSite removes them all.
+	GetIndex(site, version string) (data []byte, ok bool, err error)
+	PutIndex(site, version string, data []byte) error
+	PruneIndexes(site string, keep ...string) error
+}
+
+// checkVersion keeps index versions safe in paths and object keys.
+func checkVersion(v string) error {
+	if v == "" || len(v) > 64 || strings.Trim(v, "0123456789abcdef") != "" {
+		return fmt.Errorf("storage: invalid index version %q", v)
+	}
+	return nil
 }
 
 type Config struct {
@@ -305,6 +321,9 @@ func (l *local) DeleteSite(site string) (bool, error) {
 		return existed, err
 	}
 	os.RemoveAll(l.prevPath(site))
+	if err := l.PruneIndexes(site); err != nil {
+		return existed, err
+	}
 	if err := os.Remove(l.metaPath(site)); err != nil && !os.IsNotExist(err) {
 		return existed, err
 	}
@@ -340,4 +359,58 @@ func (l *local) PutMeta(site string, data []byte) error {
 		return err
 	}
 	return os.Rename(tmp, l.metaPath(site))
+}
+
+// Index blobs: <metaDir>/<site>.<version>.idx (site names have no dots, so
+// one site's glob never matches another's; ListSites only reads *.json).
+func (l *local) indexPath(site, version string) string {
+	return filepath.Join(l.metaDir, site+"."+version+".idx")
+}
+
+func (l *local) GetIndex(site, version string) ([]byte, bool, error) {
+	if err := checkVersion(version); err != nil {
+		return nil, false, err
+	}
+	b, err := os.ReadFile(l.indexPath(site, version))
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return b, true, nil
+}
+
+func (l *local) PutIndex(site, version string, data []byte) error {
+	if err := checkVersion(version); err != nil {
+		return err
+	}
+	// Same dir as the target (rename stays on one filesystem); no .idx
+	// suffix, so a leftover never matches a glob.
+	tmp := fmt.Sprintf("%s.%d.%d.tmp", l.indexPath(site, version), os.Getpid(), tmpSeq.Add(1))
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, l.indexPath(site, version)); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+func (l *local) PruneIndexes(site string, keep ...string) error {
+	paths, err := filepath.Glob(filepath.Join(l.metaDir, site+".*.idx"))
+	if err != nil {
+		return err
+	}
+	for _, p := range paths {
+		v := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(p), site+"."), ".idx")
+		if slices.Contains(keep, v) {
+			continue
+		}
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
