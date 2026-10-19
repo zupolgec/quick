@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"mime"
+	"net/http"
 	"path"
 	"path/filepath"
 	"sort"
@@ -128,14 +129,24 @@ func (s *s3) OpenFile(site, p string) (io.ReadSeekCloser, FileInfo, error) {
 	ctx := context.Background()
 	obj, err := s.cli.GetObject(ctx, s.bucket, s.siteKey(site, rel), minio.GetObjectOptions{})
 	if err != nil {
-		return nil, FileInfo{}, ErrNotFound
+		return nil, FileInfo{}, s3OpenErr(err)
 	}
 	st, err := obj.Stat()
 	if err != nil {
 		obj.Close()
-		return nil, FileInfo{}, ErrNotFound
+		return nil, FileInfo{}, s3OpenErr(err)
 	}
 	return obj, FileInfo{Name: path.Base(rel), ModTime: st.LastModified, ETag: st.ETag}, nil
+}
+
+// s3OpenErr maps only genuine absence (NoSuchKey, 404) to ErrNotFound; any
+// other error (timeout, access denied) is operational and passes through.
+func s3OpenErr(err error) error {
+	resp := minio.ToErrorResponse(err)
+	if resp.Code == "NoSuchKey" || resp.StatusCode == http.StatusNotFound {
+		return ErrNotFound
+	}
+	return err
 }
 
 func (s *s3) DeleteSite(site string) (bool, error) {

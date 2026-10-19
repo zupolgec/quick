@@ -280,7 +280,11 @@ func (l *local) OpenFile(site, p string) (io.ReadSeekCloser, FileInfo, error) {
 		return nil, FileInfo{}, err
 	}
 	st, err := f.Stat()
-	if err != nil || st.IsDir() {
+	if err != nil {
+		f.Close()
+		return nil, FileInfo{}, err // opened but unreadable: a real error
+	}
+	if st.IsDir() {
 		f.Close()
 		return nil, FileInfo{}, ErrNotFound
 	}
