@@ -23,6 +23,7 @@ func TestDeltaUploadRequiresPlan(t *testing.T) {
 	b := []byte("x")
 	h := sha256.Sum256(b)
 	hx := hex.EncodeToString(h[:])
+	c.leased()
 	if code := c.upload(map[string][]byte{hx: b}, []string{hx}); code != http.StatusConflict {
 		t.Fatalf("unplanned upload: %d, want 409", code)
 	}
@@ -33,6 +34,7 @@ func TestDeltaUploadRequiresPlan(t *testing.T) {
 	m, data := manifestOf(t, map[string][]byte{"a": b})
 	c.plan(m)
 	other := &deltaClient{t: t, s: s, site: "other"}
+	other.leased()
 	if code := other.upload(data, []string{hx}); code != http.StatusConflict {
 		t.Fatalf("upload planned for another site: %d, want 409", code)
 	}
@@ -87,6 +89,7 @@ func TestDeltaCommitManyReusedFiles(t *testing.T) {
 			renamed["g/"+k] = v
 		}
 		m, _ := manifestOf(t, renamed)
+		c.leased()
 		if w := c.commit(m); w.Code != http.StatusOK {
 			t.Fatalf("commit reusing 2500 live files: %d %s", w.Code, w.Body.String())
 		}

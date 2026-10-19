@@ -86,6 +86,8 @@ const (
 //	POST /api/deploy/chunks?name=  gzip stream of chunk records (only the missing ones)
 //	POST /api/deploy/commit?name=  manifest -> DeployResponse; 409 = re-plan and retry
 //
+// All three belong to one deploy lease (DeployLeaseHeader, below).
+//
 // Manifest bodies are JSON, optionally gzip (Content-Encoding: gzip). A chunk
 // record is the raw 32-byte SHA-256, the length as big-endian uint32, then the
 // bytes. Hashes in JSON are lowercase hex.
@@ -107,9 +109,32 @@ type ManifestChunk struct {
 }
 
 type DeployPlanResponse struct {
-	Missing      []string `json:"missing"`       // chunk hashes to upload
-	TotalBytes   int64    `json:"total_bytes"`   // size of the whole folder
-	MissingBytes int64    `json:"missing_bytes"` // size of the missing chunks
+	Missing      []string `json:"missing"`         // chunk hashes to upload
+	TotalBytes   int64    `json:"total_bytes"`     // size of the whole folder
+	MissingBytes int64    `json:"missing_bytes"`   // size of the missing chunks
+	Lease        string   `json:"lease,omitempty"` // send back in DeployLeaseHeader
+}
+
+// One deploy at a time per site: the plan hands out a lease id that the CLI
+// sends back in DeployLeaseHeader on its chunks, commit and re-plans. Any
+// other deploy of the site meanwhile (plan, tar upload, rollback) gets 423
+// Locked with a DeployLocked body; ?force=1 on a plan, tar upload or rollback
+// breaks the lease. Idle leases expire on their own.
+const DeployLeaseHeader = "X-Quick-Deploy"
+
+// DeployLocked.Error values.
+const (
+	LeaseLocked = "locked"     // another deploy of the site is in progress
+	LeaseLost   = "lease_lost" // this deploy's lease was broken or expired
+)
+
+// DeployLocked is the 423 response body: JSON when the request accepts
+// application/json, otherwise just Message as text (older CLIs print it).
+type DeployLocked struct {
+	Error   string `json:"error"`
+	Holder  string `json:"holder,omitempty"` // who holds the site's lease now
+	Since   string `json:"since,omitempty"`  // RFC3339, when their deploy started
+	Message string `json:"message"`
 }
 
 type ChunkUploadResponse struct {

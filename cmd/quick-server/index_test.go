@@ -118,6 +118,7 @@ func tarDeployCode(c *deltaClient, files map[string][]byte) (int, string) {
 	tw.Close()
 	gz.Close()
 	w := c.do(http.MethodPost, "/api/deploy", buf.Bytes(), nil)
+	c.lease = "" // the tar upload ends the deploy it belonged to
 	return w.Code, w.Body.String()
 }
 
@@ -241,7 +242,9 @@ func TestPlanDuringTarDeployIsNotAnError(t *testing.T) {
 
 	m, _ := manifestOf(t, map[string][]byte{"big.bin": big, "index.html": []byte("v2")})
 	planned := make(chan int, 1)
-	go func() { code, _ := c.plan(m); planned <- code }()
+	// The tar holds the site's lease: only a forced plan can race it now.
+	f := &deltaClient{t: t, s: s, site: "demo", force: true}
+	go func() { code, _ := f.plan(m); planned <- code }()
 	var code int
 	select {
 	case code = <-planned:
@@ -257,7 +260,7 @@ func TestPlanDuringTarDeployIsNotAnError(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("plan during a tar deploy: %d, want 200", code)
 	}
-	if sent := c.deploy(map[string][]byte{"big.bin": big, "index.html": []byte("v2")}); sent != 2 {
+	if sent := f.deploy(map[string][]byte{"big.bin": big, "index.html": []byte("v2")}); sent != 2 {
 		t.Fatalf("deploy after the race sent %d bytes, want 2", sent)
 	}
 }
@@ -273,6 +276,9 @@ func TestPlanConcurrentWithTarDeploys(t *testing.T) {
 	}
 	tarDeploy(t, c, files)
 	m, _ := manifestOf(t, files)
+	// Each side breaks the other's lease: the only way they can still race.
+	ct := &deltaClient{t: t, s: s, site: "demo", force: true}
+	c.force = true
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
 	deployCode := http.StatusOK
@@ -287,7 +293,7 @@ func TestPlanConcurrentWithTarDeploys(t *testing.T) {
 			}
 			next := maps.Clone(files)
 			next["x.txt"] = []byte{byte(i)}
-			if code, _ := tarDeployCode(c, next); code != http.StatusOK {
+			if code, _ := tarDeployCode(ct, next); code != http.StatusOK {
 				deployCode = code
 				return
 			}

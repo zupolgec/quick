@@ -17,13 +17,17 @@
 // left by an abandoned deploy expires after stageTTL (hourly sweep); deleting
 // the site drops its staging.
 //
+// One deploy at a time per site: plan, uploads and commit belong to a deploy
+// lease (lease.go), checked before any work.
+//
 // Concurrency: plan and chunk upload don't take the site lock (uploads can be
 // long; staging has its own lock and accounting), except a plan that has to
 // rebuild the live index, so it never walks a tree being swapped. Commit holds
 // s.locks like handleDeploy and pins the site's staging so the sweeper can't
 // remove verified chunks. If a chunk promised by the plan disappeared
-// meanwhile (another deploy changed the live version, an expiry, a live tree
-// out of sync with its index), it answers 409 and the CLI re-plans.
+// meanwhile (an expiry, a live tree out of sync with its index; another
+// deploy can't change the live version without breaking the lease), it
+// answers 409 and the CLI re-plans.
 //
 // Commit verifies every chunk and every whole-file hash before storage writes
 // anything, then streams the assembled files as a tar into PutSite, the same
@@ -54,6 +58,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zupolgec/quick/internal/chunk"
@@ -191,10 +196,24 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	cur, _, ok := s.authorizeDeploy(w, r, name, false)
+	cur, ident, ok := s.authorizeDeploy(w, r, name, false)
 	if !ok {
 		return
 	}
+	lease, ok := s.beginLease(w, r, name, ident, maxManifest, nil)
+	if !ok {
+		return
+	}
+	// A failed first plan frees the site; a failed re-plan keeps the lease
+	// (the CLI's tar fallback carries it, else it idles out).
+	planned, opened := false, lease.id != r.Header.Get(quick.DeployLeaseHeader)
+	defer func() {
+		if planned || !opened {
+			s.leases.end(lease)
+		} else {
+			s.leases.release(name, lease)
+		}
+	}()
 	files, err := readManifest(w, r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -238,6 +257,7 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 			res.MissingBytes += int64(size)
 		}
 	}
+	res.Lease, planned = lease.id, true
 	_ = json.NewEncoder(w).Encode(res)
 }
 
@@ -249,6 +269,13 @@ func (s *server) handleDeployChunks(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := s.authorizeDeploy(w, r, name, false); !ok {
 		return
 	}
+	lease, ok := s.joinLease(w, r, name, maxUpload, nil)
+	if !ok {
+		return
+	}
+	// A failed upload doesn't end the deploy here: the lease idles out if the
+	// CLI gives up.
+	defer s.leases.end(lease)
 	fail := func(err error, code int) {
 		var mbe *http.MaxBytesError
 		if errors.As(err, &mbe) {
@@ -489,12 +516,24 @@ func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	unlock := s.locks.lock(name)
+	unlock := sync.OnceFunc(s.locks.lock(name))
 	defer unlock()
 	cur, ident, ok := s.authorizeDeploy(w, r, name, true)
 	if !ok {
 		return
 	}
+	lease, ok := s.joinLease(w, r, name, maxManifest, unlock)
+	if !ok {
+		return
+	}
+	replan := false // 409: the deploy goes on with a new plan; anything else ends it
+	defer func() {
+		if replan {
+			s.leases.end(lease)
+		} else {
+			s.leases.release(name, lease)
+		}
+	}()
 	files, err := readManifest(w, r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -515,6 +554,7 @@ func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
 		}
 		switch {
 		case errors.Is(err, errChunkMissing):
+			replan = true
 			http.Error(w, "some chunks are no longer available: plan again", http.StatusConflict)
 		case errors.Is(err, errFileHash), errors.Is(err, errChunkSize):
 			http.Error(w, "deploy: "+err.Error(), http.StatusBadRequest)

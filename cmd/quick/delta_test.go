@@ -68,7 +68,7 @@ func TestDeltaDeployFallsBackOnOldServer(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "index.html"), []byte("hi"), 0o644)
 	p, _ := buildPlan(dir)
-	_, _, err := deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p)
+	_, _, err := deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p, false)
 	if !errors.Is(err, errNoDelta) {
 		t.Fatalf("err = %v, want errNoDelta", err)
 	}

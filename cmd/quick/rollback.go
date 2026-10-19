@@ -25,6 +25,7 @@ func rollbackCmd(args []string) {
 	server := fs.String("server", "", "server URL (or QUICK_SERVER)")
 	token := fs.String("token", os.Getenv("QUICK_TOKEN"), "login ID token (default: saved login)")
 	yes := fs.Bool("yes", false, "skip the confirmation prompt")
+	force := fs.Bool("force", false, "roll back even if someone is publishing this site right now")
 	fs.Parse(args)
 	if name == "" && fs.NArg() > 0 {
 		name = fs.Arg(0) // positional placed after the flags
@@ -61,20 +62,37 @@ func rollbackCmd(args []string) {
 		}
 	}
 
-	endpoint := cfg.Server + "/api/site/" + url.PathEscape(name) + "/rollback"
-	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(nil))
+	res, err := postRollback(cfg, name, tok, *force)
 	fatal(err)
+	fmt.Printf("%s %s restored to the previous version → %s\n", check(), cBold(name), cCyan(res.URL))
+}
+
+// postRollback asks the server to swap the live and previous versions. force
+// breaks the lease of a deploy in progress.
+func postRollback(cfg *cliConfig, name, tok string, force bool) (quick.RollbackResponse, error) {
+	var res quick.RollbackResponse
+	endpoint := cfg.Server + "/api/site/" + url.PathEscape(name) + "/rollback"
+	if force {
+		endpoint += "?force=1"
+	}
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(nil))
+	if err != nil {
+		return res, err
+	}
 	req.Header.Set("Authorization", "Bearer "+tok)
+	leaseRequest(req, "")
 
 	resp, err := httpClient.Do(req)
-	fatal(err)
+	if err != nil {
+		return res, err
+	}
 	defer resp.Body.Close()
 	rb, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "rollback failed (%d): %s\n", resp.StatusCode, strings.TrimSpace(string(rb)))
-		os.Exit(1)
+	if err := lockedResponse(resp.StatusCode, rb); err != nil {
+		return res, err
 	}
-	var res quick.RollbackResponse
-	json.Unmarshal(rb, &res)
-	fmt.Printf("%s %s restored to the previous version → %s\n", check(), cBold(name), cCyan(res.URL))
+	if resp.StatusCode != http.StatusOK {
+		return res, fmt.Errorf("rollback failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(rb)))
+	}
+	return res, json.Unmarshal(rb, &res)
 }

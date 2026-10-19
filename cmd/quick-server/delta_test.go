@@ -59,6 +59,8 @@ type deltaClient struct {
 	s     *server
 	site  string
 	token string
+	lease string // from the last plan, sent back like the CLI does
+	force bool   // ?force=1 (break another deploy's lease)
 }
 
 // manifestOf chunks the files like the CLI does and returns the manifest plus
@@ -93,9 +95,16 @@ func manifestOf(t *testing.T, files map[string][]byte) (quick.DeployManifest, ma
 
 func (c *deltaClient) do(method, path string, body []byte, hdr map[string]string) *httptest.ResponseRecorder {
 	c.t.Helper()
-	r := httptest.NewRequest(method, path+"?name="+c.site, bytes.NewReader(body))
+	q := "?name=" + c.site
+	if c.force {
+		q += "&force=1"
+	}
+	r := httptest.NewRequest(method, path+q, bytes.NewReader(body))
 	if c.token != "" {
 		r.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	if c.lease != "" {
+		r.Header.Set(quick.DeployLeaseHeader, c.lease)
 	}
 	for k, v := range hdr {
 		r.Header.Set(k, v)
@@ -114,8 +123,19 @@ func (c *deltaClient) plan(m quick.DeployManifest) (int, quick.DeployPlanRespons
 		if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
 			c.t.Fatal(err)
 		}
+		c.lease = res.Lease
 	}
 	return w.Code, res
+}
+
+// leased opens a deploy (an empty plan) for tests of the requests that follow
+// one.
+func (c *deltaClient) leased() {
+	c.t.Helper()
+	c.lease = ""
+	if code, _ := c.plan(quick.DeployManifest{}); code != http.StatusOK || c.lease == "" {
+		c.t.Fatalf("empty plan: %d, lease %q", code, c.lease)
+	}
 }
 
 // records encodes chunk records (gzip stream) for the given hashes.
@@ -147,14 +167,18 @@ func (c *deltaClient) upload(data map[string][]byte, hashes []string) int {
 func (c *deltaClient) commit(m quick.DeployManifest) *httptest.ResponseRecorder {
 	c.t.Helper()
 	b, _ := json.Marshal(m)
-	return c.do(http.MethodPost, "/api/deploy/commit", b, nil)
+	w := c.do(http.MethodPost, "/api/deploy/commit", b, nil)
+	if w.Code != http.StatusConflict {
+		c.lease = "" // the deploy is over, like the CLI's: the next plan starts a new one
+	}
+	return w
 }
 
 // deploy runs plan, upload, commit and returns the bytes of the uploaded chunks.
 func (c *deltaClient) deploy(files map[string][]byte) int64 {
 	c.t.Helper()
 	m, data := manifestOf(c.t, files)
-	code, pl := c.plan(m)
+	code, pl := c.plan(m) // with c.lease if a deploy is in progress (re-plan)
 	if code != http.StatusOK {
 		c.t.Fatalf("plan: %d", code)
 	}
@@ -294,6 +318,7 @@ func TestDeltaCommitWithoutUploadIsConflict(t *testing.T) {
 	s := newDeltaTestServer(t)
 	c := &deltaClient{t: t, s: s, site: "demo"}
 	m, _ := manifestOf(t, map[string][]byte{"index.html": []byte("v1")})
+	c.plan(m)
 	if w := c.commit(m); w.Code != http.StatusConflict {
 		t.Fatalf("commit with missing chunks: %d, want 409", w.Code)
 	}
@@ -302,10 +327,11 @@ func TestDeltaCommitWithoutUploadIsConflict(t *testing.T) {
 	}
 }
 
-// Another deploy replacing the live version between plan and commit takes away
-// chunks the plan counted as present: the commit answers 409 (re-plan), the
-// live site is the other deploy's, and a fresh round succeeds.
-func TestDeltaCommitAfterConcurrentDeployIsConflict(t *testing.T) {
+// Another deploy can replace the live version between plan and commit only by
+// breaking the lease (--force): the first commit is refused (lease lost), the
+// live site is the other deploy's, and a fresh run succeeds reusing what the
+// first one staged.
+func TestDeltaCommitAfterConcurrentDeployIsRefused(t *testing.T) {
 	s := newDeltaTestServer(t)
 	c := &deltaClient{t: t, s: s, site: "demo"}
 	big := randData(8, 1<<20)
@@ -315,13 +341,14 @@ func TestDeltaCommitAfterConcurrentDeployIsConflict(t *testing.T) {
 	m, data := manifestOf(t, files)
 	_, pl := c.plan(m)
 	c.upload(data, pl.Missing) // only index.html: big.bin is live
-	c.deploy(map[string][]byte{"index.html": []byte("theirs")})
+	o := &deltaClient{t: t, s: s, site: "demo", force: true}
+	o.deploy(map[string][]byte{"index.html": []byte("theirs")})
 
-	if w := c.commit(m); w.Code != http.StatusConflict {
-		t.Fatalf("commit after concurrent deploy: %d, want 409", w.Code)
+	if w := c.commit(m); w.Code != http.StatusLocked {
+		t.Fatalf("commit after a forced concurrent deploy: %d, want 423", w.Code)
 	}
 	if string(readSite(t, s, "demo", "index.html")) != "theirs" {
-		t.Fatal("live site changed by the conflicting commit")
+		t.Fatal("live site changed by the refused commit")
 	}
 	if sent := c.deploy(files); sent != int64(len(big)) {
 		t.Fatalf("retry sent %d bytes, want %d (big.bin only)", sent, len(big))
@@ -472,6 +499,7 @@ func TestDeltaManifestValidation(t *testing.T) {
 		if code, _ := c.plan(m); code != http.StatusBadRequest {
 			t.Errorf("%s: plan %d, want 400", name, code)
 		}
+		c.leased()
 		if w := c.commit(m); w.Code != http.StatusBadRequest {
 			t.Errorf("%s: commit %d, want 400", name, w.Code)
 		}
@@ -525,6 +553,7 @@ func TestDeltaUploadRejectsOversizedRecord(t *testing.T) {
 	b := make([]byte, chunk.MaxSize+1)
 	h := sha256.Sum256(b)
 	hx := hex.EncodeToString(h[:])
+	c.leased()
 	if code := c.upload(map[string][]byte{hx: b}, []string{hx}); code != http.StatusBadRequest {
 		t.Fatalf("oversized chunk: %d, want 400", code)
 	}

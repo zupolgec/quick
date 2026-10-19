@@ -181,7 +181,7 @@ func deploy(args []string) {
 	private := fs.String("private", "", "make the site private with this code (--private= empty = generated)")
 	yes := fs.Bool("yes", false, "skip the confirmation prompt")
 	dryRun := fs.Bool("dry-run", false, "show what would be published without doing it")
-	force := fs.Bool("force", false, "proceed even if there are no files to publish")
+	force := fs.Bool("force", false, "publish even if the folder is empty or someone else is publishing this site right now")
 	fs.Parse(args)
 	// flag.Parse stops at the first positional; recover those placed after the
 	// flags, else `quick deploy --server X site ./build` would silently drop them.
@@ -298,10 +298,10 @@ func deploy(args []string) {
 	// Delta deploy when the server supports it (only changed chunks travel);
 	// otherwise, or if the server turns out not to have it, the whole tar.
 	var res quick.DeployResponse
+	var st deltaStats
 	delta := cfg.DeltaDeploy
 	if delta {
-		var st deltaStats
-		res, st, err = deltaDeploy(cfg, *name, tok, dir, pl)
+		res, st, err = deltaDeploy(cfg, *name, tok, dir, pl, *force)
 		switch {
 		case errors.Is(err, errNoDelta):
 			delta = false
@@ -314,7 +314,8 @@ func deploy(args []string) {
 		}
 	}
 	if !delta {
-		res, err = tarDeploy(cfg, *name, tok, dir, pl)
+		// The lease of a delta attempt that fell back (busy server) goes along.
+		res, err = tarDeploy(cfg, *name, tok, dir, pl, *force && st.lease == "", st.lease)
 		fatal(err)
 	}
 	fmt.Printf("%s %s published → %s\n", check(), cBold(*name), cCyan(res.URL))
@@ -339,25 +340,35 @@ func deploy(args []string) {
 	}
 }
 
-// tarDeploy uploads the whole folder as one tar.gz (servers without delta deploy).
-func tarDeploy(cfg *cliConfig, name, tok, dir string, pl *plan) (quick.DeployResponse, error) {
+// tarDeploy uploads the whole folder as one tar.gz (servers without delta
+// deploy, or busy). force breaks another deploy's lease; lease continues a
+// delta attempt's.
+func tarDeploy(cfg *cliConfig, name, tok, dir string, pl *plan, force bool, lease string) (quick.DeployResponse, error) {
 	var res quick.DeployResponse
 	payload, err := tarGzFromPlan(dir, pl)
 	if err != nil {
 		return res, err
 	}
-	req, err := http.NewRequest(http.MethodPost, cfg.Server+"/api/deploy?name="+url.QueryEscape(name), payload)
+	u := cfg.Server + "/api/deploy?name=" + url.QueryEscape(name)
+	if force {
+		u += "&force=1"
+	}
+	req, err := http.NewRequest(http.MethodPost, u, payload)
 	if err != nil {
 		return res, err
 	}
 	req.Header.Set("Content-Type", "application/gzip")
 	req.Header.Set("Authorization", "Bearer "+tok)
+	leaseRequest(req, lease)
 	resp, err := deployClient.Do(req)
 	if err != nil {
 		return res, err
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
+	if err := lockedResponse(resp.StatusCode, respBody); err != nil {
+		return res, err
+	}
 	if resp.StatusCode != http.StatusOK {
 		return res, fmt.Errorf("deploy failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}

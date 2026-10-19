@@ -415,6 +415,16 @@ func (s *server) handleRollback(w http.ResponseWriter, r *http.Request, name str
 		http.Error(w, reason, http.StatusForbidden)
 		return
 	}
+	// Not during a deploy (it would publish over the rollback anyway), unless
+	// forced: the deploy loses the site (lease.go).
+	if forceRequested(r) {
+		if broken := s.leases.clear(name); broken != nil {
+			logBroken(name, broken, email)
+		}
+	} else if err := s.leases.busy(name); err != nil {
+		leaseRefused(w, r, err)
+		return
+	}
 	old, err := s.clearVersions(name, &cur)
 	if err != nil {
 		http.Error(w, "could not update site state: "+err.Error(), http.StatusServiceUnavailable)
@@ -556,6 +566,10 @@ func (s *server) handleDelete(w http.ResponseWriter, r *http.Request, name strin
 	}
 	if s.stage != nil {
 		s.stage.removeSite(name)
+	}
+	// A deploy in progress ends here: its commit can't bring the site back.
+	if broken := s.leases.clear(name); broken != nil {
+		logBroken(name, broken, email)
 	}
 	if !existed {
 		http.Error(w, "site not found", http.StatusNotFound)

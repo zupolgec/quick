@@ -57,6 +57,7 @@ type server struct {
 	apexMux      *http.ServeMux
 	noAuth       bool        // local development only
 	locks        keyedMutex  // serializes per-site writes (single instance)
+	leases       leaseTable  // one deploy at a time per site (lease.go)
 	stage        *chunkStage // delta deploy staging; nil = delta deploy off
 	oidcIssuer   string      // QUICK_OIDC_ISSUER; empty = Google
 	oidcMu       sync.Mutex  // guards oidcVerifier (lazy init)
@@ -281,12 +282,19 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	unlock := s.locks.lock(name)
+	unlock := sync.OnceFunc(s.locks.lock(name))
 	defer unlock()
 	cur, ident, ok := s.authorizeDeploy(w, r, name, true)
 	if !ok {
 		return
 	}
+	// A deploy of its own: refused during another one, holds the lease while
+	// it uploads (lease.go).
+	lease, ok := s.beginLease(w, r, name, ident, maxUpload, unlock)
+	if !ok {
+		return
+	}
+	defer s.leases.release(name, lease)
 	body := http.MaxBytesReader(w, r.Body, maxUpload)
 	gz, err := gzip.NewReader(body)
 	if err != nil {

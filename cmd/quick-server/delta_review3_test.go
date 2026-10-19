@@ -76,6 +76,7 @@ func TestDeltaCommitPinDoesNotBypassSiteCap(t *testing.T) {
 	s.stage.maxSites = 1
 
 	mb, _ := manifestOf(t, map[string][]byte{"index.html": []byte("b")})
+	b.leased()
 	planDuringCommit := -1
 	beforePublish = func(string) {
 		m, _ := manifestOf(t, tinyFiles("b", 3))

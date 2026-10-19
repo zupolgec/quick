@@ -100,7 +100,7 @@ func runFake(t *testing.T, f *fakeDeltaServer, dir string, p *plan) (quick.Deplo
 	t.Helper()
 	srv := httptest.NewServer(f)
 	defer srv.Close()
-	return deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p)
+	return deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p, false)
 }
 
 // A 409 on commit (chunks vanished on the server) means plan again: the CLI
@@ -152,7 +152,7 @@ func TestDeltaDeployPlanStatusHandling(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "nope", code)
 		}))
-		_, _, err := deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p)
+		_, _, err := deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p, false)
 		srv.Close()
 		if errors.Is(err, errDeltaBusy) != wantFallback || err == nil {
 			t.Errorf("plan %d: err = %v, fallback want %v", code, err, wantFallback)
@@ -171,7 +171,7 @@ func TestDeltaUploadManyFilesWithLowFDLimit(t *testing.T) {
 	srv := httptest.NewServer(f)
 	defer srv.Close()
 	withFDLimit(t, 512, func() {
-		if _, _, err := deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p); err != nil {
+		if _, _, err := deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p, false); err != nil {
 			t.Fatal(err)
 		}
 	})

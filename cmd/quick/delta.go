@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/zupolgec/quick/internal/chunk"
 	"github.com/zupolgec/quick/internal/quick"
@@ -48,8 +49,58 @@ type localChunk struct {
 }
 
 type deltaStats struct {
-	total int64 // folder size
-	sent  int64 // raw bytes of the uploaded chunks
+	total int64  // folder size
+	sent  int64  // raw bytes of the uploaded chunks
+	lease string // the server's deploy lease, for the tar fallback
+}
+
+// lockedError is a 423 from the server: another deploy of the site is in
+// progress, or this one lost its lease. Never retried.
+type lockedError struct{ quick.DeployLocked }
+
+func (e *lockedError) Error() string {
+	if e.DeployLocked.Error == quick.LeaseLost {
+		lost := "this deploy lost the site"
+		if e.Holder != "" {
+			lost += " to " + e.Holder
+		}
+		return lost + " (taken over with --force, site deleted, or idle too long): nothing was published, run it again"
+	}
+	who := e.Holder
+	if who == "" {
+		who = "someone else"
+	}
+	since := ""
+	if t, err := time.Parse(time.RFC3339, e.Since); err == nil {
+		t, now := t.Local(), time.Now()
+		layout := "15:04"
+		if t.YearDay() != now.YearDay() || t.Year() != now.Year() {
+			layout = "Jan 2 15:04"
+		}
+		since = " (since " + t.Format(layout) + ")"
+	}
+	return who + " is publishing this site" + since + "; retry in a moment or use --force"
+}
+
+// lockedResponse turns a 423 into a lockedError; nil for any other status.
+func lockedResponse(code int, body []byte) error {
+	if code != http.StatusLocked {
+		return nil
+	}
+	var l quick.DeployLocked
+	if json.Unmarshal(body, &l) != nil || l.Error == "" {
+		return fmt.Errorf("deploy refused (423): %s", strings.TrimSpace(string(body)))
+	}
+	return &lockedError{l}
+}
+
+// leaseRequest sets what every deploy request carries: the lease of the deploy
+// it belongs to (if any) and a JSON preference for 423 answers.
+func leaseRequest(req *http.Request, lease string) {
+	req.Header.Set("Accept", "application/json")
+	if lease != "" {
+		req.Header.Set(quick.DeployLeaseHeader, lease)
+	}
 }
 
 // buildManifest chunks exactly the files selected by the plan (same ignore
@@ -92,8 +143,10 @@ func buildManifest(dir string, p *plan) (quick.DeployManifest, map[string]localC
 }
 
 // deltaDeploy publishes the folder sending only the chunks the server lacks.
-// errNoDelta if the server doesn't have the endpoints.
-func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan) (quick.DeployResponse, deltaStats, error) {
+// errNoDelta if the server doesn't have the endpoints. The first plan opens
+// the site's deploy lease (force breaks another deploy's); every later
+// request, re-plans included, carries it.
+func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan, force bool) (quick.DeployResponse, deltaStats, error) {
 	var res quick.DeployResponse
 	m, locs, err := buildManifest(dir, p)
 	if err != nil {
@@ -106,7 +159,11 @@ func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan) (quick.DeployRe
 	st := deltaStats{total: p.totalSize}
 	q := "?name=" + url.QueryEscape(name)
 	for attempt := 1; ; attempt++ {
-		code, out, err := deltaPost(cfg, tok, "/api/deploy/plan"+q, body, true)
+		pq := q
+		if force && attempt == 1 {
+			pq += "&force=1"
+		}
+		code, out, err := deltaPost(cfg, tok, "/api/deploy/plan"+pq, st.lease, body, true)
 		if err != nil {
 			return res, st, err
 		}
@@ -116,6 +173,9 @@ func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan) (quick.DeployRe
 		if code == http.StatusServiceUnavailable {
 			return res, st, errDeltaBusy
 		}
+		if err := lockedResponse(code, out); err != nil {
+			return res, st, err
+		}
 		if code != http.StatusOK {
 			return res, st, fmt.Errorf("deploy failed (%d): %s", code, strings.TrimSpace(string(out)))
 		}
@@ -123,7 +183,8 @@ func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan) (quick.DeployRe
 		if err := json.Unmarshal(out, &pl); err != nil {
 			return res, st, err
 		}
-		n, err := uploadChunks(cfg, tok, q, pl.Missing, locs)
+		st.lease = pl.Lease
+		n, err := uploadChunks(cfg, tok, q, st.lease, pl.Missing, locs)
 		st.sent += n
 		if errors.Is(err, errReplan) && attempt < commitAttempts {
 			continue // the server forgot the plan (expired, superseded): plan again
@@ -131,8 +192,11 @@ func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan) (quick.DeployRe
 		if err != nil {
 			return res, st, err
 		}
-		code, out, err = deltaPost(cfg, tok, "/api/deploy/commit"+q, body, true)
+		code, out, err = deltaPost(cfg, tok, "/api/deploy/commit"+q, st.lease, body, true)
 		if err != nil {
+			return res, st, err
+		}
+		if err := lockedResponse(code, out); err != nil {
 			return res, st, err
 		}
 		if code == http.StatusConflict && attempt < commitAttempts {
@@ -146,7 +210,7 @@ func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan) (quick.DeployRe
 }
 
 // uploadChunks sends the missing chunks in gzip batches of chunk records.
-func uploadChunks(cfg *cliConfig, tok, q string, missing []string, locs map[string]localChunk) (int64, error) {
+func uploadChunks(cfg *cliConfig, tok, q, lease string, missing []string, locs map[string]localChunk) (int64, error) {
 	var sent int64
 	var buf bytes.Buffer
 	var gz *gzip.Writer
@@ -158,12 +222,15 @@ func uploadChunks(cfg *cliConfig, tok, q string, missing []string, locs map[stri
 		if err := gz.Close(); err != nil {
 			return err
 		}
-		code, out, err := deltaPost(cfg, tok, "/api/deploy/chunks"+q, buf.Bytes(), false)
+		code, out, err := deltaPost(cfg, tok, "/api/deploy/chunks"+q, lease, buf.Bytes(), false)
 		if err != nil {
 			return err
 		}
 		if code == http.StatusConflict {
 			return errReplan
+		}
+		if err := lockedResponse(code, out); err != nil {
+			return err
 		}
 		if code != http.StatusOK {
 			return fmt.Errorf("chunk upload failed (%d): %s", code, strings.TrimSpace(string(out)))
@@ -231,12 +298,13 @@ func gzipJSON(v any) ([]byte, error) {
 }
 
 // deltaPost POSTs a gzip body and returns status and response body.
-func deltaPost(cfg *cliConfig, tok, path string, body []byte, manifest bool) (int, []byte, error) {
+func deltaPost(cfg *cliConfig, tok, path, lease string, body []byte, manifest bool) (int, []byte, error) {
 	req, err := http.NewRequest(http.MethodPost, cfg.Server+path, bytes.NewReader(body))
 	if err != nil {
 		return 0, nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+tok)
+	leaseRequest(req, lease)
 	if manifest {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Content-Encoding", "gzip")
