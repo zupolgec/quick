@@ -25,6 +25,9 @@ import (
 // errNoDelta: the server has no delta endpoints (older server): use the tar.
 var errNoDelta = errors.New("server does not support delta deploy")
 
+// errReplan: the server refused chunks not covered by an outstanding plan.
+var errReplan = errors.New("chunk upload failed (409): the server asks to plan again")
+
 // chunkBatch is the raw chunk bytes per upload request, well under the
 // server's per-request cap.
 const chunkBatch = 32 << 20
@@ -115,6 +118,9 @@ func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan) (quick.DeployRe
 		}
 		n, err := uploadChunks(cfg, tok, q, pl.Missing, locs)
 		st.sent += n
+		if errors.Is(err, errReplan) && attempt < commitAttempts {
+			continue // the server forgot the plan (expired, superseded): plan again
+		}
 		if err != nil {
 			return res, st, err
 		}
@@ -149,6 +155,9 @@ func uploadChunks(cfg *cliConfig, tok, q string, missing []string, locs map[stri
 		if err != nil {
 			return err
 		}
+		if code == http.StatusConflict {
+			return errReplan
+		}
 		if code != http.StatusOK {
 			return fmt.Errorf("chunk upload failed (%d): %s", code, strings.TrimSpace(string(out)))
 		}
@@ -157,9 +166,11 @@ func uploadChunks(cfg *cliConfig, tok, q string, missing []string, locs map[stri
 		gz, raw = nil, 0
 		return nil
 	}
-	files := map[string]*os.File{}
+	// One file open at a time: missing chunks come in manifest order, so
+	// consecutive ones mostly share a file.
+	var f *os.File
 	defer func() {
-		for _, f := range files {
+		if f != nil {
 			f.Close()
 		}
 	}()
@@ -169,13 +180,15 @@ func uploadChunks(cfg *cliConfig, tok, q string, missing []string, locs map[stri
 		if !ok {
 			return sent, fmt.Errorf("server asked for unknown chunk %s", h)
 		}
-		f := files[loc.path]
-		if f == nil {
+		if f == nil || f.Name() != loc.path {
+			if f != nil {
+				f.Close()
+			}
 			var err error
 			if f, err = os.Open(loc.path); err != nil {
+				f = nil
 				return sent, err
 			}
-			files[loc.path] = f
 		}
 		b := data[:loc.size]
 		if _, err := f.ReadAt(b, loc.off); err != nil {
