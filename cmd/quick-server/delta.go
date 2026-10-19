@@ -179,7 +179,8 @@ type chunkLoc struct {
 
 // deltaRequest runs the checks shared by the delta endpoints before auth:
 // method, feature enabled, valid name.
-func (s *server) deltaRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
+// The body gets the read deadlines of timeouts.go, total from now.
+func (s *server) deltaRequest(w http.ResponseWriter, r *http.Request, total time.Duration) (string, bool) {
 	if s.stage == nil {
 		http.NotFound(w, r)
 		return "", false
@@ -188,11 +189,12 @@ func (s *server) deltaRequest(w http.ResponseWriter, r *http.Request) (string, b
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return "", false
 	}
+	s.boundBody(w, r, total)
 	return deployName(w, r)
 }
 
 func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
-	name, ok := s.deltaRequest(w, r)
+	name, ok := s.deltaRequest(w, r, s.timeouts.manifestOr())
 	if !ok {
 		return
 	}
@@ -200,7 +202,7 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	lease, ok := s.beginLease(w, r, name, ident, maxManifest, nil)
+	lease, ok := s.beginLease(w, r, name, ident, nil)
 	if !ok {
 		return
 	}
@@ -262,7 +264,7 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) handleDeployChunks(w http.ResponseWriter, r *http.Request) {
-	name, ok := s.deltaRequest(w, r)
+	name, ok := s.deltaRequest(w, r, s.timeouts.uploadOr())
 	if !ok {
 		return
 	}
@@ -270,7 +272,7 @@ func (s *server) handleDeployChunks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	lease, ok := s.joinLease(w, r, name, ident, maxUpload, nil)
+	lease, ok := s.joinLease(w, r, name, ident, nil)
 	if !ok {
 		return
 	}
@@ -513,7 +515,7 @@ func (s *server) writeDeltaTar(w io.Writer, site string, files []deltaFile, src 
 }
 
 func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
-	name, ok := s.deltaRequest(w, r)
+	name, ok := s.deltaRequest(w, r, s.timeouts.manifestOr())
 	if !ok {
 		return
 	}
@@ -523,7 +525,7 @@ func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	lease, ok := s.joinLease(w, r, name, ident, maxManifest, unlock)
+	lease, ok := s.joinLease(w, r, name, ident, unlock)
 	if !ok {
 		return
 	}

@@ -238,6 +238,13 @@ func uploadChunks(cfg *cliConfig, tok, q, lease string, missing []string, locs m
 		}
 		code, out, err := deltaPost(cfg, tok, "/api/deploy/chunks"+q, lease, buf.Bytes(), false)
 		if err != nil {
+			// The server reads only part of a refused upload and may close
+			// the connection before we read its 423: ask with an empty batch.
+			if pc, pout, perr := deltaPost(cfg, tok, "/api/deploy/chunks"+q, lease, emptyGzip(), false); perr == nil {
+				if lerr := lockedResponse(pc, pout); lerr != nil {
+					return lerr
+				}
+			}
 			return err
 		}
 		if code == http.StatusConflict {
@@ -297,6 +304,14 @@ func uploadChunks(cfg *cliConfig, tok, q, lease string, missing []string, locs m
 		}
 	}
 	return sent, flush()
+}
+
+// emptyGzip is a chunk batch with no records.
+func emptyGzip() []byte {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	gz.Close()
+	return buf.Bytes()
 }
 
 func gzipJSON(v any) ([]byte, error) {

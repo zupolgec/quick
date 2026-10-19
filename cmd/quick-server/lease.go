@@ -53,7 +53,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -347,28 +346,29 @@ func leaseRefused(w http.ResponseWriter, r *http.Request, err *leaseError) {
 
 func takeoverRequested(r *http.Request) bool { return r.URL.Query().Get("takeover") == "1" }
 
-// refuseDeploy answers a deploy request refused by the lease. The body is
-// read first (up to limit, discarded): a client still sending a large upload
-// when the server answers and closes would see a connection reset instead
-// of the 423 (older CLIs and proxies don't wait for 100-continue). unlock,
-// if set, drops the site lock before that read (callers hold it through
-// sync.OnceFunc, so their deferred unlock stays safe).
-func refuseDeploy(w http.ResponseWriter, r *http.Request, err *leaseError, limit int64, unlock func()) {
+// refuseDeploy answers a deploy request refused by the lease. Part of the
+// body is read first (drainRefused: bounded in bytes and time): a client
+// still sending when the server answers and closes may see a connection
+// reset instead of the 423 (older CLIs and proxies don't wait for
+// 100-continue), so small bodies get a clean answer. unlock, if set, drops
+// the site lock before that read (callers hold it through sync.OnceFunc, so
+// their deferred unlock stays safe).
+func (s *server) refuseDeploy(w http.ResponseWriter, r *http.Request, err *leaseError, unlock func()) {
 	if unlock != nil {
 		unlock()
 	}
-	_, _ = io.Copy(io.Discard, http.MaxBytesReader(w, r.Body, limit))
+	s.drainRefused(r)
 	leaseRefused(w, r, err)
 }
 
 // beginLease is begin for a handler: the request's id and takeover flag, the
 // refusal written (see refuseDeploy), a broken lease logged. ok=false:
 // response written.
-func (s *server) beginLease(w http.ResponseWriter, r *http.Request, site string, ident authIdentity, limit int64, unlock func()) (*deployLease, bool) {
+func (s *server) beginLease(w http.ResponseWriter, r *http.Request, site string, ident authIdentity, unlock func()) (*deployLease, bool) {
 	id := r.Header.Get(quick.DeployLeaseHeader)
 	l, broken, err := s.leases.begin(site, id, ownerOf(ident), actorOf(ident), takeoverRequested(r))
 	if err != nil {
-		refuseDeploy(w, r, err, limit, unlock)
+		s.refuseDeploy(w, r, err, unlock)
 		return nil, false
 	}
 	if broken != nil {
@@ -381,10 +381,10 @@ func (s *server) beginLease(w http.ResponseWriter, r *http.Request, site string,
 }
 
 // joinLease is join for a handler, refusals as in beginLease.
-func (s *server) joinLease(w http.ResponseWriter, r *http.Request, site string, ident authIdentity, limit int64, unlock func()) (*deployLease, bool) {
+func (s *server) joinLease(w http.ResponseWriter, r *http.Request, site string, ident authIdentity, unlock func()) (*deployLease, bool) {
 	l, err := s.leases.join(site, r.Header.Get(quick.DeployLeaseHeader), ownerOf(ident))
 	if err != nil {
-		refuseDeploy(w, r, err, limit, unlock)
+		s.refuseDeploy(w, r, err, unlock)
 		return nil, false
 	}
 	return l, true

@@ -217,6 +217,33 @@ func TestTarFallbackFailureReleasesTheLease(t *testing.T) {
 	}
 }
 
+// A big refused upload may see the connection closed instead of the 423 (the
+// server reads only part of a refused body): the CLI asks again with an empty
+// batch to learn why, and shows the lease message.
+func TestUploadResetShowsTheLeaseMessage(t *testing.T) {
+	dir, p := deltaFixture(t, 2)
+	l := &leaseServer{fakeDeltaServer: &fakeDeltaServer{have: map[string]bool{}}}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/deploy/chunks" {
+			if r.ContentLength > 40 { // a real batch: drop the connection
+				conn, _, _ := http.NewResponseController(w).Hijack()
+				conn.Close()
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusLocked)
+			json.NewEncoder(w).Encode(quick.DeployLocked{Error: quick.LeaseLost, Holder: "luigi@example.com"})
+			return
+		}
+		l.ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+	_, _, err := deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p, false)
+	if err == nil || !strings.Contains(err.Error(), "lost the site to luigi@example.com") {
+		t.Fatalf("err = %v, want the lease message", err)
+	}
+}
+
 // A lease older than today shows the date too.
 func TestLockedMessageOlderThanToday(t *testing.T) {
 	since := time.Now().AddDate(0, 0, -3)

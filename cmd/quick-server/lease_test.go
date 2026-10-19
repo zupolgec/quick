@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -413,50 +412,27 @@ func TestLeaseTarFallbackWithTheLease(t *testing.T) {
 	b.deploy(map[string][]byte{"index.html": []byte("b")})
 }
 
-// A refused upload still being sent gets its 423, not a connection reset (the
-// server reads the body before answering), and reading it doesn't hold the
-// site lock: the holder's commit goes through meanwhile.
+// A refused upload still being sent gets its 423 (the server reads a bounded
+// part of the body before answering), and that read doesn't hold the site
+// lock: the holder's commit goes through meanwhile.
 func TestLeaseRefusedUploadIsReadWithoutTheSiteLock(t *testing.T) {
 	s := newDeltaTestServer(t)
+	s.timeouts.drain = 2 * time.Second
 	srv := httptest.NewServer(s.apexMux)
-	defer srv.Close()
+	t.Cleanup(srv.Close)
 	a := &deltaClient{t: t, s: s, site: "demo"}
 	m := a.started(map[string][]byte{"index.html": []byte("a")})
 
-	pr, pw := io.Pipe()
-	done := make(chan *http.Response, 1)
-	go func() {
-		resp, err := http.Post(srv.URL+"/api/deploy?name=demo", "application/gzip", pr)
-		if err != nil {
-			t.Error(err)
-		}
-		done <- resp
-	}()
-	if _, err := pw.Write(randData(70, 4<<20)); err != nil { // the server is reading it
-		t.Fatal(err)
-	}
+	// 100 KiB then silence: the server keeps reading until the drain time.
+	done, _ := stalledPost(t, srv.URL+"/api/deploy?name=demo", "", randData(70, 100<<10))
+	time.Sleep(100 * time.Millisecond) // refused, now draining
 	commit := make(chan int, 1)
 	go func() { commit <- a.commit(m).Code }()
-	select {
-	case code := <-commit:
-		if code != http.StatusOK {
-			t.Fatalf("holder's commit: %d", code)
-		}
-	case <-time.After(5 * time.Second):
-		pw.CloseWithError(io.ErrClosedPipe) // unblock the server before failing
-		<-commit
-		t.Fatal("holder's commit blocked by a refused upload")
+	if code := within(t, "holder's commit during a refused upload", time.Second, commit); code != http.StatusOK {
+		t.Fatalf("holder's commit: %d", code)
 	}
-	pw.Write(randData(71, 4<<20))
-	pw.Close()
-	resp := <-done
-	if resp == nil {
-		t.Fatal("no response")
-	}
-	b, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusLocked || !strings.Contains(string(b), "is publishing this site") {
-		t.Fatalf("refused upload: %d %q", resp.StatusCode, b)
+	if code := within(t, "refused upload", 5*time.Second, done); code != http.StatusLocked {
+		t.Fatalf("refused upload: %d, want 423", code)
 	}
 }
 

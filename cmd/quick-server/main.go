@@ -55,12 +55,13 @@ type server struct {
 	rules        *rulesStore            // per-site _redirects, TTL-cached
 	siteProxy    *httputil.ReverseProxy // _redirects 200-to-URL proxying
 	apexMux      *http.ServeMux
-	noAuth       bool        // local development only
-	locks        keyedMutex  // serializes per-site writes (single instance)
-	leases       leaseTable  // one deploy at a time per site (lease.go)
-	stage        *chunkStage // delta deploy staging; nil = delta deploy off
-	oidcIssuer   string      // QUICK_OIDC_ISSUER; empty = Google
-	oidcMu       sync.Mutex  // guards oidcVerifier (lazy init)
+	noAuth       bool           // local development only
+	locks        keyedMutex     // serializes per-site writes (single instance)
+	leases       leaseTable     // one deploy at a time per site (lease.go)
+	timeouts     deployTimeouts // deploy request bodies (timeouts.go)
+	stage        *chunkStage    // delta deploy staging; nil = delta deploy off
+	oidcIssuer   string         // QUICK_OIDC_ISSUER; empty = Google
+	oidcMu       sync.Mutex     // guards oidcVerifier (lazy init)
 	oidcVerifier *oidc.IDTokenVerifier
 	domains      *domainIndex // custom domain -> site
 	domainsMu    sync.Mutex   // serializes custom domain changes across sites
@@ -136,7 +137,7 @@ func main() {
 
 	addr := quick.Env("QUICK_ADDR", ":8080")
 	log.Printf("quick-server %s on %s (base=%s, storage=%s, ownership=%s, noauth=%v)", version, addr, s.baseDomain, quick.Env("QUICK_STORAGE", "local"), s.ownership, s.noAuth)
-	log.Fatal(http.ListenAndServe(addr, http.HandlerFunc(s.route)))
+	log.Fatal(newHTTPServer(addr, http.HandlerFunc(s.route)).ListenAndServe())
 }
 
 // route dispatches by host: the apex (== baseDomain) is the control plane (API,
@@ -280,6 +281,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
+	s.boundBody(w, r, s.timeouts.uploadOr()) // it holds the site lock while it reads
 	name, ok := deployName(w, r)
 	if !ok {
 		return
@@ -292,7 +294,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	// A deploy of its own: refused during another one, holds the lease while
 	// it uploads (lease.go).
-	lease, ok := s.beginLease(w, r, name, ident, maxUpload, unlock)
+	lease, ok := s.beginLease(w, r, name, ident, unlock)
 	if !ok {
 		return
 	}
