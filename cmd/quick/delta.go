@@ -146,7 +146,20 @@ func buildManifest(dir string, p *plan) (quick.DeployManifest, map[string]localC
 // errNoDelta if the server doesn't have the endpoints. The first plan opens
 // the site's deploy lease (takeover breaks another deploy's); every later
 // request, re-plans included, carries it.
+// While it holds the lease it is recorded in held: given back if the process
+// is interrupted or the deploy fails, kept for the tar fallback (busy server).
 func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) (quick.DeployResponse, deltaStats, error) {
+	res, st, err := deltaRounds(cfg, name, tok, dir, p, takeover)
+	switch {
+	case err == nil:
+		held.clear() // the commit released it
+	case !errors.Is(err, errDeltaBusy):
+		held.release()
+	}
+	return res, st, err
+}
+
+func deltaRounds(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) (quick.DeployResponse, deltaStats, error) {
 	var res quick.DeployResponse
 	m, locs, err := buildManifest(dir, p)
 	if err != nil {
@@ -184,6 +197,7 @@ func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) 
 			return res, st, err
 		}
 		st.lease = pl.Lease
+		held.set(cfg, tok, name, st.lease)
 		n, err := uploadChunks(cfg, tok, q, st.lease, pl.Missing, locs)
 		st.sent += n
 		if errors.Is(err, errReplan) && attempt < commitAttempts {

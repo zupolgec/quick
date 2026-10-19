@@ -218,4 +218,24 @@ func TestConcurrentDeploysOfOneSite(t *testing.T) {
 	if !strings.Contains(srvLog.String(), "broke the deploy of dev@example.com") {
 		t.Fatal("forced takeover not logged")
 	}
+
+	// 4. Ctrl-C during an upload gives the site back: the rerun goes through at
+	// once, without --takeover and without waiting for the idle timeout.
+	a, aOut = startSlow()
+	if err := a.Process.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+	err = a.Wait()
+	if ee, ok := err.(*exec.ExitError); !ok || ee.ExitCode() != 130 {
+		t.Fatalf("interrupted deploy: %v\n%s", err, aOut.String())
+	}
+	if !strings.Contains(srvLog.String(), `deploy "game": released by its holder`) {
+		t.Fatalf("interrupted deploy didn't release:\n%s", aOut.String())
+	}
+	if out, err := quick(luigi).CombinedOutput(); err != nil {
+		t.Fatalf("deploy right after an interrupted one: %v\n%s", err, out)
+	}
+	if got := served(); got != "luigi" {
+		t.Fatalf("served %q after the interrupted deploy, want luigi", got)
+	}
 }

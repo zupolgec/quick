@@ -298,6 +298,7 @@ func deploy(args []string) {
 
 	// Delta deploy when the server supports it (only changed chunks travel);
 	// otherwise, or if the server turns out not to have it, the whole tar.
+	catchInterrupts() // from here on Ctrl-C gives the site back (lease.go)
 	var res quick.DeployResponse
 	var st deltaStats
 	delta := cfg.DeltaDeploy
@@ -317,6 +318,7 @@ func deploy(args []string) {
 	if !delta {
 		// The lease of a delta attempt that fell back (busy server) goes along.
 		res, err = tarDeploy(cfg, *name, tok, dir, pl, *takeover && st.lease == "", st.lease)
+		held.clear() // the server ends the lease with the tar upload, either way
 		fatal(err)
 	}
 	fmt.Printf("%s %s published → %s\n", check(), cBold(*name), cCyan(res.URL))

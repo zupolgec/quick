@@ -191,6 +191,7 @@ func (s *server) buildApexMux() *http.ServeMux {
 	m.HandleFunc("/api/deploy/plan", s.handleDeployPlan)
 	m.HandleFunc("/api/deploy/chunks", s.handleDeployChunks)
 	m.HandleFunc("/api/deploy/commit", s.handleDeployCommit)
+	m.HandleFunc("/api/deploy/lease", s.handleDeployLease)
 	m.HandleFunc("/api/sites", s.handleSites)
 	m.HandleFunc("/api/site/", s.handleSiteAPI)
 	m.HandleFunc("/oauth2/", s.handleOAuth2)

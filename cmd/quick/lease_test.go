@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -20,6 +22,7 @@ type leaseServer struct {
 	mu       sync.Mutex
 	seen     []string // "<path> lease=<id> takeover=<bool> accept=<json?>"
 	lockedOn string   // endpoint answering 423
+	failOn   string   // endpoint answering 500
 	locked   quick.DeployLocked
 }
 
@@ -27,8 +30,16 @@ func (l *leaseServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	l.mu.Lock()
 	l.seen = append(l.seen, fmt.Sprintf("%s lease=%s takeover=%v json=%v", r.URL.Path, r.Header.Get(quick.DeployLeaseHeader),
 		r.URL.Query().Get("takeover") == "1", strings.Contains(r.Header.Get("Accept"), "application/json")))
-	locked := r.URL.Path == l.lockedOn
+	locked, failed := r.URL.Path == l.lockedOn, r.URL.Path == l.failOn
 	l.mu.Unlock()
+	if r.URL.Path == "/api/deploy/lease" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if failed {
+		http.Error(w, "disk on fire", http.StatusInternalServerError)
+		return
+	}
 	if locked {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusLocked)
@@ -108,6 +119,70 @@ func TestDeltaDeployLeaseLost(t *testing.T) {
 		if strings.Count(strings.Join(l.seen, "\n"), "/api/deploy/plan") != 1 {
 			t.Fatalf("%s: re-planned after losing the lease:\n%s", path, strings.Join(l.seen, "\n"))
 		}
+	}
+}
+
+func (l *leaseServer) requests() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return strings.Join(l.seen, "\n")
+}
+
+// A deploy that gives up after getting the site gives it back right away;
+// one that succeeds doesn't need to (the commit released it).
+func TestDeltaDeployReleasesOnFailure(t *testing.T) {
+	for path, wantRelease := range map[string]bool{"/api/deploy/chunks": true, "/api/deploy/commit": true, "": false} {
+		l := &leaseServer{fakeDeltaServer: &fakeDeltaServer{have: map[string]bool{}}, failOn: path}
+		err := runLease(t, l, false)
+		if (err != nil) != (path != "") {
+			t.Fatalf("fail on %q: err = %v", path, err)
+		}
+		got := strings.Contains(l.requests(), "/api/deploy/lease lease=L1")
+		if got != wantRelease {
+			t.Fatalf("fail on %q: released %v, want %v\n%s", path, got, wantRelease, l.requests())
+		}
+		if held.held() {
+			t.Fatalf("fail on %q: lease still recorded as held", path)
+		}
+	}
+}
+
+// Ctrl-C (or SIGTERM) while holding a lease: the CLI releases it before
+// exiting with the interrupted status, so a rerun doesn't have to wait.
+func TestInterruptReleasesTheLease(t *testing.T) {
+	l := &leaseServer{fakeDeltaServer: &fakeDeltaServer{have: map[string]bool{}}}
+	srv := httptest.NewServer(l)
+	defer srv.Close()
+	for sig, wantCode := range map[os.Signal]int{os.Interrupt: 130, syscall.SIGTERM: 143} {
+		var a activeLease
+		a.set(&cliConfig{Server: srv.URL}, "tok", "demo", "L7")
+		sigs := make(chan os.Signal, 1)
+		exited := make(chan int, 1)
+		go watchInterrupts(sigs, &a, func(code int) { exited <- code })
+		sigs <- sig
+		select {
+		case code := <-exited:
+			if code != wantCode {
+				t.Fatalf("%v: exit %d, want %d", sig, code, wantCode)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%v: no exit", sig)
+		}
+		if !strings.Contains(l.requests(), "/api/deploy/lease lease=L7") {
+			t.Fatalf("%v: no release:\n%s", sig, l.requests())
+		}
+		l.mu.Lock()
+		l.seen = nil
+		l.mu.Unlock()
+	}
+	// Nothing held: just exit.
+	var a activeLease
+	sigs := make(chan os.Signal, 1)
+	exited := make(chan int, 1)
+	go watchInterrupts(sigs, &a, func(code int) { exited <- code })
+	sigs <- os.Interrupt
+	if code := <-exited; code != 130 || l.requests() != "" {
+		t.Fatalf("exit %d, requests %q", code, l.requests())
 	}
 }
 

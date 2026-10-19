@@ -204,8 +204,10 @@ del sito** prima di sovrascriverne il lavoro.
 deploy dello stesso sito (anche tuo, da un altro terminale) e il rollback vengono
 rifiutati con un messaggio che dice chi sta pubblicando e da quando, ad esempio
 `mario@… is publishing this site (since 14:02); retry in a moment or use --takeover`.
-Il sito si libera appena quel deploy finisce, oppure dopo due minuti senza
-attività se è stato interrotto (un deploy interrotto non pubblica mai niente).
+Il sito si libera appena quel deploy finisce. Se lo interrompi (Ctrl-C) o
+fallisce, la CLI libera subito il sito; se la CLI si chiude di colpo o perde la
+rete, il sito si libera da solo dopo due minuti senza attività. Un deploy
+interrotto non pubblica mai niente.
 `--takeover` (su `deploy` e `rollback`) prende il posto del deploy in corso: chi lo
 stava facendo si ferma senza pubblicare e la CLI glielo dice. Eliminare il sito
 è sempre possibile e interrompe il deploy in corso. Anche le CLI meno recenti

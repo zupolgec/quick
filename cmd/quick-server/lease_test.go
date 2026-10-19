@@ -381,6 +381,66 @@ func TestLeaseRefusedUploadIsReadWithoutTheSiteLock(t *testing.T) {
 	}
 }
 
+// DELETE /api/deploy/lease: an interrupted CLI gives the site back at once.
+// Only with the current id, idempotent, never publishes.
+func TestLeaseReleaseEndpoint(t *testing.T) {
+	s := newDeltaTestServer(t)
+	a := &deltaClient{t: t, s: s, site: "demo"}
+	a.deploy(map[string][]byte{"index.html": []byte("v1")})
+	m := a.started(map[string][]byte{"index.html": []byte("v2")})
+	held := a.lease
+
+	b := &deltaClient{t: t, s: s, site: "demo"}
+	if w := b.do(http.MethodDelete, "/api/deploy/lease", nil, nil); w.Code != http.StatusBadRequest {
+		t.Fatalf("release without an id: %d, want 400", w.Code)
+	}
+	b.lease = "bogus"
+	if w := b.do(http.MethodDelete, "/api/deploy/lease", nil, nil); w.Code != http.StatusLocked {
+		t.Fatalf("release with another id: %d, want 423", w.Code)
+	}
+	b.lease = ""
+	lockedBody(t, b, "/api/deploy/plan", manifestJSON(t, map[string][]byte{"x": []byte("b")})) // still held
+
+	if w := a.do(http.MethodDelete, "/api/deploy/lease", nil, nil); w.Code != http.StatusNoContent {
+		t.Fatalf("release: %d %s, want 204", w.Code, w.Body.String())
+	}
+	if w := a.do(http.MethodDelete, "/api/deploy/lease", nil, nil); w.Code != http.StatusNoContent {
+		t.Fatalf("second release: %d, want 204 (idempotent)", w.Code)
+	}
+	if got := string(readSite(t, s, "demo", "index.html")); got != "v1" {
+		t.Fatalf("live after release: %q, want v1", got)
+	}
+	if res := lockedBody(t, a, "/api/deploy/commit", mustJSON(m)); res.Error != quick.LeaseLost {
+		t.Fatalf("commit after release: %+v", res)
+	}
+	b.deploy(map[string][]byte{"index.html": []byte("b")}) // free right away
+	// A released id can't free someone else's lease.
+	b.started(map[string][]byte{"index.html": []byte("b2")})
+	a.lease = held
+	if w := a.do(http.MethodDelete, "/api/deploy/lease", nil, nil); w.Code != http.StatusLocked {
+		t.Fatalf("stale release over another deploy: %d, want 423", w.Code)
+	}
+	if w := a.do(http.MethodPost, "/api/deploy/lease", nil, nil); w.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST: %d, want 405", w.Code)
+	}
+}
+
+// Releasing needs the usual deploy auth.
+func TestLeaseReleaseNeedsAuth(t *testing.T) {
+	s := newDeltaTestServer(t)
+	a := &deltaClient{t: t, s: s, site: "demo"}
+	a.started(map[string][]byte{"index.html": []byte("a")})
+	s.noAuth = false
+	anon := &deltaClient{t: t, s: s, site: "demo", lease: a.lease}
+	if w := anon.do(http.MethodDelete, "/api/deploy/lease", nil, nil); w.Code != http.StatusUnauthorized {
+		t.Fatalf("anonymous release: %d, want 401", w.Code)
+	}
+	s.noAuth = true
+	if w := a.do(http.MethodDelete, "/api/deploy/lease", nil, nil); w.Code != http.StatusNoContent {
+		t.Fatalf("release: %d", w.Code)
+	}
+}
+
 // A forced tar upload breaks a lease too.
 func TestLeaseForcedTarDeploy(t *testing.T) {
 	s := newDeltaTestServer(t)

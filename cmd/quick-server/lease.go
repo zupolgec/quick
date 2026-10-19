@@ -17,7 +17,9 @@
 //   - Released when the deploy ends: successful commit, or a commit failure
 //     other than 409 (which asks for a re-plan). A failed first plan releases
 //     the lease it just opened; a failed re-plan or upload keeps it (the CLI's
-//     tar fallback on 503 carries the id, otherwise it idles out).
+//     tar fallback on 503 carries the id, otherwise it idles out). An
+//     interrupted or failing CLI gives it back with DELETE /api/deploy/lease
+//     (handleDeployLease), so a rerun doesn't wait for the idle timeout.
 //   - Anything else that would publish the site meanwhile gets 423 Locked
 //     naming the holder and since when: a plan without the id (even by the
 //     same person from another terminal), chunks or commit with another or no
@@ -187,6 +189,22 @@ func (t *leaseTable) release(site string, l *deployLease) {
 	}
 }
 
+// drop ends the deploy holding id at its holder's request (interrupted CLI).
+// No lease, or a dead one: nothing to do. Another live lease: refused.
+func (t *leaseTable) drop(site, id string) (bool, *leaseError) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	cur := t.current(site, t.clock())
+	switch {
+	case cur == nil:
+		return false, nil
+	case cur.id != id:
+		return false, t.refusal(cur, true)
+	}
+	delete(t.m, site)
+	return true, nil
+}
+
 // busy reports the site's live lease (to refuse a rollback), nil if free.
 func (t *leaseTable) busy(site string) *leaseError {
 	t.mu.Lock()
@@ -269,6 +287,39 @@ func (s *server) joinLease(w http.ResponseWriter, r *http.Request, site string, 
 		return nil, false
 	}
 	return l, true
+}
+
+// handleDeployLease: DELETE /api/deploy/lease?name= with the lease id gives
+// the site back (an interrupted or failed CLI), so a rerun doesn't wait for
+// the idle timeout. Usual deploy auth; idempotent (204 also when the lease is
+// already gone); 423 if another deploy holds the site. Never publishes: a
+// commit already running completes, later requests of that deploy get 423.
+func (s *server) handleDeployLease(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "DELETE only", http.StatusMethodNotAllowed)
+		return
+	}
+	name, ok := deployName(w, r)
+	if !ok {
+		return
+	}
+	id := r.Header.Get(quick.DeployLeaseHeader)
+	if id == "" {
+		http.Error(w, "missing "+quick.DeployLeaseHeader, http.StatusBadRequest)
+		return
+	}
+	if _, _, ok := s.authorizeDeploy(w, r, name, false); !ok {
+		return
+	}
+	dropped, err := s.leases.drop(name, id)
+	if err != nil {
+		leaseRefused(w, r, err)
+		return
+	}
+	if dropped {
+		log.Printf("deploy %q: released by its holder", name)
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func logBroken(site string, l *deployLease, by string) {

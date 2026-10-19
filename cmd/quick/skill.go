@@ -107,9 +107,10 @@ present in the package are removed from the site. Consequences:
 - One deploy at a time per site. While someone is publishing it, another deploy
   of the same site (yours from another terminal too) or a rollback is refused
   with ` + "`<who> is publishing this site (since 14:02); retry in a moment or use --takeover`" + `.
-  The site frees up as soon as that deploy ends, or after 2 minutes without
-  activity if it was interrupted (an interrupted deploy never publishes
-  anything). Wait and retry; use ` + "`--takeover`" + ` (on ` + "`deploy`" + ` or ` + "`rollback`" + `) only when
+  The site frees up as soon as that deploy ends; a deploy interrupted with
+  Ctrl-C or that fails gives it back at once (so you can rerun right away), one
+  whose CLI was killed or lost the network after 2 minutes without activity.
+  An interrupted deploy never publishes anything. Wait and retry; use ` + "`--takeover`" + ` (on ` + "`deploy`" + ` or ` + "`rollback`" + `) only when
   you know the other deploy is stale or must be overridden, never by reflex:
   the other deploy then stops with ` + "`this deploy lost the site ... nothing was published, run it again`" + `.
   ` + "`--force`" + ` never takes over. Deleting the site always works and ends a deploy in progress.
