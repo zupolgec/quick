@@ -38,6 +38,9 @@
 //     the delta protocol (the protocol and the lease shipped together). Older
 //     CLIs only use the tar upload, which works whenever no lease is live.
 //
+// Live leases are capped server-wide (maxLeases; beyond it 503 "busy"), dead
+// ones are reclaimed when the cap is reached and swept every minute.
+//
 // In memory only, like the other per-site state of a single instance: a
 // restart drops all leases, and deploys in progress get 423 lease lost.
 //
@@ -78,7 +81,62 @@ type leaseTable struct {
 	mu   sync.Mutex
 	m    map[string]*deployLease
 	idle time.Duration    // 0 = leaseIdle
+	max  int              // live leases, all sites; 0 = maxLeases
 	now  func() time.Time // nil = time.Now (test seam)
+}
+
+func (t *leaseTable) size() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.m)
+}
+
+// maxLeases caps live leases across sites: an empty plan costs no staging, so
+// without a cap abandoned deploys of made-up names would pile up.
+const maxLeases = 256
+
+func (t *leaseTable) live(l *deployLease, now time.Time) bool {
+	idle := t.idle
+	if idle == 0 {
+		idle = leaseIdle
+	}
+	return l.inflight > 0 || now.Sub(l.last) < idle
+}
+
+// sweep forgets the dead leases.
+func (t *leaseTable) sweep() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.sweepLocked(t.clock())
+}
+
+func (t *leaseTable) sweepLocked(now time.Time) {
+	for site, l := range t.m {
+		if !t.live(l, now) {
+			delete(t.m, site)
+		}
+	}
+}
+
+// sweepLoop runs sweep every minute (main).
+func (t *leaseTable) sweepLoop() {
+	for range time.Tick(time.Minute) {
+		t.sweep()
+	}
+}
+
+// full reports whether a new lease would exceed the cap, after reclaiming the
+// dead ones. Caller holds mu.
+func (t *leaseTable) full(now time.Time) bool {
+	limit := t.max
+	if limit == 0 {
+		limit = maxLeases
+	}
+	if len(t.m) < limit {
+		return false
+	}
+	t.sweepLocked(now)
+	return len(t.m) >= limit
 }
 
 // Why a request was refused.
@@ -86,6 +144,7 @@ const (
 	refLocked  = iota // another deploy holds the site
 	refLost           // the request's own lease is gone
 	refForeign        // the id is the live lease, but another identity's
+	refBusy           // too many deploys in progress server-wide (503)
 )
 
 // leaseError is a refusal: the site is someone else's (or nobody's) right now.
@@ -101,6 +160,8 @@ func (e *leaseError) Error() string {
 		return "this deploy is no longer the active one for this site (another deploy took over, the site was deleted, or it was idle too long): nothing was published, run it again"
 	case refForeign:
 		return fmt.Sprintf("deploy owned by %s: only they can continue it; retry in a moment or use --takeover", e.holder)
+	case refBusy:
+		return "server busy with other deploys: retry in a moment"
 	}
 	return fmt.Sprintf("%s is publishing this site (since %s UTC); retry in a moment or use --takeover", e.holder, e.since.UTC().Format("15:04"))
 }
@@ -123,11 +184,7 @@ func (t *leaseTable) current(site string, now time.Time) *deployLease {
 	if l == nil {
 		return nil
 	}
-	idle := t.idle
-	if idle == 0 {
-		idle = leaseIdle
-	}
-	if l.inflight > 0 || now.Sub(l.last) < idle {
+	if t.live(l, now) {
 		return l
 	}
 	delete(t.m, site)
@@ -167,6 +224,9 @@ func (t *leaseTable) begin(site, id, owner, holder string, takeover bool) (l, br
 	if cur == nil {
 		if t.m == nil {
 			t.m = map[string]*deployLease{}
+		}
+		if broken == nil && t.full(now) { // a takeover reuses its site's slot
+			return nil, nil, t.refusal(nil, refBusy)
 		}
 		cur = &deployLease{id: randomID(18), holder: holder, owner: owner, started: now}
 		t.m[site] = cur
@@ -265,6 +325,10 @@ func (t *leaseTable) clear(site string) *deployLease {
 // leaseRefused writes a 423 for err: JSON for clients that accept it (the
 // CLI), the message as text otherwise (older CLIs print the body).
 func leaseRefused(w http.ResponseWriter, r *http.Request, err *leaseError) {
+	if err.kind == refBusy { // the CLI's usual "busy" path (tar fallback, retry)
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
 	if !strings.Contains(r.Header.Get("Accept"), "application/json") {
 		http.Error(w, err.Error(), http.StatusLocked)
 		return

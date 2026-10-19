@@ -127,6 +127,7 @@ func main() {
 	s.resolver = net.DefaultResolver
 	s.stage = newChunkStage(quick.Env("QUICK_CHUNK_DIR", filepath.Join(os.TempDir(), "quick-chunks")))
 	go s.stage.sweepLoop()
+	go s.leases.sweepLoop()
 	s.setupSiteProxy()
 	if err := s.setupOAuthProxy(); err != nil {
 		log.Fatal(err)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -171,6 +172,36 @@ func TestLeaseBoundToItsHolder(t *testing.T) {
 	b.deploy(map[string][]byte{"index.html": []byte("cd")})
 	if got := string(readSite(t, s, "demo", "index.html")); got != "cd" {
 		t.Fatalf("live: %q, want cd", got)
+	}
+}
+
+// Abandoned deploys (an empty plan costs nothing in staging) can't pile up:
+// live leases are capped (503, retry later), expired ones are reclaimed when
+// needed and swept periodically.
+func TestLeaseAbandonedPlansAreBounded(t *testing.T) {
+	s := newDeltaTestServer(t)
+	clk := withClock(s)
+	s.leases.max = 5
+	for i := range 5 {
+		(&deltaClient{t: t, s: s, site: fmt.Sprintf("s%d", i)}).leased()
+	}
+	extra := &deltaClient{t: t, s: s, site: "s5"}
+	w := extra.do(http.MethodPost, "/api/deploy/plan", mustJSON(quick.DeployManifest{}), nil)
+	if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "busy") {
+		t.Fatalf("plan over the lease cap: %d %q, want 503 busy", w.Code, w.Body.String())
+	}
+	if code, body := tarDeployCode(extra, map[string][]byte{"index.html": []byte("x")}); code != http.StatusServiceUnavailable || !strings.Contains(body, "busy") {
+		t.Fatalf("tar over the lease cap: %d %q, want 503 busy", code, body)
+	}
+	clk.add(leaseIdle + time.Second)
+	extra.leased() // expired ones make room
+	if n := s.leases.size(); n > 5 {
+		t.Fatalf("%d leases tracked, cap 5", n)
+	}
+	clk.add(leaseIdle + time.Second)
+	s.leases.sweep()
+	if n := s.leases.size(); n != 0 {
+		t.Fatalf("%d leases left after the sweep, want 0", n)
 	}
 }
 
