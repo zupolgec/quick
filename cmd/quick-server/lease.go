@@ -400,6 +400,7 @@ func (s *server) handleDeployLease(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "DELETE only", http.StatusMethodNotAllowed)
 		return
 	}
+	w = s.boundIO(w, r, s.timeouts.manifestOr())
 	name, ok := deployName(w, r)
 	if !ok {
 		return

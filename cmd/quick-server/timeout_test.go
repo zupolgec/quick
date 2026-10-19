@@ -2,10 +2,13 @@ package main
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -145,6 +148,73 @@ func TestTricklingUploadHitsTheCap(t *testing.T) {
 		deleted <- (&deltaClient{t: t, s: s, site: "demo"}).do(http.MethodDelete, "/api/site/demo", nil, nil).Code
 	}()
 	within(t, "delete after the capped upload", time.Second, deleted)
+	(&deltaClient{t: t, s: s, site: "demo"}).leased()
+}
+
+// stuckWriter is a client that never reads its response: Write blocks until
+// the write deadline (none set: until the test ends).
+type stuckWriter struct {
+	hdr      http.Header
+	mu       sync.Mutex
+	deadline time.Time
+	stop     chan struct{}
+}
+
+func (s *stuckWriter) Header() http.Header             { return s.hdr }
+func (s *stuckWriter) WriteHeader(int)                 {}
+func (s *stuckWriter) SetReadDeadline(time.Time) error { return nil }
+func (s *stuckWriter) SetWriteDeadline(d time.Time) error {
+	s.mu.Lock()
+	s.deadline = d
+	s.mu.Unlock()
+	return nil
+}
+
+func (s *stuckWriter) Write(p []byte) (int, error) {
+	for {
+		s.mu.Lock()
+		d := s.deadline
+		s.mu.Unlock()
+		if !d.IsZero() && time.Now().After(d) {
+			return 0, os.ErrDeadlineExceeded
+		}
+		select {
+		case <-s.stop:
+			return 0, io.ErrClosedPipe
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+}
+
+// A plan answer the client never reads can't pin the lease: the write times
+// out, a lease this request opened is released (the client never learned its
+// id), a renewed one idles out as usual.
+func TestUnreadPlanResponseDoesNotPinTheLease(t *testing.T) {
+	s := newDeltaTestServer(t)
+	s.timeouts.write = 200 * time.Millisecond
+	clk := withClock(s)
+	plan := func(lease string) <-chan int {
+		w := &stuckWriter{hdr: http.Header{}, stop: make(chan struct{})}
+		t.Cleanup(func() { close(w.stop) })
+		r := httptest.NewRequest(http.MethodPost, "/api/deploy/plan?name=demo", bytes.NewReader(mustJSON(quick.DeployManifest{})))
+		if lease != "" {
+			r.Header.Set(quick.DeployLeaseHeader, lease)
+		}
+		done := make(chan int, 1)
+		go func() { s.apexMux.ServeHTTP(w, r); done <- 1 }()
+		return done
+	}
+	// First plan, never read: the site is free right after the write timeout.
+	within(t, "unread first plan", 3*time.Second, plan(""))
+	b := &deltaClient{t: t, s: s, site: "demo"}
+	b.leased()
+
+	// A re-plan never read: in flight no more, so the lease idles out.
+	within(t, "unread re-plan", 3*time.Second, plan(b.lease))
+	if n := s.leases.inflightOf("demo"); n != 0 {
+		t.Fatalf("in flight after the write timeout: %d", n)
+	}
+	clk.add(leaseIdle + time.Second)
 	(&deltaClient{t: t, s: s, site: "demo"}).leased()
 }
 

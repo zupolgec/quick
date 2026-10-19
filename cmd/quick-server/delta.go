@@ -179,22 +179,24 @@ type chunkLoc struct {
 
 // deltaRequest runs the checks shared by the delta endpoints before auth:
 // method, feature enabled, valid name.
-// The body gets the read deadlines of timeouts.go, total from now.
-func (s *server) deltaRequest(w http.ResponseWriter, r *http.Request, total time.Duration) (string, bool) {
+// The request gets the deadlines of timeouts.go (body total from now): use
+// the returned writer.
+func (s *server) deltaRequest(w http.ResponseWriter, r *http.Request, total time.Duration) (http.ResponseWriter, string, bool) {
 	if s.stage == nil {
 		http.NotFound(w, r)
-		return "", false
+		return w, "", false
 	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
-		return "", false
+		return w, "", false
 	}
-	s.boundBody(w, r, total)
-	return deployName(w, r)
+	w = s.boundIO(w, r, total)
+	name, ok := deployName(w, r)
+	return w, name, ok
 }
 
 func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
-	name, ok := s.deltaRequest(w, r, s.timeouts.manifestOr())
+	w, name, ok := s.deltaRequest(w, r, s.timeouts.manifestOr())
 	if !ok {
 		return
 	}
@@ -259,12 +261,18 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 			res.MissingBytes += int64(size)
 		}
 	}
-	res.Lease, planned = lease.id, true
-	_ = json.NewEncoder(w).Encode(res)
+	res.Lease = lease.id
+	err = json.NewEncoder(w).Encode(res)
+	if err == nil {
+		err = flushed(w)
+	}
+	// Undelivered (write deadline): the client never learned the id, so a
+	// lease opened here is released; a renewed one just idles out.
+	planned = err == nil
 }
 
 func (s *server) handleDeployChunks(w http.ResponseWriter, r *http.Request) {
-	name, ok := s.deltaRequest(w, r, s.timeouts.uploadOr())
+	w, name, ok := s.deltaRequest(w, r, s.timeouts.uploadOr())
 	if !ok {
 		return
 	}
@@ -515,7 +523,7 @@ func (s *server) writeDeltaTar(w io.Writer, site string, files []deltaFile, src 
 }
 
 func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
-	name, ok := s.deltaRequest(w, r, s.timeouts.manifestOr())
+	w, name, ok := s.deltaRequest(w, r, s.timeouts.manifestOr())
 	if !ok {
 		return
 	}
