@@ -28,7 +28,7 @@ func requestSite(s *server, host, path string) *httptest.ResponseRecorder {
 	r.Host = host
 	r.Header.Set("Accept-Language", "it")
 	w := httptest.NewRecorder()
-	s.handleSite(w, r)
+	s.route(w, r)
 	return w
 }
 

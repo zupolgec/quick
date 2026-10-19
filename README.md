@@ -148,6 +148,29 @@ collegato, la CLI te lo segnala e chiede conferma.
 Il server si dà come dominio nudo (`quick.example.com`) o URL completo; la CLI
 aggiunge `https://`, prova anche `deploy.<dominio>`, e ricorda quello che risponde.
 
+## Domini personalizzati
+
+```bash
+quick domains add foo www.example.com   # stampa i record DNS da creare
+quick domains foo                       # stato: attivo o in attesa del DNS
+quick domains rm foo www.example.com
+```
+
+Dal provider DNS del dominio (solo DNS, niente proxy CDN):
+
+- `www.example.com CNAME foo.<dominio>` (un dominio nudo come `example.com` non
+  può avere un CNAME: ALIAS/CNAME flattening, oppure lo stesso record A);
+- `_acme-challenge.www.example.com CNAME _acme-challenge.domains.<dominio>` (serve
+  per il certificato HTTPS).
+
+Il dominio resta "in attesa" finché entrambi i record non rispondono, poi si
+attiva da solo; il certificato viene emesso alla prima visita. Un dominio
+appartiene a un solo sito e passa a un altro solo quando il suo DNS punta lì. I
+siti pubblici o con codice vengono serviti sul dominio personalizzato; quelli con
+SSO aziendale rimandano all'indirizzo `<sito>.<dominio>`, perché l'accesso non
+attraversa i domini. Lato proxy serve il TLS on-demand: vedi le label
+`QUICK_CD_*` nel compose (spente di default).
+
 ## Visibilità e lock
 
 ```bash

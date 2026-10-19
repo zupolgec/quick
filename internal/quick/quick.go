@@ -141,3 +141,28 @@ func SplitList(s string) []string {
 	}
 	return out
 }
+
+// DomainRequest attaches a custom domain to a site.
+type DomainRequest struct {
+	Domain string `json:"domain"`
+}
+
+// DNSRecord is a record the user must create at their DNS provider.
+type DNSRecord struct {
+	Type  string `json:"type"`
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// DomainInfo is a custom domain of a site. Active means its DNS points to the
+// site and it is being served.
+type DomainInfo struct {
+	Domain  string      `json:"domain"`
+	Active  bool        `json:"active"`
+	Records []DNSRecord `json:"records"`
+}
+
+type DomainsResponse struct {
+	Site    string       `json:"site"`
+	Domains []DomainInfo `json:"domains"`
+}

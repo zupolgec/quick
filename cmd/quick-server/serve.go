@@ -45,13 +45,8 @@ func precompressed(p string) (ct, enc string, ok bool) {
 
 // handleSite is the catch-all: resolves the site from the host, applies policy
 // (public / code / SSO) and, if access is granted, serves the file.
-func (s *server) handleSite(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleSite(w http.ResponseWriter, r *http.Request, sub string) {
 	host := fwdHost(r)
-	sub := subOf(host, s.baseDomain)
-	if sub == "" {
-		http.NotFound(w, r)
-		return
-	}
 	p, _, ok, err := s.siteAccess(r, sub)
 	switch {
 	case err != nil:

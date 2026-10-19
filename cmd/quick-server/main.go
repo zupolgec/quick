@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -57,6 +58,9 @@ type server struct {
 	oidcIssuer   string     // QUICK_OIDC_ISSUER; empty = Google
 	oidcMu       sync.Mutex // guards oidcVerifier (lazy init)
 	oidcVerifier *oidc.IDTokenVerifier
+	domains      *domainIndex // custom domain -> site
+	domainsMu    sync.Mutex   // serializes custom domain changes across sites
+	resolver     resolver     // DNS checks for custom domains
 }
 
 type authIdentity struct {
@@ -113,6 +117,10 @@ func main() {
 	}
 	s.meta = newMetaStore(store, []byte(metaSecret), 5*time.Second)
 	s.rules = newRulesStore(store, 5*time.Second)
+	if s.domains, err = loadDomainIndex(store, s.meta); err != nil {
+		log.Fatal(err)
+	}
+	s.resolver = net.DefaultResolver
 	s.setupSiteProxy()
 	if err := s.setupOAuthProxy(); err != nil {
 		log.Fatal(err)
@@ -131,6 +139,12 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "ok")
 		return
 	}
+	// Asked by the proxy (on the internal host name) before issuing a
+	// certificate for a custom domain.
+	if r.URL.Path == "/api/domains/check" {
+		s.handleDomainCheck(w, r)
+		return
+	}
 	// Brand assets (font, logo, favicon) are served same-origin on every host so
 	// their URLs never need CORS (pages live on the apex and site subdomains).
 	if strings.HasPrefix(r.URL.Path, "/fonts/") || strings.HasPrefix(r.URL.Path, "/img/") {
@@ -144,11 +158,12 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 	}
 	sub := subOf(host, s.baseDomain)
 	if sub == "" {
-		http.NotFound(w, r)
-		return
+		if sub = s.customDomainSite(w, r, host); sub == "" {
+			return
+		}
 	}
 	if r.URL.Path == "/__quick/code" {
-		s.handleCodePage(w, r)
+		s.handleCodePage(w, r, sub)
 		return
 	}
 	if r.URL.Path == "/__quick/quick.js" || r.URL.Path == "/__quick/quick.d.ts" {
@@ -159,7 +174,7 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 		s.handleClientAPI(w, r, sub)
 		return
 	}
-	s.handleSite(w, r) // per-site gate + serve
+	s.handleSite(w, r, sub) // per-site gate + serve
 }
 
 func (s *server) buildApexMux() *http.ServeMux {

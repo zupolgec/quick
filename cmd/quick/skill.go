@@ -17,7 +17,7 @@ description: >-
   Use it when the user wants to put a folder of HTML/assets online and get
   a <name>.<domain> URL, republish a site, change its visibility (public,
   access code, company SSO), lock or delete it, check its status,
-  create deploy tokens for CI/agent environments, or understand why a deploy
+  create deploy tokens for CI/agent environments, attach a custom domain, or understand why a deploy
   excludes certain files. Covers mirror deploys, .quickignore, the 404.html /
   200.html / clean URL / _redirects conventions (redirects, SPA rewrites and
   same-origin API proxying), login, multiple servers, deploy tokens and status.
@@ -60,6 +60,9 @@ quick deploy my-site ./build                    # -> https://my-site.quick.examp
 | ` + "`quick token create <site> --name github-actions [--expires 90d]`" + ` | Create a site-scoped deploy token |
 | ` + "`quick token list <site>`" + ` | List deploy tokens for a site |
 | ` + "`quick token revoke <site> <token-id>`" + ` | Revoke a deploy token |
+| ` + "`quick domains <site>`" + ` | List custom domains and the DNS records still missing |
+| ` + "`quick domains add <site> <domain>`" + ` | Attach a custom domain (e.g. www.example.com) |
+| ` + "`quick domains rm <site> <domain>`" + ` | Detach a custom domain |
 | ` + "`quick rollback <site>`" + ` | Restore the previous version (with confirmation; ` + "`--yes`" + ` skips it) |
 | ` + "`quick delete <site>`" + ` | Delete the site (irreversible, with confirmation) |
 | ` + "`quick upgrade [--check]`" + ` | Update the CLI to the latest release (` + "`--check`" + ` only checks) |
@@ -115,6 +118,22 @@ for deploys. It cannot delete, rollback, change visibility/lock, or create other
 tokens. The cleartext token is shown once; later use ` + "`quick token list`" + ` to see token
 IDs and ` + "`quick token revoke`" + ` to remove them. Expiry choices are ` + "`30d`" + `, ` + "`90d`" + `,
 ` + "`180d`" + `, ` + "`365d`" + `, or ` + "`never`" + `.
+
+## Custom domains
+
+` + "`quick domains add my-site www.example.com`" + ` attaches a domain and prints the DNS
+records to create at the domain's DNS provider (DNS only, no CDN proxy):
+
+- ` + "`www.example.com CNAME my-site.<domain>`" + ` (an apex like ` + "`example.com`" + ` can't
+  CNAME: use ALIAS/CNAME flattening or the same A record);
+- ` + "`_acme-challenge.www.example.com CNAME _acme-challenge.domains.<domain>`" + ` (HTTPS certificate).
+
+The domain stays "waiting for DNS" until both records resolve, then becomes
+active on its own (` + "`quick domains my-site`" + ` shows the state); the HTTPS certificate
+is issued on the first visit. A domain belongs to one site; it moves to another
+site only when its DNS points there. Public and access-code sites are served on
+the custom domain; company-SSO sites redirect visitors to their regular
+` + "`<site>.<domain>`" + ` address, since sign-in doesn't carry across domains.
 
 ## What is NOT published
 

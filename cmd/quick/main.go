@@ -68,6 +68,8 @@ func runCmd(cmd string, args []string) {
 		skillCmd(args)
 	case "token", "tokens":
 		tokenCmd(args)
+	case "domains", "domain":
+		domainsCmd(args)
 	case "login":
 		fs := flag.NewFlagSet("login", flag.ExitOnError)
 		server := fs.String("server", "", "server URL (or QUICK_SERVER)")
@@ -135,6 +137,7 @@ func printUsage(w io.Writer) {
   quick lock      <site>            # only you can overwrite it
   quick unlock    <site>
   quick token create|list|revoke <site>
+  quick domains [add|rm] <site> [domain]  # custom domains (www.example.com)
   quick upgrade   [--check]          # update the CLI to the latest version
   quick version`)
 }

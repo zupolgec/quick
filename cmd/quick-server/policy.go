@@ -64,15 +64,16 @@ func (s *server) canWrite(p policy, email, action string) (bool, string) {
 }
 
 type policy struct {
-	CreatedBy string      `json:"created_by,omitempty"`
-	CreatedAt string      `json:"created_at,omitempty"`
-	UpdatedBy string      `json:"updated_by,omitempty"`
-	UpdatedAt string      `json:"updated_at,omitempty"`
-	Owner     string      `json:"owner,omitempty"`     // lock owner
-	Locked    bool        `json:"locked,omitempty"`    // only the owner can deploy/policy
-	Access    string      `json:"access,omitempty"`    // "" = SSO | "public" | "code"
-	CodeHash  string      `json:"code_hash,omitempty"` // HMAC of the code, never plaintext
-	Tokens    []siteToken `json:"tokens,omitempty"`
+	CreatedBy string       `json:"created_by,omitempty"`
+	CreatedAt string       `json:"created_at,omitempty"`
+	UpdatedBy string       `json:"updated_by,omitempty"`
+	UpdatedAt string       `json:"updated_at,omitempty"`
+	Owner     string       `json:"owner,omitempty"`     // lock owner
+	Locked    bool         `json:"locked,omitempty"`    // only the owner can deploy/policy
+	Access    string       `json:"access,omitempty"`    // "" = SSO | "public" | "code"
+	CodeHash  string       `json:"code_hash,omitempty"` // HMAC of the code, never plaintext
+	Tokens    []siteToken  `json:"tokens,omitempty"`
+	Domains   []siteDomain `json:"domains,omitempty"`
 }
 
 type siteToken struct {
@@ -268,13 +269,8 @@ func (s *server) redirect(w http.ResponseWriter, r *http.Request, host, path str
 	http.Redirect(w, r, path+"?rd="+url.QueryEscape(rd), http.StatusFound)
 }
 
-func (s *server) handleCodePage(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleCodePage(w http.ResponseWriter, r *http.Request, sub string) {
 	host := fwdHost(r)
-	sub := subOf(host, s.baseDomain)
-	if sub == "" {
-		http.NotFound(w, r)
-		return
-	}
 	p, err := s.meta.load(sub)
 	if err != nil {
 		http.Error(w, "site temporarily unavailable", http.StatusServiceUnavailable)
@@ -339,6 +335,8 @@ func (s *server) handleSiteAPI(w http.ResponseWriter, r *http.Request) {
 		s.handleRollback(w, r, name)
 	case action == "tokens":
 		s.handleTokens(w, r, name, rest)
+	case action == "domains":
+		s.handleDomains(w, r, name, rest)
 	case action == "" && r.Method == http.MethodDelete:
 		s.handleDelete(w, r, name)
 	default:
@@ -488,6 +486,9 @@ func (s *server) handleDelete(w http.ResponseWriter, r *http.Request, name strin
 	}
 	s.meta.forget(name)
 	s.rules.forget(name)
+	if s.domains != nil {
+		s.domains.dropSite(name)
+	}
 	if !existed {
 		http.Error(w, "site not found", http.StatusNotFound)
 		return
