@@ -239,3 +239,35 @@ func TestDomainIndexLoadsFromMetadata(t *testing.T) {
 		t.Errorf("new: %+v %v", c, ok)
 	}
 }
+
+func plainHTTPGet(s *server, host, path string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest(http.MethodGet, "http://"+host+path, nil)
+	r.Header.Set("X-Forwarded-Proto", "http")
+	w := httptest.NewRecorder()
+	s.route(w, r)
+	return w
+}
+
+// On plain HTTP the proxy hands quick every host no other service claims (it
+// replaces the proxy's catch-all 503): a registered domain goes to HTTPS, any
+// other host gets 503 like before.
+func TestCustomDomainPlainHTTP(t *testing.T) {
+	s, dns := newDomainTestServer(t)
+	s.meta.save("app", policy{Access: "public"})
+	dns.point("www.example.com", "app")
+	addDomain(t, s, "app", "www.example.com")
+
+	if w := plainHTTPGet(s, "www.example.com", "/a?b=1"); w.Code != http.StatusPermanentRedirect || w.Header().Get("Location") != "https://www.example.com/a?b=1" {
+		t.Errorf("registered: %d %q", w.Code, w.Header().Get("Location"))
+	}
+	for _, host := range []string{"unknown.example.org", "203.0.113.10"} {
+		if w := plainHTTPGet(s, host, "/"); w.Code != http.StatusServiceUnavailable {
+			t.Errorf("%s over http: %d, want 503", host, w.Code)
+		}
+	}
+	// A pending domain isn't served yet: 503 too.
+	addDomain(t, s, "app", "pending.example.com")
+	if w := plainHTTPGet(s, "pending.example.com", "/"); w.Code != http.StatusServiceUnavailable {
+		t.Errorf("pending over http: %d, want 503", w.Code)
+	}
+}

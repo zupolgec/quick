@@ -60,10 +60,14 @@ services:
       # le label quick_off_* il proxy le ignora. Per accenderli, SOLO su
       # un'istanza per proxy: QUICK_CD_PREFIX=caddy. Richiede sul proxy
       # on_demand_tls.ask verso questo container, niente acme_dns globale e
-      # niente catch-all 503 di Coolify (vedi docs).
+      # niente catch-all 503 di Coolify (vedi docs/custom-domains.md).
       - "${QUICK_CD_PREFIX:-quick_off}_1=https://"
       - "${QUICK_CD_PREFIX:-quick_off}_1.tls.on_demand="
       - "${QUICK_CD_PREFIX:-quick_off}_1.reverse_proxy={{upstreams 8080}}"
+      # Catch-all HTTP: sostituisce il "503 per tutto il resto" di Coolify (da
+      # spegnere): quick manda i domini registrati su HTTPS, il resto 503.
+      - "${QUICK_CD_PREFIX:-quick_off}_2=http://"
+      - "${QUICK_CD_PREFIX:-quick_off}_2.reverse_proxy={{upstreams 8080}}"
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/api/health"]
       interval: 15s

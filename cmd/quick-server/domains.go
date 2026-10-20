@@ -193,6 +193,17 @@ func (s *server) domainInfos(site string, ds []siteDomain) []quick.DomainInfo {
 // to the site's regular address.
 func (s *server) customDomainSite(w http.ResponseWriter, r *http.Request, host string) string {
 	c, ok := s.domains.get(host)
+	// Plain HTTP: the proxy's catch-all hands quick every host no other
+	// service claims, so this replaces the proxy's own "503 for anything
+	// else". Registered domains move to HTTPS (where their certificate lives).
+	if r.Header.Get("X-Forwarded-Proto") == "http" {
+		if ok && c.active {
+			http.Redirect(w, r, "https://"+host+r.URL.RequestURI(), http.StatusPermanentRedirect)
+			return ""
+		}
+		http.Error(w, "no site here", http.StatusServiceUnavailable)
+		return ""
+	}
 	if !ok || !c.active {
 		renderNotFound(w, r, host, false)
 		return ""
