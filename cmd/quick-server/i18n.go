@@ -92,7 +92,23 @@ type uiText struct {
 	DashEmptyMine, DashEmptyAll, DashLocked string
 	DashHelpPublish, DashHelpInstall        string
 	BadgePublic, BadgeCode, BadgeSSO        string
+	BadgePeople, BadgeOnlyMe                string
 	DashManage                              string
+
+	AccessTitle, AccessOwner, AccessCurrent, AccessOwnerOnly, AccessSave string
+	AccessCodeLabel, AccessCodeKeep                                      string
+	LevelTeam, LevelTeamHint, LevelOnlyMe, LevelOnlyMeHint               string
+	LevelPeople, LevelPeopleHint, LevelCode, LevelCodeHint               string
+	LevelPublic, LevelPublicHint                                         string
+	PeopleTitle, PeopleOnlyOwner, PeopleRemove, PeopleAdd, PeopleEmail   string
+	PeopleEmailHint, PeopleEmailUser                                     string
+	AccessErrNotOwnerA, AccessErrNotOwnerB, AccessErrNoOwner             string
+	AccessErrBadEmail, AccessErrMissingEmail, AccessErrDomain            string
+	AccessErrTooMany, AccessErrOwnerAlways, AccessErrCode                string
+	AccessErrGeneric                                                     string
+
+	RestrictedTitle, RestrictedHeading, RestrictedBy, RestrictedCanOpen string
+	RestrictedSignedIn, RestrictedAsk, RestrictedSwitch                 string
 
 	SiteBack, SiteNoFiles, SiteTokens, SiteTokensHint, SiteTokensEmpty  string
 	TokenCreated, TokenStoreAs, TokenNotShown                           string
@@ -163,6 +179,52 @@ var uiTexts = map[lang]uiText{
 		TokenNoExpiry:   "Never",
 		BadgeCode:       "code",
 		BadgeSSO:        "SSO",
+		BadgePeople:     "chosen people",
+		BadgeOnlyMe:     "only me",
+
+		AccessTitle:     "Who can see this site",
+		AccessOwner:     "Owner:",
+		AccessCurrent:   "Right now:",
+		AccessOwnerOnly: "Only the owner can change it from here.",
+		AccessSave:      "Save",
+		AccessCodeLabel: "Access code",
+		AccessCodeKeep:  "Leave empty to keep the current code",
+		LevelTeam:       "Everyone at the company",
+		LevelTeamHint:   "Anyone signed in with a company account.",
+		LevelOnlyMe:     "Only me",
+		LevelOnlyMeHint: "Just you, once signed in.",
+		LevelPeople:     "Chosen people",
+		LevelPeopleHint: "You and the people you add below.",
+		LevelCode:       "With a code",
+		LevelCodeHint:   "Anyone who has the access code.",
+		LevelPublic:     "Public",
+		LevelPublicHint: "Anyone with the link, no sign-in.",
+		PeopleTitle:     "People who can see it",
+		PeopleOnlyOwner: "For now, only you.",
+		PeopleRemove:    "Remove",
+		PeopleAdd:       "Add",
+		PeopleEmail:     "Company email",
+		PeopleEmailHint: "You can add several, separated by commas.",
+		PeopleEmailUser: "name",
+
+		AccessErrNotOwnerA:    "Only the owner",
+		AccessErrNotOwnerB:    "can change who can see this site.",
+		AccessErrNoOwner:      "This site has no owner on record, so it can't be limited to chosen people.",
+		AccessErrBadEmail:     "this isn't a valid email address.",
+		AccessErrMissingEmail: "Enter at least one email address.",
+		AccessErrDomain:       "you can only add company accounts.",
+		AccessErrTooMany:      "A site can be shared with at most 100 people.",
+		AccessErrOwnerAlways:  "The owner can always see the site.",
+		AccessErrCode:         "Choose an access code.",
+		AccessErrGeneric:      "The change couldn't be saved.",
+
+		RestrictedTitle:    "quick — restricted",
+		RestrictedHeading:  "This site is restricted",
+		RestrictedBy:       "Only people chosen by",
+		RestrictedCanOpen:  "can open",
+		RestrictedSignedIn: "You're signed in as",
+		RestrictedAsk:      "Ask the owner to add you.",
+		RestrictedSwitch:   "Sign in with another account",
 
 		CodeTitle:   "Protected access",
 		CodeHeading: "Protected site",
@@ -232,6 +294,52 @@ var uiTexts = map[lang]uiText{
 		TokenNoExpiry:   "Mai",
 		BadgeCode:       "codice",
 		BadgeSSO:        "SSO",
+		BadgePeople:     "persone scelte",
+		BadgeOnlyMe:     "solo io",
+
+		AccessTitle:     "Chi può vedere il sito",
+		AccessOwner:     "Proprietario:",
+		AccessCurrent:   "Al momento:",
+		AccessOwnerOnly: "Solo il proprietario può cambiarlo da qui.",
+		AccessSave:      "Salva",
+		AccessCodeLabel: "Codice di accesso",
+		AccessCodeKeep:  "Lascia vuoto per tenere il codice attuale",
+		LevelTeam:       "Tutta l'azienda",
+		LevelTeamHint:   "Chiunque acceda con un account aziendale.",
+		LevelOnlyMe:     "Solo io",
+		LevelOnlyMeHint: "Solo tu, dopo l'accesso.",
+		LevelPeople:     "Persone scelte",
+		LevelPeopleHint: "Tu e le persone che aggiungi qui sotto.",
+		LevelCode:       "Con codice",
+		LevelCodeHint:   "Chiunque abbia il codice di accesso.",
+		LevelPublic:     "Pubblico",
+		LevelPublicHint: "Chiunque abbia il link, senza accesso.",
+		PeopleTitle:     "Persone che possono vederlo",
+		PeopleOnlyOwner: "Per ora solo tu.",
+		PeopleRemove:    "Rimuovi",
+		PeopleAdd:       "Aggiungi",
+		PeopleEmail:     "Email aziendale",
+		PeopleEmailHint: "Puoi aggiungerne più di una, separate da virgole.",
+		PeopleEmailUser: "nome",
+
+		AccessErrNotOwnerA:    "Solo il proprietario",
+		AccessErrNotOwnerB:    "può cambiare chi vede questo sito.",
+		AccessErrNoOwner:      "Questo sito non ha un proprietario registrato, quindi non si può limitare a persone scelte.",
+		AccessErrBadEmail:     "non è un indirizzo email valido.",
+		AccessErrMissingEmail: "Inserisci almeno un indirizzo email.",
+		AccessErrDomain:       "puoi aggiungere solo account aziendali.",
+		AccessErrTooMany:      "Un sito si può condividere con al massimo 100 persone.",
+		AccessErrOwnerAlways:  "Il proprietario può sempre vedere il sito.",
+		AccessErrCode:         "Scegli un codice di accesso.",
+		AccessErrGeneric:      "Non è stato possibile salvare la modifica.",
+
+		RestrictedTitle:    "quick · accesso riservato",
+		RestrictedHeading:  "Questo sito è riservato",
+		RestrictedBy:       "Solo le persone scelte da",
+		RestrictedCanOpen:  "possono aprire",
+		RestrictedSignedIn: "Hai effettuato l'accesso come",
+		RestrictedAsk:      "Chiedi al proprietario di aggiungerti.",
+		RestrictedSwitch:   "Accedi con un altro account",
 
 		CodeTitle:   "Accesso protetto",
 		CodeHeading: "Sito protetto",
@@ -255,13 +363,17 @@ func textsFor(l lang) uiText {
 	return uiTexts[langEN]
 }
 
-// badgeLabel maps a site's access mode to its localized dashboard badge.
-func badgeLabel(access string, t uiText) string {
-	switch access {
+// policyBadge maps a site's visibility to its localized dashboard badge.
+func policyBadge(p policy, t uiText) string {
+	switch accessKey(p) {
 	case "public":
 		return t.BadgePublic
 	case "code":
 		return t.BadgeCode
+	case "only-me":
+		return t.BadgeOnlyMe
+	case "people":
+		return t.BadgePeople
 	default:
 		return t.BadgeSSO
 	}

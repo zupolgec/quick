@@ -85,9 +85,30 @@ func (s *server) handleDashboardSite(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) renderDashboardSitePage(w http.ResponseWriter, r *http.Request, name, email, reveal string) {
+	s.renderSitePage(w, r, name, email, reveal, http.StatusOK, "")
+}
+
+// renderSitePageError shows the site page again with a refused change
+// explained in the visitor's language.
+func (s *server) renderSitePageError(w http.ResponseWriter, r *http.Request, name, email string, e *policyErr) {
+	s.renderSitePage(w, r, name, email, "", e.status, policyErrText(e, textsFor(pickLang(r))))
+}
+
+// accessLevel is a choice in the site page's visibility form.
+type accessLevel struct {
+	Value, Label, Hint string
+	Checked            bool
+}
+
+func (s *server) renderSitePage(w http.ResponseWriter, r *http.Request, name, email, reveal string, status int, errText string) {
 	p, err := s.meta.load(name)
 	if err != nil {
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	// A people site doesn't exist for whoever isn't on it.
+	if !canView(p, email) {
+		renderNotFound(w, r, name+"."+s.baseDomain, false)
 		return
 	}
 	if ok, reason := s.canWrite(p, email, actToken); !ok {
@@ -95,20 +116,60 @@ func (s *server) renderDashboardSitePage(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	exists, _ := s.store.SiteExists(name)
-	access := p.Access
-	if access == "" {
-		access = "sso"
+	l := pickLang(r)
+	t := textsFor(l)
+	current := accessKey(p)
+	levels := []accessLevel{
+		{Value: "team", Label: t.LevelTeam, Hint: t.LevelTeamHint},
+		{Value: "only-me", Label: t.LevelOnlyMe, Hint: t.LevelOnlyMeHint},
+		{Value: "people", Label: t.LevelPeople, Hint: t.LevelPeopleHint},
+		{Value: "code", Label: t.LevelCode, Hint: t.LevelCodeHint},
+		{Value: "public", Label: t.LevelPublic, Hint: t.LevelPublicHint},
+	}
+	var currentLabel string
+	for i := range levels {
+		if levels[i].Checked = levels[i].Value == current; levels[i].Checked {
+			currentLabel = levels[i].Label
+		}
 	}
 	csrf := s.meta.signCSRF(email, time.Now().Add(2*time.Hour).Unix())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Add("Vary", "Accept-Language")
+	w.WriteHeader(status)
 	_ = dashboardSitePage.Execute(w, map[string]any{
 		"Email": email, "Name": name, "URL": "https://" + name + "." + s.baseDomain,
-		"Base": s.baseDomain, "Access": badgeLabel(access, textsFor(pickLang(r))),
+		"Base": s.baseDomain, "Access": policyBadge(p, t),
 		"Locked": p.Locked, "Updated": updatedLabel(p), "Exists": exists,
 		"Tokens": tokenInfos(p.Tokens), "Reveal": reveal, "CSRF": csrf,
-		"Lang": string(pickLang(r)), "T": textsFor(pickLang(r)),
+		"Owner": p.CreatedBy, "IsOwner": isOwner(p, email), "Levels": levels,
+		"CurrentLevel": currentLabel, "People": p.Access == quick.AccessPeople,
+		"Viewers": p.Viewers, "HasCode": p.Access == quick.AccessCode, "Error": errText,
+		"Domain": s.companyDomain(), "Lang": string(l), "T": t,
 	})
+}
+
+// companyDomain is the first allowed email domain ("" when any is allowed),
+// for the viewer email placeholder.
+func (s *server) companyDomain() string {
+	if d := quick.SplitList(s.domain); len(d) > 0 && d[0] != "*" {
+		return d[0]
+	}
+	return ""
+}
+
+// accessKey names the site's visibility as the dashboard form does.
+func accessKey(p policy) string {
+	switch p.Access {
+	case quick.AccessPublic, quick.AccessCode:
+		return p.Access
+	case quick.AccessPeople:
+		if len(p.Viewers) == 0 {
+			return "only-me"
+		}
+		return "people"
+	default:
+		return "team"
+	}
 }
 
 func (s *server) handleSites(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +177,8 @@ func (s *server) handleSites(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if _, err := s.authenticate(r); err != nil {
+	email, err := s.authenticate(r)
+	if err != nil {
 		http.Error(w, "auth: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
@@ -127,7 +189,13 @@ func (s *server) handleSites(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]quick.SiteInfo, 0, len(names))
 	for _, n := range names {
-		p, _ := s.meta.load(n) // listing is best-effort; empty policy on error (display only)
+		p, err := s.meta.load(n)
+		if err != nil {
+			continue // unreadable: it could be a people site, don't reveal it
+		}
+		if !canView(p, email) {
+			continue // even the name of a people site is theirs only
+		}
 		out = append(out, s.siteInfo(n, p))
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -163,16 +231,15 @@ func (s *server) renderDashboard(w http.ResponseWriter, l lang, email string) {
 	names, _ := s.store.ListSites()
 	rows := make([]dashRow, 0, len(names))
 	for _, n := range names {
-		p, _ := s.meta.load(n) // dashboard is best-effort; empty policy on error (display only)
-		access := p.Access
-		if access == "" {
-			access = "sso"
+		p, err := s.meta.load(n)
+		if err != nil || !canView(p, email) {
+			continue // a people site (or one that might be) is listed only to its people
 		}
 		rows = append(rows, dashRow{
 			Name:    n,
 			URL:     "https://" + n + "." + s.baseDomain,
 			Manage:  "/dashboard/site/" + n,
-			Badge:   badgeLabel(access, t),
+			Badge:   policyBadge(p, t),
 			Locked:  p.Locked,
 			Updated: updatedLabel(p),
 			at:      p.UpdatedAt,
@@ -359,6 +426,23 @@ input,select{width:100%;height:2.75rem;border:0;border-radius:0;background:var(-
 .secret code{flex:1;min-width:0;background:#fff;color:#1a2238;padding:.7rem .8rem;overflow-x:auto;white-space:nowrap;font-family:var(--font-code);font-size:.88rem}
 .secret .btn-secondary{background:#1a2238;color:#fff}
 code.inline{background:var(--sunk);padding:.1rem .35rem;font-size:.88em;font-family:var(--font-code)}
+.hint b{color:var(--ink);font-weight:500;overflow-wrap:anywhere}
+.hint.small{font-size:.86rem;margin-top:.5rem}
+.panel h3{font-size:1rem;margin:1.4rem 0 .4rem;color:var(--ink)}
+.err{margin:0 0 1rem;padding:.7rem .9rem;font-size:.92rem;color:var(--err);background:var(--err-bg);max-width:64ch}
+form.access{display:grid;gap:4px;max-width:560px}
+.opt{display:flex;align-items:flex-start;gap:.7rem;padding:.75rem 1rem;background:var(--sunk);cursor:pointer;font-size:.95rem;color:var(--fg);transition:background-color .18s}
+.opt:has(input:checked){background:var(--brand);color:#fff}
+.opt:has(input:checked) small{color:rgba(255,255,255,.85)}
+.opt input{width:auto;height:auto;margin:.25rem 0 0;accent-color:var(--ink)}
+.opt span{display:grid;gap:.15rem}
+.opt small{color:var(--muted);font-size:.86rem}
+form.access .field.code{margin-top:.4rem}
+form.access:not(:has(input[value=code]:checked)) .field.code{display:none}
+form.access .btn{justify-self:start;margin-top:.6rem}
+.person{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.7rem 1rem;background:var(--sunk);margin-top:4px}
+.person-email{min-width:0;overflow-wrap:anywhere;color:var(--ink)}
+@media(max-width:680px){form.access .btn{justify-self:stretch}.person{display:block}.person form{margin-top:.55rem}.person .btn-secondary{width:100%}}
 @media(max-width:680px){.wrap{padding:1.5rem 1rem 3rem}header{display:block}.top{display:block}.tags{justify-content:flex-start;margin-top:.9rem}.token{display:block}.token form{margin-top:.65rem}.token .btn-secondary{width:100%}.who{text-align:left;margin-top:.75rem}.secret{display:block}.secret .btn-secondary{width:100%;margin-top:.55rem}form.create{display:grid;grid-template-columns:minmax(0,1fr)}.field.name{min-width:0}.btn{width:100%}h1{font-size:2rem}}
 </style></head><body>
 <div class="wrap">
@@ -374,6 +458,43 @@ code.inline{background:var(--sunk);padding:.1rem .35rem;font-size:.88em;font-fam
     <p>{{.T.TokenStoreAs}} <code class="inline">QUICK_API_TOKEN</code>. {{.T.TokenNotShown}}</p>
     <div class="secret"><code id="new-token">{{.Reveal}}</code><button class="btn-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('new-token').textContent)">{{.T.Copy}}</button></div>
   </div>{{end}}
+
+  <section class="panel" id="access">
+    <h2>{{.T.AccessTitle}}</h2>
+    {{if .Owner}}<p class="hint">{{.T.AccessOwner}} <b>{{.Owner}}</b></p>{{end}}
+    {{if .Error}}<div class="err" role="alert">{{.Error}}</div>{{end}}
+    {{if .IsOwner}}
+    <form class="access" method="post" action="/api/site/{{.Name}}/policy">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="op" value="access">
+      {{range .Levels}}<label class="opt"><input type="radio" name="access" value="{{.Value}}"{{if .Checked}} checked{{end}}><span><strong>{{.Label}}</strong><small>{{.Hint}}</small></span></label>
+      {{end}}<div class="field code"><label for="access-code">{{.T.AccessCodeLabel}}</label><input id="access-code" name="code" autocomplete="off"{{if .HasCode}} placeholder="{{.T.AccessCodeKeep}}"{{end}}></div>
+      <button class="btn" type="submit">{{.T.AccessSave}}</button>
+    </form>
+    {{else}}<p class="hint">{{.T.AccessCurrent}} <b>{{.CurrentLevel}}</b>. {{.T.AccessOwnerOnly}}</p>{{end}}
+
+    {{if .People}}
+    <h3>{{.T.PeopleTitle}}</h3>
+    {{if .Viewers}}{{range .Viewers}}
+    <div class="person">
+      <span class="person-email">{{.}}</span>
+      {{if $.IsOwner}}<form method="post" action="/api/site/{{$.Name}}/policy">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="op" value="remove">
+        <input type="hidden" name="email" value="{{.}}">
+        <button class="btn-secondary" type="submit">{{$.T.PeopleRemove}}</button>
+      </form>{{end}}
+    </div>{{end}}{{else}}<p class="empty">{{.T.PeopleOnlyOwner}}</p>{{end}}
+    {{if .IsOwner}}
+    <form class="create" method="post" action="/api/site/{{.Name}}/policy">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="op" value="add">
+      <div class="field name"><label for="viewer-email">{{.T.PeopleEmail}}</label><input id="viewer-email" name="email" type="text" inputmode="email" autocomplete="off"{{if .Domain}} placeholder="{{.T.PeopleEmailUser}}@{{.Domain}}"{{end}} required></div>
+      <button class="btn" type="submit">{{.T.PeopleAdd}}</button>
+    </form>
+    <p class="hint small">{{.T.PeopleEmailHint}}</p>
+    {{end}}{{end}}
+  </section>
 
   <section class="panel">
     <h2>{{.T.SiteTokens}}</h2>

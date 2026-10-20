@@ -45,9 +45,13 @@ func (s *server) handleClientAPI(w http.ResponseWriter, r *http.Request, sub str
 		apiError(w, http.StatusForbidden, "cross-origin call refused")
 		return
 	}
-	p, email, ok, err := s.siteAccess(r, sub)
+	p, email, signedIn, ok, err := s.siteAccess(r, sub)
 	if err != nil {
 		apiError(w, http.StatusServiceUnavailable, "site temporarily unavailable")
+		return
+	}
+	if !ok && signedIn {
+		apiError(w, http.StatusForbidden, "this site is shared only with some people")
 		return
 	}
 	if !ok {

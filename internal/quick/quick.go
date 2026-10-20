@@ -14,18 +14,27 @@ var NameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
 
 func ValidName(name string) bool { return NameRe.MatchString(name) }
 
-// Site access modes. Empty string = SSO (company default).
+// Site access modes. Empty string = SSO (company default). People: only the
+// site's owner and the accounts in its viewer list (signed in with SSO).
 const (
 	AccessSSO    = ""
 	AccessPublic = "public"
 	AccessCode   = "code"
+	AccessPeople = "people"
 )
 
 // PolicyRequest is the body of PATCH/POST /api/site/<name>/policy.
+//
+// Viewer changes are for "people" sites: Viewers replaces the list (empty =
+// only the owner), AddViewers/RemoveViewers edit it; any of them on a site
+// that isn't "people" yet switches it. Only the site's owner can.
 type PolicyRequest struct {
-	Access *string `json:"access,omitempty"` // "sso" | "public" | "code"
-	Code   *string `json:"code,omitempty"`   // required for access=code
-	Locked *bool   `json:"locked,omitempty"`
+	Access        *string   `json:"access,omitempty"` // "sso" | "public" | "code" | "people"
+	Code          *string   `json:"code,omitempty"`   // required for access=code
+	Locked        *bool     `json:"locked,omitempty"`
+	Viewers       *[]string `json:"viewers,omitempty"`
+	AddViewers    []string  `json:"add_viewers,omitempty"`
+	RemoveViewers []string  `json:"remove_viewers,omitempty"`
 }
 
 // PolicyResponse is the policy endpoints' response (POST mutates, GET reads).
@@ -39,6 +48,9 @@ type PolicyResponse struct {
 	CreatedAt string `json:"created_at,omitempty"` // RFC3339
 	UpdatedBy string `json:"updated_by,omitempty"`
 	UpdatedAt string `json:"updated_at,omitempty"` // RFC3339
+	// Viewers of a "people" site (owner excluded), only for those who can
+	// open it.
+	Viewers []string `json:"viewers,omitempty"`
 }
 
 // SiteInfo describes a site in the /api/sites list (and the dashboard).

@@ -29,6 +29,7 @@ import (
 
 const codeAccessTTL = 7 * 24 * time.Hour
 const maxSiteTokens = 20
+const maxViewers = 100 // per "people" site
 
 // Write actions subject to ownership checks.
 const (
@@ -47,9 +48,20 @@ func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
 //	free   (default) anyone can do anything
 //	shared           anyone can deploy; only the creator deletes/changes visibility
 //	owned            only the creator can do anything
+//
+// Sites limited to chosen people (access "people") add, in every mode: only
+// the creator deletes them, and only the creator changes who can see them
+// (visibility or viewer list), or limits someone else's site to chosen
+// people. handlePolicy enforces the visibility part (applyPolicy), since it
+// depends on the request; the lock still applies on top. Deploys don't
+// change: whoever may deploy here may deploy a people site, even one they
+// can't open.
 func (s *server) canWrite(p policy, email, action string) (bool, string) {
 	if p.Locked && p.Owner != "" && p.Owner != email {
 		return false, "site locked by " + p.Owner
+	}
+	if action == actDelete && p.Access == quick.AccessPeople && !isOwner(p, email) {
+		return false, "only the owner (" + p.CreatedBy + ") can delete this site"
 	}
 	creatorOnly := false
 	switch s.ownership {
@@ -71,8 +83,9 @@ type policy struct {
 	UpdatedAt string       `json:"updated_at,omitempty"`
 	Owner     string       `json:"owner,omitempty"`     // lock owner
 	Locked    bool         `json:"locked,omitempty"`    // only the owner can deploy/policy
-	Access    string       `json:"access,omitempty"`    // "" = SSO | "public" | "code"
+	Access    string       `json:"access,omitempty"`    // "" = SSO | "public" | "code" | "people"
 	CodeHash  string       `json:"code_hash,omitempty"` // HMAC of the code, never plaintext
+	Viewers   []string     `json:"viewers,omitempty"`   // "people": lowercased emails, owner excluded
 	Tokens    []siteToken  `json:"tokens,omitempty"`
 	Domains   []siteDomain `json:"domains,omitempty"`
 	// Index ids of the live and the rollback tree ("" = not indexed), see index.go.
@@ -188,6 +201,7 @@ func (p policy) clone() policy {
 		p.Tokens[i].Scopes = slices.Clone(p.Tokens[i].Scopes)
 	}
 	p.Domains = slices.Clone(p.Domains)
+	p.Viewers = slices.Clone(p.Viewers)
 	return p
 }
 
@@ -464,9 +478,23 @@ func (s *server) handlePolicy(w http.ResponseWriter, r *http.Request, name strin
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	email, err := s.authenticate(r)
+	// The dashboard posts plain forms with the SSO cookie (and a CSRF token);
+	// the CLI sends JSON with an ID token.
+	browserForm := r.Method == http.MethodPost && isFormPost(r) &&
+		!strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ")
+	var email string
+	var err error
+	if browserForm {
+		email, err = s.authenticateUser(r)
+	} else {
+		email, err = s.authenticate(r)
+	}
 	if err != nil {
 		http.Error(w, "auth: "+err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if browserForm && !s.meta.validCSRF(email, r.FormValue("csrf")) {
+		http.Error(w, "invalid csrf token", http.StatusForbidden)
 		return
 	}
 	unlock := s.locks.lock(name)
@@ -477,39 +505,93 @@ func (s *server) handlePolicy(w http.ResponseWriter, r *http.Request, name strin
 		return
 	}
 	if r.Method == http.MethodGet {
-		s.writePolicy(w, name, cur)
-		return
-	}
-	if ok, reason := s.canWrite(cur, email, actPolicy); !ok {
-		http.Error(w, reason, http.StatusForbidden)
+		s.writePolicy(w, name, cur, email)
 		return
 	}
 	var req quick.PolicyRequest
-	if json.NewDecoder(r.Body).Decode(&req) != nil {
+	if browserForm {
+		var perr *policyErr
+		if req, perr = policyFormRequest(r, cur); perr != nil {
+			s.renderSitePageError(w, r, name, email, perr)
+			return
+		}
+	} else if json.NewDecoder(r.Body).Decode(&req) != nil {
 		http.Error(w, "invalid json", http.StatusBadRequest)
 		return
+	}
+	if perr := s.applyPolicy(&cur, email, req); perr != nil {
+		if browserForm {
+			s.renderSitePageError(w, r, name, email, perr)
+			return
+		}
+		http.Error(w, perr.msg, perr.status)
+		return
+	}
+	if err := s.meta.save(name, cur); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if browserForm {
+		http.Redirect(w, r, "/dashboard/site/"+name, http.StatusSeeOther)
+		return
+	}
+	s.writePolicy(w, name, cur, email)
+}
+
+// applyPolicy applies req to cur on behalf of email, enforcing the write
+// rules (canWrite, lock, chosen people: see canWrite).
+func (s *server) applyPolicy(cur *policy, email string, req quick.PolicyRequest) *policyErr {
+	viewerOps := req.Viewers != nil || len(req.AddViewers) > 0 || len(req.RemoveViewers) > 0
+	access := cur.Access
+	if req.Access != nil {
+		switch *req.Access {
+		case quick.AccessSSO, "sso":
+			access = ""
+		case quick.AccessPublic, quick.AccessCode, quick.AccessPeople:
+			access = *req.Access
+		default:
+			return &policyErr{status: http.StatusBadRequest, msg: "invalid access"}
+		}
+	} else if viewerOps {
+		access = quick.AccessPeople
+	}
+	if viewerOps && access != quick.AccessPeople {
+		return &policyErr{status: http.StatusBadRequest, msg: "viewers apply only to access=people"}
+	}
+	changesAccess := req.Access != nil || viewerOps
+	if changesAccess && (cur.Access == quick.AccessPeople || access == quick.AccessPeople) {
+		if cur.CreatedBy == "" {
+			return &policyErr{status: http.StatusConflict, kind: errNoOwner,
+				msg: "this site has no recorded owner: it can't be limited to chosen people"}
+		}
+		if !isOwner(*cur, email) {
+			return &policyErr{status: http.StatusForbidden, kind: errNotOwner, arg: cur.CreatedBy,
+				msg: "only the owner (" + cur.CreatedBy + ") can change who can see this site"}
+		}
+	}
+	if ok, reason := s.canWrite(*cur, email, actPolicy); !ok {
+		return &policyErr{status: http.StatusForbidden, msg: reason}
 	}
 	// Only the creator can change the lock: stops someone from "stealing" another
 	// person's site by locking it under their own name (matters in free mode).
 	if req.Locked != nil && cur.CreatedBy != "" && cur.CreatedBy != email {
-		http.Error(w, "only the creator ("+cur.CreatedBy+") can lock the site", http.StatusForbidden)
-		return
+		return &policyErr{status: http.StatusForbidden, msg: "only the creator (" + cur.CreatedBy + ") can lock the site"}
 	}
-	if req.Access != nil {
-		switch *req.Access {
-		case quick.AccessSSO, "sso":
-			cur.Access, cur.CodeHash = "", ""
-		case quick.AccessPublic:
-			cur.Access, cur.CodeHash = quick.AccessPublic, ""
+	if changesAccess {
+		switch access {
+		case "", quick.AccessPublic:
+			cur.Access, cur.CodeHash, cur.Viewers = access, "", nil
 		case quick.AccessCode:
 			if req.Code == nil || *req.Code == "" {
-				http.Error(w, "access=code requires a code", http.StatusBadRequest)
-				return
+				return &policyErr{status: http.StatusBadRequest, kind: errCodeRequired, msg: "access=code requires a code"}
 			}
-			cur.Access, cur.CodeHash = quick.AccessCode, s.meta.hashCode(*req.Code)
-		default:
-			http.Error(w, "invalid access", http.StatusBadRequest)
-			return
+			cur.Access, cur.CodeHash, cur.Viewers = quick.AccessCode, s.meta.hashCode(*req.Code), nil
+		case quick.AccessPeople:
+			viewers, perr := s.editViewers(*cur, req)
+			if perr != nil {
+				return perr
+			}
+			cur.Access, cur.CodeHash, cur.Viewers = quick.AccessPeople, "", viewers
 		}
 	}
 	if req.Locked != nil {
@@ -519,22 +601,23 @@ func (s *server) handlePolicy(w http.ResponseWriter, r *http.Request, name strin
 			cur.Owner = ""
 		}
 	}
-	if err := s.meta.save(name, cur); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	s.writePolicy(w, name, cur)
+	return nil
 }
 
-func (s *server) writePolicy(w http.ResponseWriter, name string, p policy) {
+func (s *server) writePolicy(w http.ResponseWriter, name string, p policy, email string) {
 	access := p.Access
 	if access == "" {
 		access = "sso"
+	}
+	var viewers []string
+	if p.Access == quick.AccessPeople && canView(p, email) {
+		viewers = p.Viewers
 	}
 	exists, _ := s.store.SiteExists(name)
 	_ = json.NewEncoder(w).Encode(quick.PolicyResponse{
 		Site: name, Access: access, Locked: p.Locked, Owner: p.Owner, Exists: exists,
 		CreatedBy: p.CreatedBy, CreatedAt: p.CreatedAt, UpdatedBy: p.UpdatedBy, UpdatedAt: p.UpdatedAt,
+		Viewers: viewers,
 	})
 }
 
