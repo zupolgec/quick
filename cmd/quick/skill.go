@@ -152,12 +152,14 @@ IDs and ` + "`quick token revoke`" + ` to remove them. Expiry choices are ` + "`
 ` + "`quick domains add my-site www.example.com`" + ` attaches a domain and prints the DNS
 record to create at the domain's DNS provider (any provider; DNS only, no CDN
 proxy): ` + "`www.example.com CNAME my-site.<domain>`" + `. An apex like ` + "`example.com`" + `
-can't CNAME: use ALIAS/CNAME flattening or the same A record.
+can't CNAME: use ALIAS/CNAME flattening or the same A record, plus a TXT record
+` + "`_quick.example.com`" + ` with the site name (` + "`my-site`" + `), which tells quick which
+site the domain is for. ` + "`quick domains`" + ` prints both.
 
 The domain stays "waiting for DNS" until the record resolves, then becomes
 active on its own (` + "`quick domains my-site`" + ` shows the state); the HTTPS certificate
 is issued on the first visit. A domain belongs to one site; it moves to another
-site only when its DNS points there. Public and access-code sites are served on
+site only when its DNS points there (for an apex: when the TXT names it). Public and access-code sites are served on
 the custom domain; company-SSO sites redirect visitors to their regular
 ` + "`<site>.<domain>`" + ` address, since sign-in doesn't carry across domains.
 

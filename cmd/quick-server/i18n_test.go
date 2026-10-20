@@ -140,4 +140,9 @@ func TestDashboardPagesLocalized(t *testing.T) {
 	if !strings.Contains(dash.Body.String(), ">Gestisci<") {
 		t.Error("dashboard: missing italian manage label")
 	}
+	// The site page holds access, domains and tokens: its title names the
+	// page, not one of its sections.
+	if !strings.Contains(site.Body.String(), "<title>demo · Gestisci il sito</title>") {
+		t.Error("site page: title should be the site name and \"Gestisci il sito\"")
+	}
 }

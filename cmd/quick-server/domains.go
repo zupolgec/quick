@@ -1,5 +1,6 @@
 // Custom domains: a site can be served on its own hostname (www.example.com
-// CNAME <site>.<base>). A domain is claimed by one site and served only once
+// CNAME <site>.<base>; an apex: the server's address plus a TXT record at
+// _quick.<domain> naming the site). A domain is claimed by one site and served only once
 // its DNS points to that site ("active"); TLS certificates are issued on demand
 // by the proxy, which asks /api/domains/check before each one.
 package main
@@ -33,6 +34,7 @@ type siteDomain struct {
 type resolver interface {
 	LookupCNAME(ctx context.Context, host string) (string, error)
 	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
+	LookupTXT(ctx context.Context, host string) ([]string, error)
 }
 
 // publicResolvers answer the domain checks. The server's own resolver may
@@ -72,20 +74,47 @@ type domainIndex struct {
 
 func newDomainIndex() *domainIndex { return &domainIndex{m: map[string]domainClaim{}} }
 
+// loadDomainIndex rebuilds the index from metadata. A domain two sites list
+// (a move whose cleanup failed) goes to the latest activation; the other
+// site's stale entry is dropped.
 func loadDomainIndex(st storage.Backend, meta *metaStore) (*domainIndex, error) {
 	idx := newDomainIndex()
 	sites, err := st.ListSites()
 	if err != nil {
 		return nil, err
 	}
+	won := map[string]siteDomain{}
+	var stale [][2]string // site, domain
 	for _, site := range sites {
 		p, err := meta.load(site)
 		if err != nil {
 			return nil, err
 		}
 		for _, d := range p.Domains {
+			if c, ok := idx.get(d.Name); ok {
+				if d.VerifiedAt < won[d.Name].VerifiedAt {
+					stale = append(stale, [2]string{site, d.Name})
+					continue
+				}
+				stale = append(stale, [2]string{c.site, d.Name})
+			}
 			idx.set(d.Name, site, d.VerifiedAt != "")
+			won[d.Name] = d
 		}
+	}
+	for _, sd := range stale {
+		site, d := sd[0], sd[1]
+		p, err := meta.loadFresh(site)
+		if err == nil {
+			p.Domains = slices.DeleteFunc(p.Domains, func(x siteDomain) bool { return x.Name == d })
+			err = meta.save(site, p)
+		}
+		if err != nil {
+			log.Printf("WARNING: domain %s: also listed by %q, removing it there failed: %v", d, site, err)
+			continue
+		}
+		c, _ := idx.get(d)
+		log.Printf("domain %s: also listed by %q, removed there (it belongs to %q)", d, site, c.site)
 	}
 	return idx, nil
 }
@@ -106,9 +135,12 @@ func (x *domainIndex) set(d, site string, active bool) {
 	x.mu.Unlock()
 }
 
-func (x *domainIndex) remove(d string) {
+// remove drops d only if site owns it: a stale claim elsewhere doesn't count.
+func (x *domainIndex) remove(d, site string) {
 	x.mu.Lock()
-	delete(x.m, d)
+	if x.m[d].site == site {
+		delete(x.m, d)
+	}
 	x.mu.Unlock()
 }
 
@@ -160,7 +192,8 @@ func isApexDomain(d string) bool {
 }
 
 // verifyDNS reports whether d points to the site: a CNAME to <site>.<base>,
-// or, for apex domains that can't CNAME, the same addresses.
+// or, for apex domains that can't CNAME, the same addresses plus a TXT record
+// at _quick.<domain> naming the site (every site shares the addresses).
 func (s *server) verifyDNS(ctx context.Context, d, site string) bool {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -168,7 +201,7 @@ func (s *server) verifyDNS(ctx context.Context, d, site string) bool {
 	if s.cnameIs(ctx, d, target) {
 		return true
 	}
-	if !isApexDomain(d) {
+	if !isApexDomain(d) || !s.txtNames(ctx, d, site) {
 		return false
 	}
 	want, err := s.resolver.LookupIPAddr(ctx, target)
@@ -187,6 +220,11 @@ func (s *server) verifyDNS(ctx context.Context, d, site string) bool {
 	return true
 }
 
+func (s *server) txtNames(ctx context.Context, d, site string) bool {
+	txt, err := s.resolver.LookupTXT(ctx, "_quick."+d)
+	return err == nil && slices.ContainsFunc(txt, func(v string) bool { return strings.TrimSpace(v) == site })
+}
+
 func (s *server) cnameIs(ctx context.Context, host, target string) bool {
 	c, err := s.resolver.LookupCNAME(ctx, host)
 	return err == nil && strings.TrimSuffix(strings.ToLower(c), ".") == target
@@ -194,12 +232,15 @@ func (s *server) cnameIs(ctx context.Context, host, target string) bool {
 
 func (s *server) domainRecords(d, site string) []quick.DNSRecord {
 	target := site + "." + s.baseDomain
-	first := quick.DNSRecord{Type: "CNAME", Name: d, Value: target}
 	if isApexDomain(d) {
-		// A CNAME isn't allowed on an apex: ALIAS/flattening, or the same address.
-		first = quick.DNSRecord{Type: "A", Name: d, Value: "same address as " + target + " (or ALIAS/CNAME flattening)"}
+		// A CNAME isn't allowed on an apex: ALIAS/flattening, or the same
+		// address, plus the TXT naming the site.
+		return []quick.DNSRecord{
+			{Type: "A", Name: d, Value: "same address as " + target + " (or ALIAS/CNAME flattening)"},
+			{Type: "TXT", Name: "_quick." + d, Value: site},
+		}
 	}
-	return []quick.DNSRecord{first}
+	return []quick.DNSRecord{{Type: "CNAME", Name: d, Value: target}}
 }
 
 func (s *server) domainInfos(site string, ds []siteDomain) []quick.DomainInfo {
@@ -464,7 +505,7 @@ func (s *server) dropDomainFromSite(site, d string) error {
 	if err := s.meta.save(site, p); err != nil {
 		return err
 	}
-	s.domains.remove(d)
+	s.domains.remove(d, site)
 	return nil
 }
 
@@ -497,7 +538,7 @@ func (s *server) removeDomain(w http.ResponseWriter, name, raw, email string) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.domains.remove(d)
+	s.domains.remove(d, name)
 	log.Printf("domain %s removed from %q by %s", d, name, email)
 	_ = json.NewEncoder(w).Encode(quick.DomainsResponse{Site: name, Domains: s.domainInfos(name, cur.Domains)})
 }

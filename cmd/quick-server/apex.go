@@ -389,7 +389,7 @@ code{background:var(--sunk);padding:.12rem .4rem;font-size:.88em;font-family:var
 var dashboardSitePage = template.Must(template.New("dash-site").Parse(`<!doctype html>
 <html lang="{{.Lang}}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Name}} · {{.T.SiteTokens}}</title>` + brandHead + `
+<title>{{.Name}} · {{.T.SiteTitle}}</title>` + brandHead + `
 <style>` + brandCSS + `
 .wrap{max-width:860px;margin:0 auto;padding:2.5rem 1.25rem 4rem}
 header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:2.25rem}

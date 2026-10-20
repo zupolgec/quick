@@ -179,11 +179,13 @@ quick domains rm foo www.example.com
 
 At the domain's DNS provider, whichever it is (DNS only, no CDN proxy):
 `www.example.com CNAME foo.<domain>`. A bare domain like `example.com` can't have a
-CNAME: use ALIAS/CNAME flattening, or the same A record.
+CNAME: use ALIAS/CNAME flattening, or the same A record, plus a TXT record
+`_quick.example.com` with the site name (`foo`), which tells quick which site the
+domain is for.
 
 The domain stays "waiting" until the record resolves, then activates on its own;
 the certificate is issued on the first visit. A domain belongs to one site and moves
-to another only when its DNS points there. Public and code-protected sites are served
+to another only when its DNS points there (for a bare domain: when the TXT names it). Public and code-protected sites are served
 on the custom domain; company-SSO ones redirect to `<site>.<domain>`, because the
 sign-in doesn't carry across domains. The domain's DNS is checked through public
 resolvers (1.1.1.1, 8.8.8.8), so the domain activates as soon as the record exists.

@@ -111,6 +111,7 @@ type uiText struct {
 	RestrictedSignedIn, RestrictedAsk, RestrictedSwitch                 string
 
 	SiteBack, SiteNoFiles, SiteTokens, SiteTokensHint, SiteTokensEmpty  string
+	SiteTitle                                                           string
 	TokenCreated, TokenStoreAs, TokenNotShown                           string
 	TokenScope, TokenExpires, TokenNever, TokenLastUsed, TokenNeverUsed string
 	TokenRevoke, TokenCreate, TokenName, TokenExpiry, TokenDays         string
@@ -159,6 +160,7 @@ var uiTexts = map[lang]uiText{
 		DashManage:      "Manage",
 
 		SiteBack:        "Back to dashboard",
+		SiteTitle:       "Manage site",
 		SiteNoFiles:     "No files",
 		SiteTokens:      "Deploy tokens",
 		SiteTokensHint:  "Tokens can only deploy this site. They cannot delete it, roll it back, change its visibility or create other tokens.",
@@ -274,6 +276,7 @@ var uiTexts = map[lang]uiText{
 		DashManage:      "Gestisci",
 
 		SiteBack:        "Torna alla dashboard",
+		SiteTitle:       "Gestisci il sito",
 		SiteNoFiles:     "Nessun file",
 		SiteTokens:      "Token di deploy",
 		SiteTokensHint:  "I token possono solo pubblicare questo sito: non possono eliminarlo, riportarlo alla versione precedente, cambiarne la visibilità o creare altri token.",

@@ -180,11 +180,14 @@ quick domains rm foo www.example.com
 
 Dal provider DNS del dominio, qualunque sia (solo DNS, niente proxy CDN):
 `www.example.com CNAME foo.<dominio>`. Un dominio nudo come `example.com` non può
-avere un CNAME: ALIAS/CNAME flattening, oppure lo stesso record A.
+avere un CNAME: ALIAS/CNAME flattening, oppure lo stesso record A, più un record
+TXT `_quick.example.com` con il nome del sito (`foo`), che dice a quick a quale
+sito va il dominio.
 
 Il dominio resta "in attesa" finché il record non risponde, poi si
 attiva da solo; il certificato viene emesso alla prima visita. Un dominio
-appartiene a un solo sito e passa a un altro solo quando il suo DNS punta lì. I
+appartiene a un solo sito e passa a un altro solo quando il suo DNS punta lì (per un
+dominio nudo: quando il TXT lo nomina). I
 siti pubblici o con codice vengono serviti sul dominio personalizzato; quelli con
 SSO aziendale rimandano all'indirizzo `<sito>.<dominio>`, perché l'accesso non
 attraversa i domini. Il DNS del dominio viene verificato tramite resolver

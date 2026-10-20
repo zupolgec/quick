@@ -19,6 +19,7 @@ import (
 type fakeDNS struct {
 	cname map[string]string
 	ips   map[string][]string
+	txt   map[string][]string
 }
 
 func (f *fakeDNS) LookupCNAME(_ context.Context, host string) (string, error) {
@@ -45,12 +46,19 @@ func (f *fakeDNS) LookupIPAddr(_ context.Context, host string) ([]net.IPAddr, er
 	return out, nil
 }
 
+func (f *fakeDNS) LookupTXT(_ context.Context, host string) ([]string, error) {
+	if t, ok := f.txt[host]; ok {
+		return t, nil
+	}
+	return nil, errors.New("no such host")
+}
+
 func (f *fakeDNS) point(d, site string) { f.cname[d] = site + ".quick.test" }
 
 func newDomainTestServer(t *testing.T) (*server, *fakeDNS) {
 	t.Helper()
 	s := newAPITestServer(t, true)
-	dns := &fakeDNS{cname: map[string]string{}, ips: map[string][]string{
+	dns := &fakeDNS{cname: map[string]string{}, txt: map[string][]string{}, ips: map[string][]string{
 		"app.quick.test":   {"203.0.113.10"},
 		"other.quick.test": {"203.0.113.10"},
 	}}
@@ -176,6 +184,7 @@ func TestCustomDomainPendingUntilDNSPoints(t *testing.T) {
 func TestCustomDomainApexByARecord(t *testing.T) {
 	s, dns := newDomainTestServer(t)
 	dns.ips["example.com"] = []string{"203.0.113.10"}
+	dns.txt["_quick.example.com"] = []string{"app"}
 	dns.ips["shop.example.com"] = []string{"203.0.113.10"}
 	if _, res := addDomain(t, s, "app", "example.com"); len(res.Domains) != 1 || !res.Domains[0].Active || res.Domains[0].Records[0].Type != "A" {
 		t.Errorf("apex: %+v", res)
@@ -297,5 +306,69 @@ func TestPublicResolverDialsPublicServers(t *testing.T) {
 	}
 	if !slices.Contains(got, "8.8.8.8:53") {
 		t.Errorf("no fallback to 8.8.8.8: %v", got)
+	}
+}
+
+// Every site shares the server's address, so an apex's A record can't tell
+// sites apart: a TXT record at _quick.<domain> names the site.
+func TestCustomDomainApexNeedsTXT(t *testing.T) {
+	s, dns := newDomainTestServer(t)
+	dns.ips["example.com"] = []string{"203.0.113.10"}
+	_, res := addDomain(t, s, "app", "example.com")
+	if len(res.Domains) != 1 || res.Domains[0].Active {
+		t.Fatalf("apex without TXT must stay pending: %+v", res)
+	}
+	want := quick.DNSRecord{Type: "TXT", Name: "_quick.example.com", Value: "app"}
+	if !slices.Contains(res.Domains[0].Records, want) {
+		t.Errorf("records %+v, want %+v among them", res.Domains[0].Records, want)
+	}
+	dns.txt["_quick.example.com"] = []string{"app"}
+	if w := apexCall(s, http.MethodGet, "/api/domains/check?domain=example.com", ""); w.Code != http.StatusOK {
+		t.Errorf("apex with TXT not activated: %d", w.Code)
+	}
+	// Same address, but the TXT names app: other can't take it.
+	if code, _ := addDomain(t, s, "other", "example.com"); code != http.StatusConflict {
+		t.Errorf("other site took the apex: code %d, want 409", code)
+	}
+	// The TXT moves to other: now it can.
+	dns.txt["_quick.example.com"] = []string{"other"}
+	if code, res := addDomain(t, s, "other", "example.com"); code != http.StatusOK || !res.Domains[0].Active {
+		t.Errorf("apex move: code %d res %+v", code, res)
+	}
+}
+
+// Two sites listing one domain (a move whose cleanup failed): the latest
+// activation wins, and the other site's stale entry is dropped.
+func TestDomainIndexDoubleClaimLatestWins(t *testing.T) {
+	s, _ := newDomainTestServer(t)
+	s.meta.save("app", policy{Domains: []siteDomain{{Name: "www.example.com", VerifiedAt: "2026-10-20T10:00:00Z"}}})
+	s.meta.save("other", policy{Domains: []siteDomain{{Name: "www.example.com", VerifiedAt: "2026-03-01T10:00:00Z"}}})
+	idx, err := loadDomainIndex(s.store, s.meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c, ok := idx.get("www.example.com"); !ok || c.site != "app" || !c.active {
+		t.Errorf("www: %+v %v, want app", c, ok)
+	}
+	if p, _ := s.meta.loadFresh("other"); len(p.Domains) != 0 {
+		t.Errorf("stale claim kept: %+v", p.Domains)
+	}
+	if p, _ := s.meta.loadFresh("app"); len(p.Domains) != 1 {
+		t.Errorf("winner lost the domain: %+v", p.Domains)
+	}
+}
+
+// Removing a stale claim from a site must not unhook the domain from the
+// site that actually serves it.
+func TestRemoveStaleDomainKeepsOwner(t *testing.T) {
+	s, _ := newDomainTestServer(t)
+	s.meta.save("app", policy{Domains: []siteDomain{{Name: "www.example.com", VerifiedAt: nowStamp()}}})
+	s.meta.save("other", policy{Access: "public", Domains: []siteDomain{{Name: "www.example.com", VerifiedAt: nowStamp()}}})
+	s.domains.set("www.example.com", "other", true)
+	if w := apexCall(s, http.MethodDelete, "/api/site/app/domains/www.example.com", ""); w.Code != http.StatusOK {
+		t.Fatalf("remove: %d %s", w.Code, w.Body)
+	}
+	if c, ok := s.domains.get("www.example.com"); !ok || c.site != "other" {
+		t.Errorf("owner lost the domain: %+v %v", c, ok)
 	}
 }
