@@ -73,6 +73,9 @@ type DeployResponse struct {
 	Site string `json:"site"`
 	URL  string `json:"url"`
 	By   string `json:"by"`
+	// Warning: published, but something after it failed (site state not
+	// saved). Still a success: the site is live.
+	Warning string `json:"warning,omitempty"`
 }
 
 const (

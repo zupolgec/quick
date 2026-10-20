@@ -390,18 +390,18 @@ func (s *server) finishDeploy(w http.ResponseWriter, name string, cur policy, id
 	if ident.Token {
 		s.markTokenUsed(&cur, ident.TokenID, by, now)
 	}
+	res := quick.DeployResponse{Site: name, URL: "https://" + name + "." + s.baseDomain, By: by}
 	if err := s.meta.save(name, cur); err != nil {
+		// The site is live: still a success (a 5xx would make the CLI say
+		// nothing was published), with a warning. What's lost is the "last
+		// deploy by" record and the index version (the next plan rebuilds it).
 		log.Printf("WARNING: deploy %q applied but saving metadata failed: %v", name, err)
-		http.Error(w, "deploy applied but saving state failed: "+err.Error(), http.StatusInternalServerError)
-		return
+		res.Warning = "published, but saving the site's details failed: " + err.Error()
+	} else {
+		s.pruneIndexes(name, cur)
 	}
-	s.pruneIndexes(name, cur)
 	log.Printf("deploy %q by %s", name, by)
-	_ = json.NewEncoder(w).Encode(quick.DeployResponse{
-		Site: name,
-		URL:  "https://" + name + "." + s.baseDomain,
-		By:   by,
-	})
+	_ = json.NewEncoder(w).Encode(res)
 }
 
 // authenticate verifies an OIDC ID token (Authorization: Bearer) locally
