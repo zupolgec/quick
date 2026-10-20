@@ -14,10 +14,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/zupolgec/quick/internal/chunk"
@@ -236,10 +238,7 @@ func deltaRounds(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) 
 		}
 		code, out, err = deltaPost(intr.context(), cfg, tok, "/api/deploy/commit"+q, st.lease, body, true)
 		if err != nil {
-			if intr.stopped() != nil {
-				return res, st, errPublishStarted
-			}
-			return res, st, err
+			return res, st, err // interrupted: errPublishStarted once sent (send)
 		}
 		if err := lockedResponse(code, out); err != nil {
 			return res, st, err
@@ -377,11 +376,42 @@ func deltaPost(ctx context.Context, cfg *cliConfig, tok, path, lease string, bod
 	} else {
 		req.Header.Set("Content-Type", "application/octet-stream")
 	}
+	return send(req, strings.HasPrefix(path, "/api/deploy/commit"))
+}
+
+// send runs a deploy request and reads the whole answer. A request that may
+// publish (commit, tar upload) interrupted after it was written has an
+// uncertain outcome, errPublishStarted, unless the server's answer was a
+// refusal (4xx publishes nothing, even if its body is cut short); the
+// caller decodes a complete answer. Interrupted before that, or any other
+// request: errInterrupted.
+func send(req *http.Request, publish bool) (int, []byte, error) {
+	var wrote atomic.Bool
+	if publish {
+		req = req.WithContext(httptrace.WithClientTrace(req.Context(), &httptrace.ClientTrace{
+			WroteHeaders: func() { wrote.Store(true) },
+		}))
+	}
+	interrupted := func(err error) error {
+		switch {
+		case intr.stopped() == nil:
+			return err
+		case publish && wrote.Load():
+			return errPublishStarted
+		}
+		return errInterrupted
+	}
 	resp, err := deployClient.Do(req)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, interrupted(err)
 	}
 	defer resp.Body.Close()
 	out, err := io.ReadAll(resp.Body)
-	return resp.StatusCode, out, err
+	if err != nil {
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return resp.StatusCode, out, nil
+		}
+		return resp.StatusCode, out, interrupted(err)
+	}
+	return resp.StatusCode, out, nil
 }

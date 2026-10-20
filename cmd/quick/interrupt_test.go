@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -26,7 +27,8 @@ type interruptRig struct {
 	hold     map[string]chan struct{} // path -> closed to let the request go on
 	arrived  map[string]chan struct{} // path -> closed when it first arrives
 	delDelay time.Duration
-	wg       sync.WaitGroup // the publish goroutine
+	wg       sync.WaitGroup  // the publish goroutine
+	partial  map[string]bool // held paths answering 200 with half a body first
 }
 
 func newInterruptRig(t *testing.T, hold ...string) *interruptRig {
@@ -35,6 +37,7 @@ func newInterruptRig(t *testing.T, hold ...string) *interruptRig {
 		t: t, l: &leaseServer{fakeDeltaServer: &fakeDeltaServer{have: map[string]bool{}}},
 		sigs: make(chan os.Signal, 2), exits: make(chan int, 2),
 		hold: map[string]chan struct{}{}, arrived: map[string]chan struct{}{},
+		partial: map[string]bool{},
 	}
 	for _, p := range hold {
 		g.hold[p], g.arrived[p] = make(chan struct{}), make(chan struct{})
@@ -76,12 +79,22 @@ func (g *interruptRig) serve(w http.ResponseWriter, r *http.Request) {
 		g.event("released")
 	}
 	if c, ok := g.hold[r.URL.Path]; ok {
+		if g.partial[r.URL.Path] {
+			// The server published: 200 and half the answer, then silence.
+			io.Copy(io.Discard, r.Body)
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"site":"de`))
+			http.NewResponseController(w).Flush()
+		}
 		select {
 		case <-g.arrived[r.URL.Path]:
 		default:
 			close(g.arrived[r.URL.Path])
 		}
 		<-c
+		if g.partial[r.URL.Path] {
+			return
+		}
 	}
 	g.l.ServeHTTP(w, r)
 }
@@ -163,6 +176,35 @@ func TestInterruptDuringCommit(t *testing.T) {
 	}
 	if code := g.in.code(); code != 143 {
 		t.Fatalf("exit code %d, want 143", code)
+	}
+}
+
+// The server published and started answering 200 when the signal arrives:
+// the answer is cut short, but the outcome is uncertain, never "nothing was
+// published". For the commit and for the whole-folder upload.
+func TestInterruptDuringPublishAnswer(t *testing.T) {
+	for _, path := range []string{"/api/deploy/commit", "/api/deploy"} {
+		g := newInterruptRig(t, path)
+		g.partial[path] = true
+		var done <-chan error
+		if path == "/api/deploy" {
+			dir, p := deltaFixture(t, 1)
+			ch := make(chan error, 1)
+			go func() {
+				_, err := tarDeploy(&cliConfig{Server: g.srv.URL}, "demo", "tok", dir, p, false, "")
+				ch <- err
+			}()
+			done = ch
+		} else {
+			done = g.publish()
+		}
+		<-g.arrived[path]
+		time.Sleep(200 * time.Millisecond) // the CLI has the 200 headers, is reading the body
+		g.sigs <- syscall.SIGTERM
+		err := waitErr(t, done, 5*time.Second)
+		if !errors.Is(err, errPublishStarted) {
+			t.Fatalf("%s: err = %v, want publish-started", path, err)
+		}
 	}
 }
 

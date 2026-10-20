@@ -382,20 +382,15 @@ func tarDeploy(cfg *cliConfig, name, tok, dir string, pl *plan, takeover bool, l
 	req.Header.Set("Content-Type", "application/gzip")
 	req.Header.Set("Authorization", "Bearer "+tok)
 	leaseRequest(req, lease)
-	resp, err := deployClient.Do(req)
+	code, respBody, err := send(req, true) // interrupted: errPublishStarted once sent
 	if err != nil {
-		if intr.stopped() != nil {
-			return res, errPublishStarted // the server may have got it all
-		}
 		return res, err
 	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
-	if err := lockedResponse(resp.StatusCode, respBody); err != nil {
+	if err := lockedResponse(code, respBody); err != nil {
 		return res, err
 	}
-	if resp.StatusCode != http.StatusOK {
-		return res, fmt.Errorf("deploy failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(respBody)))
+	if code != http.StatusOK {
+		return res, fmt.Errorf("deploy failed (%d): %s", code, strings.TrimSpace(string(respBody)))
 	}
 	err = json.Unmarshal(respBody, &res)
 	return res, err
