@@ -128,19 +128,20 @@ func printUsage(w io.Writer) {
   quick login                       # log in (once per server; it becomes the default)
   quick servers [use <server>]      # known servers, login status; change the default
   quick deploy [<site>] [folder]    # publish a folder (default: current)
-  quick rollback  <site>            # restore the previous version
+  quick rollback  [<site>]          # restore the previous version
   quick ignore  [folder]            # create an editable .quickignore
   quick skill   [--target codex|gemini|…] [--project] [--all]  # publish the Agent Skill (SKILL.md)
-  quick delete    <site>            # delete the site (irreversible)
-  quick publish   <site>            # open to the public (no SSO)
-  quick unpublish <site>            # back behind company SSO
-  quick private   <site> [--code X] # access by code (generated if absent)
-  quick lock      <site>            # only you can overwrite it
-  quick unlock    <site>
-  quick token create|list|revoke <site>
-  quick domains [add|rm] <site> [domain]  # custom domains (www.example.com)
+  quick delete    [<site>]          # delete the site (irreversible)
+  quick publish   [<site>]          # open to the public (no SSO)
+  quick unpublish [<site>]          # back behind company SSO
+  quick private   [<site>] [--code X] # access by code (generated if absent)
+  quick lock      [<site>]          # only you can overwrite it
+  quick unlock    [<site>]
+  quick token create|list|revoke [<site>]
+  quick domains [add|rm] [<site>] [domain]  # custom domains (www.example.com)
   quick upgrade   [--check]          # update the CLI to the latest version
-  quick version`)
+  quick version
+<site> is optional inside a folder with a .quick file (written by the first deploy).`)
 }
 
 // usage prints usage to stderr and exits with an error (unknown command).

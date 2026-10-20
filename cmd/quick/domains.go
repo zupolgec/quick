@@ -21,20 +21,23 @@ func domainsCmd(args []string) {
 			sub, args = args[0], args[1:]
 		}
 	}
-	name, args := firstPos(args)
-	domain, args := firstPos(args)
+	p1, args := firstPos(args)
+	p2, args := firstPos(args)
 	fs := flag.NewFlagSet("domains "+sub, flag.ExitOnError)
 	server := fs.String("server", "", "server URL (or QUICK_SERVER)")
 	auth := fs.String("token", os.Getenv("QUICK_TOKEN"), "login ID token (default: saved login)")
 	fs.Parse(args)
-	if name == "" && fs.NArg() > 0 {
-		name = fs.Arg(0)
-	}
-	if domain == "" && fs.NArg() > 1 {
-		domain = fs.Arg(1)
-	}
-	if (sub == "list" || sub == "ls") && domain != "" {
-		domainsUsage()
+	pos := positionals([]string{p1, p2}, fs.Args())
+	var name, domain string
+	if sub == "list" || sub == "ls" {
+		if len(pos) > 1 {
+			domainsUsage()
+		}
+		if len(pos) == 1 {
+			name = pos[0]
+		}
+	} else {
+		name, domain = siteAndArg(pos)
 	}
 	if sub != "list" && sub != "ls" && domain == "" {
 		fatal(errors.New("missing domain"))

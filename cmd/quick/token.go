@@ -107,18 +107,13 @@ func tokenListCmd(args []string) {
 }
 
 func tokenRevokeCmd(args []string) {
-	name, args := firstPos(args)
-	tokenID, args := firstPos(args)
+	p1, args := firstPos(args)
+	p2, args := firstPos(args)
 	fs := flag.NewFlagSet("token revoke", flag.ExitOnError)
 	server := fs.String("server", "", "server URL (or QUICK_SERVER)")
 	auth := fs.String("token", os.Getenv("QUICK_TOKEN"), "login ID token (default: saved login)")
 	fs.Parse(args)
-	if name == "" && fs.NArg() > 0 {
-		name = fs.Arg(0)
-	}
-	if tokenID == "" && fs.NArg() > 1 {
-		tokenID = fs.Arg(1)
-	}
+	name, tokenID := siteAndArg(positionals([]string{p1, p2}, fs.Args()))
 	if tokenID == "" {
 		fatal(errors.New("missing token id"))
 	}
@@ -148,6 +143,29 @@ func tokenConfigAndAuth(name, server, tok string) (string, *cliConfig, string) {
 		}
 	}
 	return name, cfg, tok
+}
+
+// siteAndArg splits the positionals of a "[<site>] <arg>" command: a single
+// one is the argument, and the site comes from the folder's .quick file.
+func siteAndArg(pos []string) (site, arg string) {
+	switch len(pos) {
+	case 0:
+		return "", ""
+	case 1:
+		return "", pos[0]
+	}
+	return pos[0], pos[1]
+}
+
+// positionals joins the positionals read before the flags with those after them.
+func positionals(before, after []string) []string {
+	var out []string
+	for _, v := range before {
+		if v != "" {
+			out = append(out, v)
+		}
+	}
+	return append(out, after...)
 }
 
 func firstPos(args []string) (string, []string) {

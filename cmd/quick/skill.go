@@ -53,23 +53,25 @@ quick deploy my-site ./build                    # -> https://my-site.quick.examp
 | ` + "`quick servers [use <server>]`" + ` | Known servers with login status; ` + "`use`" + ` changes the default |
 | ` + "`quick deploy [<site>] [folder]`" + ` | Publish a folder (default: the current one) |
 | ` + "`quick ignore [folder]`" + ` | Create an editable ` + "`.quickignore`" + ` with the defaults already inside |
-| ` + "`quick publish <site>`" + ` | Open to the public (no SSO) |
-| ` + "`quick unpublish <site>`" + ` | Back behind company SSO (default) |
-| ` + "`quick private <site> [--code X]`" + ` | Access by code (generated if absent) |
-| ` + "`quick lock <site>`" + ` / ` + "`quick unlock <site>`" + ` | Lock/unlock overwrites (owner only) |
-| ` + "`quick token create <site> --name github-actions [--expires 90d]`" + ` | Create a site-scoped deploy token |
-| ` + "`quick token list <site>`" + ` | List deploy tokens for a site |
-| ` + "`quick token revoke <site> <token-id>`" + ` | Revoke a deploy token |
-| ` + "`quick domains <site>`" + ` | List custom domains and the DNS records still missing |
-| ` + "`quick domains add <site> <domain>`" + ` | Attach a custom domain (e.g. www.example.com) |
-| ` + "`quick domains rm <site> <domain>`" + ` | Detach a custom domain |
-| ` + "`quick rollback <site>`" + ` | Restore the previous version (with confirmation; ` + "`--yes`" + ` skips it; ` + "`--takeover`" + ` even during someone's deploy) |
-| ` + "`quick delete <site>`" + ` | Delete the site (irreversible, with confirmation) |
+| ` + "`quick publish [<site>]`" + ` | Open to the public (no SSO) |
+| ` + "`quick unpublish [<site>]`" + ` | Back behind company SSO (default) |
+| ` + "`quick private [<site>] [--code X]`" + ` | Access by code (generated if absent) |
+| ` + "`quick lock [<site>]`" + ` / ` + "`quick unlock [<site>]`" + ` | Lock/unlock overwrites (owner only) |
+| ` + "`quick token create [<site>] --name github-actions [--expires 90d]`" + ` | Create a site-scoped deploy token |
+| ` + "`quick token list [<site>]`" + ` | List deploy tokens for a site |
+| ` + "`quick token revoke [<site>] <token-id>`" + ` | Revoke a deploy token |
+| ` + "`quick domains [<site>]`" + ` | List custom domains and the DNS records still missing |
+| ` + "`quick domains add [<site>] <domain>`" + ` | Attach a custom domain (e.g. www.example.com) |
+| ` + "`quick domains rm [<site>] <domain>`" + ` | Detach a custom domain |
+| ` + "`quick rollback [<site>]`" + ` | Restore the previous version (with confirmation; ` + "`--yes`" + ` skips it; ` + "`--takeover`" + ` even during someone's deploy) |
+| ` + "`quick delete [<site>]`" + ` | Delete the site (irreversible, with confirmation) |
 | ` + "`quick upgrade [--check]`" + ` | Update the CLI to the latest release (` + "`--check`" + ` only checks) |
 
 ` + "`<site>`" + ` is optional if the folder has a ` + "`.quick`" + ` file: in that case the name
-and server come from there. Without ` + "`.quick`" + ` and without a name, the site takes the name
-of the current folder.
+and server come from there. Without ` + "`.quick`" + ` and without a name, ` + "`quick deploy`" + ` uses the name
+of the current folder; the other commands stop and ask for the name.
+With a single argument, ` + "`quick domains add|rm`" + ` and ` + "`quick token revoke`" + ` read it as
+the domain or token ID and take the site from ` + "`.quick`" + `.
 
 ## Multiple servers
 
