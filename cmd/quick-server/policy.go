@@ -156,18 +156,29 @@ func (m *metaStore) load(site string) (policy, error) {
 	return p, nil
 }
 
-// loadFresh reads the policy from storage, bypassing the cache, and caches
-// it. For read-modify-write callers: they hold the site lock, so what they
-// read is the latest and stays so until they save.
+// loadFresh reads the policy from storage, bypassing the cache. For
+// read-modify-write callers (they hold the site lock, so what they read is the
+// latest and stays so until they save) and for unlocked re-checks that must
+// not trust the cache. It caches what it read only if no save, forget or
+// other fresh load happened meanwhile: an unlocked read that stalled must not
+// put back a policy a newer save replaced (say, a removed viewer).
 func (m *metaStore) loadFresh(site string) (policy, error) {
 	if !quick.ValidName(site) {
 		return policy{}, nil
 	}
+	m.mu.Lock()
+	g := m.gen[site]
+	m.mu.Unlock()
 	p, err := m.read(site)
 	if err != nil {
 		return policy{}, err
 	}
-	m.put(site, p)
+	m.mu.Lock()
+	if m.gen[site] == g {
+		m.gen[site]++
+		m.cache[site] = cachedPolicy{p.clone(), time.Now()}
+	}
+	m.mu.Unlock()
 	return p, nil
 }
 
