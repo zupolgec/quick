@@ -385,14 +385,14 @@ func (s *server) addDomain(w http.ResponseWriter, r *http.Request, name, raw, em
 		http.Error(w, "too many domains for this site", http.StatusBadRequest)
 		return
 	}
-	from := ""
+	from, fromActive := "", false
 	if c, ok := s.domains.get(d); ok && c.site != name {
 		// DNS decides: a domain that now points here can move from another site.
 		if !pointsHere {
 			http.Error(w, s.domainTakenMessage(c.site, email), http.StatusConflict)
 			return
 		}
-		from = c.site
+		from, fromActive = c.site, c.active
 	}
 	prev := cur.clone()
 	if i < 0 {
@@ -408,11 +408,21 @@ func (s *server) addDomain(w http.ResponseWriter, r *http.Request, name, raw, em
 	}
 	if from != "" {
 		if err := s.dropDomainFromSite(from, d); err != nil {
-			if rerr := s.meta.save(name, prev); rerr != nil {
-				log.Printf("domain %s: undoing the move to %q failed: %v", d, name, rerr)
+			// The failed write may have landed anyway (a lost response):
+			// what the source durably says decides.
+			switch still, rerr := s.siteClaims(from, d); {
+			case rerr != nil:
+				// Unknown: keep the target's durable claim rather than risk
+				// neither site having it.
+				log.Printf("WARNING: domain %s: moved to %q, but removing it from %q failed (%v) and re-reading %q failed (%v): check its metadata", d, name, from, err, from, rerr)
+			case still:
+				if rerr := s.meta.save(name, prev); rerr != nil {
+					log.Printf("WARNING: domain %s: both %q and %q may claim it: undoing the move failed: %v", d, name, from, rerr)
+				}
+				s.domains.set(d, from, fromActive)
+				http.Error(w, "could not move the domain: "+err.Error(), http.StatusServiceUnavailable)
+				return
 			}
-			http.Error(w, "could not move the domain: "+err.Error(), http.StatusServiceUnavailable)
-			return
 		}
 		log.Printf("domain %s moved from %q to %q by %s", d, from, name, email)
 	}
@@ -428,6 +438,18 @@ func (s *server) domainTakenMessage(site, email string) string {
 		return "domain already used by site " + site
 	}
 	return "domain not available"
+}
+
+// siteClaims re-reads site's stored metadata (under its lock) and reports
+// whether it lists d. Caller holds domainsMu.
+func (s *server) siteClaims(site, d string) (bool, error) {
+	unlock := s.locks.lock(site)
+	defer unlock()
+	p, err := s.meta.loadFresh(site)
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(p.Domains, func(x siteDomain) bool { return x.Name == d }), nil
 }
 
 // dropDomainFromSite removes d from site's metadata. Caller holds domainsMu.
