@@ -249,7 +249,11 @@ func deltaRounds(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) 
 		if code != http.StatusOK {
 			return res, st, fmt.Errorf("deploy failed (%d): %s", code, strings.TrimSpace(string(out)))
 		}
-		return res, st, json.Unmarshal(out, &res)
+		if err := json.Unmarshal(out, &res); err != nil {
+			return res, st, err // pub stays sent: may have published
+		}
+		pub.set(published)
+		return res, st, nil
 	}
 }
 
@@ -384,12 +388,14 @@ func deltaPost(ctx context.Context, cfg *cliConfig, tok, path, lease string, bod
 // uncertain outcome, errPublishStarted, unless the server's answer was a
 // refusal (4xx publishes nothing, even if its body is cut short); the
 // caller decodes a complete answer. Interrupted before that, or any other
-// request: errInterrupted.
+// request: errInterrupted. For a publish request it also keeps the run's
+// outcome (pub): sent once written, refused on a 4xx; the caller marks a
+// decoded success as published.
 func send(req *http.Request, publish bool) (int, []byte, error) {
 	var wrote atomic.Bool
 	if publish {
 		req = req.WithContext(httptrace.WithClientTrace(req.Context(), &httptrace.ClientTrace{
-			WroteHeaders: func() { wrote.Store(true) },
+			WroteHeaders: func() { wrote.Store(true); pub.set(sent) },
 		}))
 	}
 	interrupted := func(err error) error {
@@ -406,9 +412,13 @@ func send(req *http.Request, publish bool) (int, []byte, error) {
 		return 0, nil, interrupted(err)
 	}
 	defer resp.Body.Close()
+	refusal := resp.StatusCode >= 400 && resp.StatusCode < 500
+	if publish && refusal {
+		pub.set(refused) // the status alone says nothing was applied
+	}
 	out, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+		if refusal {
 			return resp.StatusCode, out, nil
 		}
 		return resp.StatusCode, out, interrupted(err)

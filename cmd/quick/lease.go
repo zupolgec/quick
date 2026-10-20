@@ -12,7 +12,8 @@
 //     CLI knows its id: that request runs on a context that outlives the
 //     interrupt by planWait, so the id usually arrives and is released.
 //   - A commit (or tar upload) in flight when the signal arrives may still
-//     complete on the server: errPublishStarted, reported as such.
+//     complete on the server. What the CLI says about it never depends on
+//     errors or signal timing but on the run's publish outcome (pub).
 //
 // Best effort, remaining gaps (the lease then idles out on the server, 2
 // minutes): the plan answer takes longer than planWait (the server releases
@@ -29,6 +30,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -164,10 +166,34 @@ func (in *interrupts) stopped() error {
 	return nil
 }
 
+// outcome is what a run did to the live site, as far as the CLI can know.
+type outcome int32
+
+const (
+	notSent   outcome = iota // no publish request (commit, tar upload) written
+	sent                     // written, no definitive answer: may have published
+	refused                  // the server refused it (4xx): nothing applied
+	published                // complete, decoded 2xx
+)
+
+// publishOutcome is the run's outcome: set by send when a publish request is
+// written and when a refusal comes back, by the callers on a decoded
+// success, reset only when a run starts. Every message about the result
+// derives from it.
+type publishOutcome struct{ v atomic.Int32 }
+
+var pub publishOutcome
+
+func (p *publishOutcome) set(o outcome) { p.v.Store(int32(o)) }
+func (p *publishOutcome) get() outcome  { return outcome(p.v.Load()) }
+
 // interruptedReport is what the CLI says when it stops on a signal.
-func interruptedReport(err error) string {
-	if errors.Is(err, errPublishStarted) {
+func interruptedReport(o outcome) string {
+	switch o {
+	case sent:
 		return "interrupted: the publish had already started and may have completed"
+	case published:
+		return "interrupted: the site was published"
 	}
 	return "interrupted: nothing was published, the site is free again"
 }

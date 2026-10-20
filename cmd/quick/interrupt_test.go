@@ -29,8 +29,9 @@ type interruptRig struct {
 	hold     map[string]chan struct{} // path -> closed to let the request go on
 	arrived  map[string]chan struct{} // path -> closed when it first arrives
 	delDelay time.Duration
-	wg       sync.WaitGroup  // the publish goroutine
-	partial  map[string]bool // held paths answering 200 with half a body first
+	wg       sync.WaitGroup              // the publish goroutine
+	partial  map[string]bool             // held paths answering 200 with half a body first
+	respond  map[string]http.HandlerFunc // paths answered by these instead
 }
 
 func newInterruptRig(t *testing.T, hold ...string) *interruptRig {
@@ -39,7 +40,7 @@ func newInterruptRig(t *testing.T, hold ...string) *interruptRig {
 		t: t, l: &leaseServer{fakeDeltaServer: &fakeDeltaServer{have: map[string]bool{}}},
 		sigs: make(chan os.Signal, 2), exits: make(chan int, 2),
 		hold: map[string]chan struct{}{}, arrived: map[string]chan struct{}{},
-		partial: map[string]bool{},
+		partial: map[string]bool{}, respond: map[string]http.HandlerFunc{},
 	}
 	for _, p := range hold {
 		g.hold[p], g.arrived[p] = make(chan struct{}), make(chan struct{})
@@ -76,6 +77,11 @@ func (g *interruptRig) log() string {
 
 func (g *interruptRig) serve(w http.ResponseWriter, r *http.Request) {
 	g.event(r.URL.Path)
+	if h := g.respond[r.URL.Path]; h != nil {
+		io.Copy(io.Discard, r.Body)
+		h(w, r)
+		return
+	}
 	if r.URL.Path == "/api/deploy/lease" {
 		time.Sleep(g.delDelay)
 		g.event("released")
@@ -154,8 +160,8 @@ func TestInterruptDuringUploadStopsBeforeCommit(t *testing.T) {
 	if code := g.in.code(); code != 130 {
 		t.Fatalf("exit code %d, want 130", code)
 	}
-	if !strings.Contains(interruptedReport(err), "nothing was published") {
-		t.Fatalf("report: %q", interruptedReport(err))
+	if !strings.Contains(interruptedReport(pub.get()), "nothing was published") {
+		t.Fatalf("report: %q", interruptedReport(pub.get()))
 	}
 }
 
@@ -170,8 +176,8 @@ func TestInterruptDuringCommit(t *testing.T) {
 	if !errors.Is(err, errPublishStarted) {
 		t.Fatalf("err = %v, want publish-started", err)
 	}
-	if !strings.Contains(interruptedReport(err), "the publish had already started and may have completed") {
-		t.Fatalf("report: %q", interruptedReport(err))
+	if !strings.Contains(interruptedReport(pub.get()), "the publish had already started and may have completed") {
+		t.Fatalf("report: %q", interruptedReport(pub.get()))
 	}
 	if !strings.Contains(g.log(), "released returned") {
 		t.Fatalf("no release before returning: %s", g.log())
@@ -316,6 +322,99 @@ func TestInterruptsStop(t *testing.T) {
 	in.stop()
 	if !stopped || intr != nil {
 		t.Fatalf("signal.Stop called %v, intr %v", stopped, intr)
+	}
+}
+
+// runRig runs the whole deploy command body against the rig.
+func (g *interruptRig) run() (int, string, string) {
+	dir, p := deltaFixture(g.t, 1)
+	var out, errOut bytes.Buffer
+	code := runPublish(g.in, &cliConfig{Server: g.srv.URL, DeltaDeploy: true}, "demo", "tok", dir, p,
+		deployOpts{save: func() {}}, &out, &errOut)
+	return code, out.String(), errOut.String()
+}
+
+// Codex's reproduction: the commit was applied but its answer is lost (cut
+// short, no signal yet); SIGTERM arrives while the CLI gives the lease back.
+// The publish may have happened: never "nothing was published".
+func TestLostCommitAnswerThenSignalDuringRelease(t *testing.T) {
+	g := newInterruptRig(t, "/api/deploy/lease")
+	g.respond["/api/deploy/commit"] = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1000")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"site":"de`)) // and the connection closes
+	}
+	go func() {
+		<-g.arrived["/api/deploy/lease"]
+		g.sigs <- syscall.SIGTERM
+		time.Sleep(50 * time.Millisecond)
+		g.let("/api/deploy/lease")
+	}()
+	code, _, errOut := g.run()
+	if code != 143 || !strings.Contains(errOut, "may have completed") || strings.Contains(errOut, "nothing was published") {
+		t.Fatalf("exit %d, err %q", code, errOut)
+	}
+}
+
+// Without any signal, the outcome still decides the wording: a refusal
+// published nothing, anything else after the commit was sent may have
+// published.
+func TestPublishOutcomeWording(t *testing.T) {
+	answer := func(code int, body string) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(code)
+			w.Write([]byte(body))
+		}
+	}
+	uncertain := map[string]http.HandlerFunc{
+		"malformed 200": answer(http.StatusOK, "not json"),
+		"500":           answer(http.StatusInternalServerError, "boom"),
+		"502":           answer(http.StatusBadGateway, "proxy"),
+	}
+	refused := map[string]http.HandlerFunc{}
+	for _, c := range []int{400, 401, 403, 409, 413, 423} {
+		refused[http.StatusText(c)] = answer(c, "no")
+	}
+	for name, h := range uncertain {
+		g := newInterruptRig(t)
+		g.respond["/api/deploy/commit"] = h
+		code, _, errOut := g.run()
+		if code != 1 || !strings.Contains(errOut, "the deploy may have been published; check the site") {
+			t.Errorf("%s: exit %d, err %q", name, code, errOut)
+		}
+	}
+	for name, h := range refused {
+		g := newInterruptRig(t)
+		g.respond["/api/deploy/commit"] = h
+		code, _, errOut := g.run()
+		if code != 1 || strings.Contains(errOut, "may have") {
+			t.Errorf("%s: exit %d, err %q", name, code, errOut)
+		}
+		// Interrupted after the refusal (while giving the lease back): still
+		// nothing published.
+		g = newInterruptRig(t, "/api/deploy/lease")
+		g.respond["/api/deploy/commit"] = h
+		go func() {
+			<-g.arrived["/api/deploy/lease"]
+			g.sigs <- os.Interrupt
+			time.Sleep(50 * time.Millisecond)
+			g.let("/api/deploy/lease")
+		}()
+		if code, _, errOut := g.run(); code != 130 || !strings.Contains(errOut, "nothing was published") {
+			t.Errorf("%s then Ctrl-C: exit %d, err %q", name, code, errOut)
+		}
+	}
+}
+
+// Published but not recorded (200 with a warning): a success that says so.
+func TestPublishedWithWarning(t *testing.T) {
+	g := newInterruptRig(t)
+	g.respond["/api/deploy/commit"] = func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"site":"demo","url":"https://demo.example","warning":"details not saved"}`))
+	}
+	code, out, errOut := g.run()
+	if code != 0 || !strings.Contains(out, "published") || !strings.Contains(errOut, "warning: details not saved") {
+		t.Fatalf("exit %d, out %q, err %q", code, out, errOut)
 	}
 }
 

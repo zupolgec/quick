@@ -111,7 +111,8 @@ present in the package are removed from the site. Consequences:
   Ctrl-C or that fails gives it back at once (so you can rerun right away), one
   whose CLI was killed or lost the network after 2 minutes without activity.
   A deploy interrupted before publishing publishes nothing; once publishing
-  has started it completes. Wait and retry; use ` + "`--takeover`" + ` (on ` + "`deploy`" + ` or ` + "`rollback`" + `) only when
+  has started it may still complete (the CLI then says the publish "may have completed": check
+  the site before rerunning). Wait and retry; use ` + "`--takeover`" + ` (on ` + "`deploy`" + ` or ` + "`rollback`" + `) only when
   you know the other deploy is stale or must be overridden, never by reflex:
   the other deploy then stops with ` + "`this deploy lost the site ... nothing was published, run it again`" + `
   (unless it was already publishing: then it completes and yours publishes right after).

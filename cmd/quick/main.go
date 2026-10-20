@@ -328,17 +328,27 @@ type deployOpts struct {
 func runPublish(in *interrupts, cfg *cliConfig, name, tok, dir string, pl *plan, o deployOpts, out, errOut io.Writer) int {
 	res, st, delta, err := publishFolder(cfg, name, tok, dir, pl, o.takeover)
 	if err != nil {
+		// What to say comes from the run's outcome, not from the error or
+		// when a signal came: once a publish request was sent without a
+		// definitive answer, the site may have been published.
+		outcome := pub.get()
 		if code := in.code(); code != 0 {
-			fmt.Fprintln(errOut, "\n"+interruptedReport(err))
+			fmt.Fprintln(errOut, "\n"+interruptedReport(outcome))
 			return code
 		}
 		fmt.Fprintln(errOut, "error:", err)
+		if outcome == sent {
+			fmt.Fprintln(errOut, "the deploy may have been published; check the site")
+		}
 		return 1
 	}
 	if delta {
 		fmt.Fprintf(out, "%s uploaded %s of %s\n", check(), humanSize(st.sent), humanSize(st.total))
 	}
 	fmt.Fprintf(out, "%s %s published → %s\n", check(), cBold(name), cCyan(res.URL))
+	if res.Warning != "" {
+		fmt.Fprintln(errOut, "warning:", res.Warning)
+	}
 	o.save()
 
 	// optional visibility applied right after the deploy.
@@ -372,6 +382,7 @@ func runPublish(in *interrupts, cfg *cliConfig, name, tok, dir string, pl *plan,
 // (only changed chunks travel); otherwise, or if the server turns out not to
 // have it or is busy, with the whole tar. delta tells which one published.
 func publishFolder(cfg *cliConfig, name, tok, dir string, pl *plan, takeover bool) (res quick.DeployResponse, st deltaStats, delta bool, err error) {
+	pub.set(notSent) // a new run
 	if cfg.DeltaDeploy {
 		res, st, err = deltaDeploy(cfg, name, tok, dir, pl, takeover)
 		switch {
@@ -427,8 +438,11 @@ func tarDeploy(cfg *cliConfig, name, tok, dir string, pl *plan, takeover bool, l
 	if code != http.StatusOK {
 		return res, fmt.Errorf("deploy failed (%d): %s", code, strings.TrimSpace(string(respBody)))
 	}
-	err = json.Unmarshal(respBody, &res)
-	return res, err
+	if err := json.Unmarshal(respBody, &res); err != nil {
+		return res, err // pub stays sent: may have published
+	}
+	pub.set(published)
+	return res, nil
 }
 
 func tarGz(dir string) (*bytes.Buffer, error) {
