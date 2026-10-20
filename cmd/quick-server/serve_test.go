@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -308,5 +309,52 @@ func TestServePrecompressedUnityBuild(t *testing.T) {
 	s.serveSite(w, r, "game")
 	if w.Code != http.StatusPartialContent || w.Body.String() != "BR" || w.Header().Get("Content-Length") != "2" {
 		t.Errorf("range: code %d body %q len %q", w.Code, w.Body.String(), w.Header().Get("Content-Length"))
+	}
+}
+
+// Unity "decompression fallback" builds name their compressed files .unityweb:
+// served with the matching Content-Encoding, the browser inflates them itself
+// and the loader skips its slow JavaScript decompression (Unity suggests it in
+// the console). Uncompressed .unityweb stays as-is.
+func TestServeUnitywebWithContentEncoding(t *testing.T) {
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	zw.Write([]byte("wasm bytes"))
+	zw.Close()
+	// Unity's brotli .unityweb carries this marker in a metadata block near the start.
+	br := "\x6b\x00UnityWeb Compressed Content (brotli)\x00rest-of-stream"
+
+	s := newTestServer(t)
+	putSite(t, s.store, "game", map[string]string{
+		"Build/a.wasm.unityweb":         gz.String(),
+		"Build/a.data.unityweb":         br,
+		"Build/a.framework.js.unityweb": gz.String(),
+		"Build/plain.data.unityweb":     "not compressed",
+	})
+	cases := []struct{ path, ct, enc string }{
+		{"/Build/a.wasm.unityweb", "application/wasm", "gzip"},
+		{"/Build/a.data.unityweb", "application/octet-stream", "br"},
+		{"/Build/a.framework.js.unityweb", "text/javascript; charset=utf-8", "gzip"},
+		{"/Build/plain.data.unityweb", "application/octet-stream", ""},
+	}
+	for _, c := range cases {
+		w := get(t, s, "game", c.path)
+		if w.Code != http.StatusOK {
+			t.Errorf("%s: code %d", c.path, w.Code)
+			continue
+		}
+		if got := w.Header().Get("Content-Encoding"); got != c.enc {
+			t.Errorf("%s: Content-Encoding %q, want %q", c.path, got, c.enc)
+		}
+		if got := w.Header().Get("Content-Type"); got != c.ct {
+			t.Errorf("%s: Content-Type %q, want %q", c.path, got, c.ct)
+		}
+		if c.enc != "" && w.Header().Get("Content-Length") != strconv.Itoa(w.Body.Len()) {
+			t.Errorf("%s: Content-Length %q, body %d", c.path, w.Header().Get("Content-Length"), w.Body.Len())
+		}
+	}
+	// The whole stored file is sent: sniffing must not eat the first bytes.
+	if w := get(t, s, "game", "/Build/a.wasm.unityweb"); w.Body.String() != gz.String() {
+		t.Errorf("body altered after sniffing")
 	}
 }

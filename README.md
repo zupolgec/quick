@@ -84,7 +84,9 @@ mancante dà un 404 vero.
 `x.json.gz` (Brotli `.br` o gzip `.gz`) vengono serviti col tipo del file interno
 e `Content-Encoding`, così il browser li decomprime da sé. Una build Unity WebGL si
 pubblica così com'è, con qualunque compressione (Brotli, Gzip o "decompression
-fallback" `.unityweb`). Gli altri `.gz` (archivi) restano download normali.
+fallback" `.unityweb`: se il file è compresso, quick lo serve con il
+`Content-Encoding` giusto e il browser lo decomprime da sé, più veloce del loader
+di Unity). Gli altri `.gz` (archivi) restano download normali.
 
 **Libreria `quick.js`**: ogni sito può importare `/__quick/quick.js` (ESM, tipi in
 `/__quick/quick.d.ts`). `await quick.id.me()` restituisce l'utente collegato

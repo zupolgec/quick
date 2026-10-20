@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"io"
 	"mime"
 	"net/http"
@@ -26,6 +27,32 @@ var precompressedTypes = map[string]string{
 	".wasm": "application/wasm",
 	".data": "application/octet-stream",
 	".json": "application/json",
+}
+
+// unitywebEncoding sniffs a Unity "decompression fallback" file (name.<ext>.unityweb):
+// gzip or brotli content is served with that Content-Encoding, so the browser
+// inflates it and Unity's loader skips its JavaScript decompression. Anything
+// else stays a plain download. rc is rewound.
+func unitywebEncoding(p string, rc io.ReadSeeker) (ct, enc string, ok bool) {
+	head := make([]byte, 128)
+	n, _ := io.ReadFull(rc, head)
+	if _, err := rc.Seek(0, io.SeekStart); err != nil {
+		return "", "", false
+	}
+	head = head[:n]
+	switch {
+	case len(head) >= 2 && head[0] == 0x1f && head[1] == 0x8b:
+		enc = "gzip"
+	case bytes.Contains(head, []byte("UnityWeb Compressed Content (brotli)")):
+		enc = "br"
+	default:
+		return "", "", false
+	}
+	ct = precompressedTypes[path.Ext(strings.TrimSuffix(p, ".unityweb"))]
+	if ct == "" {
+		ct = "application/octet-stream"
+	}
+	return ct, enc, true
 }
 
 // precompressed reports the Content-Type and Content-Encoding for a
@@ -272,7 +299,11 @@ func (s *server) serveFile(w http.ResponseWriter, r *http.Request, sub, cand str
 	// No MIME sniffing: a public site must not be able to get a file interpreted
 	// as the wrong type (XSS vector). The octet-stream fallback downloads, not renders.
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	if ct, enc, ok := precompressed(cand); ok {
+	ct, enc, ok := precompressed(cand)
+	if !ok && path.Ext(cand) == ".unityweb" {
+		ct, enc, ok = unitywebEncoding(cand, rc)
+	}
+	if ok {
 		w.Header().Set("Content-Type", ct)
 		w.Header().Set("Content-Encoding", enc)
 		w.Header().Add("Vary", "Accept-Encoding")

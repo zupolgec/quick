@@ -194,7 +194,8 @@ Use ` + "`quick status`" + ` or ` + "`quick deploy ... --dry-run`" + ` to see in
 - Precompressed assets work as-is: ` + "`x.js.br`" + `, ` + "`x.wasm.gz`" + `, ` + "`x.data.br`" + `,
   ` + "`x.json.gz`" + ` are served with the right type and Content-Encoding. Unity WebGL
   builds deploy unchanged with any compression setting (Brotli, Gzip, or
-  decompression fallback ` + "`.unityweb`" + `); no server config needed.
+  decompression fallback ` + "`.unityweb`" + `, served with Content-Encoding too
+  so the browser decompresses it); no server config needed.
 - Every site can import the browser library ` + "`/__quick/quick.js`" + ` (ESM, types at
   ` + "`/__quick/quick.d.ts`" + `). ` + "`await quick.id.me()`" + ` returns the signed-in user
   (` + "`{email}`" + `) on SSO sites, ` + "`null`" + ` on public or access-code sites. The
