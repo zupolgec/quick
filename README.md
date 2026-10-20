@@ -178,8 +178,16 @@ attiva da solo; il certificato viene emesso alla prima visita. Un dominio
 appartiene a un solo sito e passa a un altro solo quando il suo DNS punta lì. I
 siti pubblici o con codice vengono serviti sul dominio personalizzato; quelli con
 SSO aziendale rimandano all'indirizzo `<sito>.<dominio>`, perché l'accesso non
-attraversa i domini. Lato proxy serve il TLS on-demand: vedi la label
-`QUICK_CD_PREFIX` nel compose (spenta di default).
+attraversa i domini. Il DNS del dominio viene verificato tramite resolver
+pubblici (1.1.1.1, 8.8.8.8), così il dominio si attiva appena il record esiste.
+
+Lato proxy servono il TLS on-demand e un blocco HTTP "qualunque dominio". Si
+accendono con la variabile `QUICK_CD_PREFIX=caddy` su una sola istanza per
+proxy: le label del compose si chiamano `${QUICK_CD_PREFIX:-quick_off}_1`/`_2`,
+quindi senza variabile diventano `quick_off_*` e il proxy le ignora; con
+`caddy` diventano `caddy_1`/`caddy_2` e il proxy le legge. Il proxy deve avere
+`on_demand_tls.ask` verso quell'istanza e nessun catch-all proprio (quick
+risponde 503 in HTTP ai domini sconosciuti). Procedura in `docs/custom-domains.md`.
 
 ## Visibilità e lock
 
