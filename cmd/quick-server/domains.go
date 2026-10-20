@@ -304,7 +304,7 @@ func (s *server) handleDomains(w http.ResponseWriter, r *http.Request, name, res
 	}
 	switch {
 	case rest == "" && r.Method == http.MethodGet:
-		s.listDomains(w, r, name)
+		s.listDomains(w, r, name, email)
 	case rest == "" && r.Method == http.MethodPost:
 		var req quick.DomainRequest
 		if json.NewDecoder(r.Body).Decode(&req) != nil {
@@ -321,23 +321,30 @@ func (s *server) handleDomains(w http.ResponseWriter, r *http.Request, name, res
 
 // listDomains also activates pending domains whose DNS is now in place, so
 // `quick domains` reflects reality right after the DNS change.
-func (s *server) listDomains(w http.ResponseWriter, r *http.Request, name string) {
+func (s *server) listDomains(w http.ResponseWriter, r *http.Request, name, email string) {
 	p, err := s.meta.load(name)
 	if err != nil {
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	changed := false
+	pending := false
 	for _, d := range p.Domains {
-		if d.VerifiedAt == "" && s.activateDomain(r.Context(), name, d.Name) {
-			changed = true
+		if d.VerifiedAt == "" {
+			pending = true
+			s.activateDomain(r.Context(), name, d.Name) // DNS lookups: can take a while
 		}
 	}
-	if changed {
-		if p, err = s.meta.load(name); err != nil {
+	// The answer comes from the policy read last, so visibility is checked on
+	// that one: the caller may have been removed while DNS was checked.
+	if pending {
+		if p, err = s.meta.loadFresh(name); err != nil {
 			http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 			return
 		}
+	}
+	if !canView(p, email) {
+		http.Error(w, "site not found", http.StatusNotFound)
+		return
 	}
 	_ = json.NewEncoder(w).Encode(quick.DomainsResponse{Site: name, Domains: s.domainInfos(name, p.Domains)})
 }
