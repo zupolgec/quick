@@ -38,11 +38,15 @@ func (s *server) renderSSOPage(w http.ResponseWriter, r *http.Request, host stri
 	})
 }
 
-// handleApexRoot serves the public landing (install + usage) at "/". The
-// dashboard lives at /dashboard.
+// handleApexRoot serves the home (install + usage) at "/" to signed-in users;
+// guests get the SSO page, as on /dashboard. The dashboard lives at /dashboard.
 func (s *server) handleApexRoot(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r) // the apex serves no sites
+		return
+	}
+	if _, ok := s.checkSSO(r); !ok {
+		s.renderSSOPage(w, r, s.baseDomain)
 		return
 	}
 	l := pickLang(r)

@@ -60,7 +60,7 @@ func TestSSOPageLocalized(t *testing.T) {
 }
 
 func TestLandingLocalized(t *testing.T) {
-	s := &server{baseDomain: "quick.example.test"}
+	s := &server{baseDomain: "quick.example.test", noAuth: true} // signed in
 
 	en := httptest.NewRecorder()
 	s.handleApexRoot(en, httptest.NewRequest(http.MethodGet, "/", nil))

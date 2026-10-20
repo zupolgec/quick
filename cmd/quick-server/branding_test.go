@@ -8,7 +8,7 @@ import (
 )
 
 func TestFontServedSameOriginNoCDN(t *testing.T) {
-	s := &server{baseDomain: "quick.example.test"}
+	s := &server{baseDomain: "quick.example.test", noAuth: true} // signed in: the home is SSO-gated
 
 	// Assets served on the apex and on a site subdomain (same-origin everywhere).
 	wantCT := map[string]string{

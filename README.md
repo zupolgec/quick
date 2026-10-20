@@ -288,8 +288,9 @@ Lato piattaforma e integrazione agenti:
 
 ## Architettura
 
-L'**apex** (`<BASE_DOMAIN>`) è il control plane: API, autenticazione e una
-dashboard dei siti (dietro SSO). Ogni **sottodominio** è solo un sito.
+L'**apex** (`<BASE_DOMAIN>`) è il control plane: API, autenticazione, una home con
+le istruzioni e la dashboard dei siti (entrambe dietro SSO). Ogni **sottodominio** è
+solo un sito.
 
 ```
 browser ──https──> coolify-proxy (caddy-docker-proxy, TLS apex + wildcard via DNS-01)
@@ -299,7 +300,8 @@ browser ──https──> coolify-proxy (caddy-docker-proxy, TLS apex + wildcar
                    <BASE_DOMAIN> (apex):  /api/health|config|deploy|sites|site/<n>/{policy,rollback}
                                           /api/deploy/{plan,chunks,commit} (deploy incrementale)
                                           /oauth2/* -> oauth2-proxy (SSO Google, sign_in + callback)
-                                          /         -> dashboard (loggato) | pagina accesso (guest)
+                                          /install.sh, /install.ps1 (pubblici, per il comando di installazione)
+                                          /, /dashboard -> home e dashboard (loggato) | pagina accesso (guest)
                    <sub>.<BASE_DOMAIN>:   policy per-sito (public/code/sso) + serve dallo Storage
                                           /__quick/code -> pagina codice; SSO -> pagina di accesso
                  Storage: local (bind mount) | S3-compatibile (stateless)

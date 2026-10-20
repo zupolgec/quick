@@ -201,7 +201,7 @@ func (s *server) buildApexMux() *http.ServeMux {
 	m.HandleFunc("/install.ps1", s.handleInstallPs1)
 	m.HandleFunc("/dashboard/site/", s.handleDashboardSite)
 	m.HandleFunc("/dashboard", s.handleDashboard) // sites dashboard (SSO page for guests)
-	m.HandleFunc("/", s.handleApexRoot)           // public landing: install + usage
+	m.HandleFunc("/", s.handleApexRoot)           // home: install + usage (SSO page for guests)
 	return m
 }
 
