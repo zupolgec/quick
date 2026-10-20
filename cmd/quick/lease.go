@@ -47,43 +47,82 @@ var (
 	errPublishStarted = fmt.Errorf("%w: the publish had already started and may have completed", errInterrupted)
 )
 
-// interrupts turns the first SIGINT/SIGTERM into a cancelled context.
+// interrupts turns the first SIGINT/SIGTERM into a cancelled context. One
+// per command run: created when the command starts its interruptible part,
+// stopped at its end (stop), after which signals have their default effect
+// again. The command honors the recorded signal at its very end.
 type interrupts struct {
-	ctx, plan  context.Context
-	cancel     context.CancelFunc
-	cancelPlan context.CancelFunc
-	mu         sync.Mutex
-	sig        os.Signal
+	ctx, plan   context.Context
+	cancel      context.CancelFunc
+	cancelPlan  context.CancelFunc
+	mu          sync.Mutex
+	sig         os.Signal
+	done        chan struct{} // closed by stop
+	finished    chan struct{} // closed when the watcher returns
+	stopOnce    sync.Once
+	stopSignals func()
 }
 
-// intr is the deploy's interrupt state (nil: none, e.g. tests).
+// intr is the running command's interrupt state (nil: none, e.g. tests).
 var intr *interrupts
 
-// newInterrupts watches sigs: the first cancels, a second calls exit.
+// signalStop is signal.Stop (test seam).
+var signalStop = signal.Stop
+
+// newInterrupts watches sigs until stop: the first signal cancels, a second
+// calls exit.
 func newInterrupts(sigs <-chan os.Signal, exit func(int)) *interrupts {
-	in := &interrupts{}
+	in := &interrupts{done: make(chan struct{}), finished: make(chan struct{})}
 	in.ctx, in.cancel = context.WithCancel(context.Background())
 	in.plan, in.cancelPlan = context.WithCancel(context.Background())
 	wait := planWait
 	go func() {
-		first := <-sigs
-		in.mu.Lock()
-		in.sig = first
-		in.mu.Unlock()
-		in.cancel()
-		time.AfterFunc(wait, in.cancelPlan)
-		<-sigs
-		exit(in.code())
+		defer close(in.finished)
+		select {
+		case first := <-sigs:
+			in.mu.Lock()
+			in.sig = first
+			in.mu.Unlock()
+			in.cancel()
+			time.AfterFunc(wait, in.cancelPlan)
+		case <-in.done:
+			return
+		}
+		select {
+		case <-sigs:
+			exit(in.code())
+		case <-in.done:
+		}
 	}()
 	return in
 }
 
-// catchInterrupts installs the signal handling for a deploy.
+// catchInterrupts installs the signal handling for the rest of a command
+// run; pair with stop.
 func catchInterrupts() *interrupts {
 	sigs := make(chan os.Signal, 2)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
-	intr = newInterrupts(sigs, os.Exit)
-	return intr
+	in := newInterrupts(sigs, os.Exit)
+	in.stopSignals = func() { signalStop(sigs) }
+	intr = in
+	return in
+}
+
+// stop ends the handling: default signal behavior is back, the watcher is
+// gone, contexts are released.
+func (in *interrupts) stop() {
+	in.stopOnce.Do(func() {
+		if in.stopSignals != nil {
+			in.stopSignals()
+		}
+		close(in.done)
+		<-in.finished
+		in.cancel()
+		in.cancelPlan()
+		if intr == in {
+			intr = nil
+		}
+	})
 }
 
 // code is the exit status for the signal received (128 + signal), 0 if none.

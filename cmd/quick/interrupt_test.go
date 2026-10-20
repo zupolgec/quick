@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
 	"syscall"
@@ -46,7 +48,7 @@ func newInterruptRig(t *testing.T, hold ...string) *interruptRig {
 	t.Cleanup(g.srv.Close) // runs last
 	g.in = newInterrupts(g.sigs, func(code int) { g.exits <- code })
 	intr = g.in
-	t.Cleanup(func() { intr = nil; held.clear() })
+	t.Cleanup(func() { g.in.stop(); intr = nil; held.clear() })
 	t.Cleanup(func() { // runs first: let held handlers and the deploy finish
 		for _, c := range g.hold {
 			select {
@@ -245,6 +247,75 @@ func TestInterruptWhilePackagingTheFolder(t *testing.T) {
 	}
 	if g.log() != "" {
 		t.Fatalf("requests sent: %s", g.log())
+	}
+}
+
+// SIGTERM during the visibility change that follows a deploy (--public): the
+// site is published, the change interrupted; the command exits 143 and says
+// exactly that.
+func TestInterruptDuringVisibilityChange(t *testing.T) {
+	g := newInterruptRig(t, "/api/site/demo/policy")
+	dir, p := deltaFixture(t, 1)
+	var out, errOut bytes.Buffer
+	done := make(chan int, 1)
+	go func() {
+		done <- runPublish(g.in, &cliConfig{Server: g.srv.URL, DeltaDeploy: true}, "demo", "tok", dir, p,
+			deployOpts{public: true, save: func() {}}, &out, &errOut)
+	}()
+	<-g.arrived["/api/site/demo/policy"]
+	g.sigs <- syscall.SIGTERM
+	select {
+	case code := <-done:
+		if code != 143 {
+			t.Fatalf("exit %d, want 143", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("still running")
+	}
+	if !strings.Contains(out.String(), "published") || !strings.Contains(errOut.String(), "published; visibility change interrupted") {
+		t.Fatalf("out %q\nerr %q", out.String(), errOut.String())
+	}
+}
+
+// A signal after everything is done is still honored at the end.
+func TestSignalAfterPublishIsHonored(t *testing.T) {
+	g := newInterruptRig(t)
+	dir, p := deltaFixture(t, 1)
+	var out, errOut bytes.Buffer
+	saved := func() { g.sigs <- os.Interrupt; time.Sleep(50 * time.Millisecond) }
+	code := runPublish(g.in, &cliConfig{Server: g.srv.URL, DeltaDeploy: true}, "demo", "tok", dir, p,
+		deployOpts{save: saved}, &out, &errOut)
+	if code != 130 || !strings.Contains(out.String(), "published") {
+		t.Fatalf("exit %d, out %q", code, out.String())
+	}
+}
+
+// The handler lives as long as the command: stop ends the watcher (fired or
+// not) and gives signals back to their default handling.
+func TestInterruptsStop(t *testing.T) {
+	for _, fire := range []bool{false, true} {
+		sigs := make(chan os.Signal, 2)
+		in := newInterrupts(sigs, func(int) { t.Error("exit called") })
+		if fire {
+			sigs <- os.Interrupt
+			for in.code() == 0 {
+				time.Sleep(time.Millisecond)
+			}
+		}
+		in.stop()
+		select {
+		case <-in.finished:
+		case <-time.After(time.Second):
+			t.Fatalf("fired %v: watcher still running", fire)
+		}
+	}
+	defer func(f func(chan<- os.Signal)) { signalStop = f }(signalStop)
+	var stopped bool
+	signalStop = func(c chan<- os.Signal) { stopped = true; signal.Stop(c) }
+	in := catchInterrupts()
+	in.stop()
+	if !stopped || intr != nil {
+		t.Fatalf("signal.Stop called %v, intr %v", stopped, intr)
 	}
 }
 

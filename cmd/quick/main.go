@@ -298,42 +298,74 @@ func deploy(args []string) {
 
 	// Delta deploy when the server supports it (only changed chunks travel);
 	// otherwise, or if the server turns out not to have it, the whole tar.
-	in := catchInterrupts() // from here on Ctrl-C stops the deploy and gives the site back (lease.go)
-	res, st, delta, err := publishFolder(cfg, *name, tok, dir, pl, *takeover)
-	// publishFolder released any lease before returning: every exit below is
-	// after the release.
-	if code := in.code(); code != 0 {
-		if err == nil { // the signal came after the publish
-			fmt.Printf("%s %s published → %s\n", check(), cBold(*name), cCyan(res.URL))
-		} else {
-			fmt.Fprintln(os.Stderr, "\n"+interruptedReport(err))
-		}
-		os.Exit(code)
-	}
-	fatal(err)
-	if delta {
-		fmt.Printf("%s uploaded %s of %s\n", check(), humanSize(st.sent), humanSize(st.total))
-	}
-	fmt.Printf("%s %s published → %s\n", check(), cBold(*name), cCyan(res.URL))
 	relDir := filepath.ToSlash(filepath.Clean(dir))
 	if relDir == "." {
 		relDir = ""
 	}
-	saveSiteFile(".", siteFile{Name: *name, Server: cfg.Server, Dir: relDir})
+	opts := deployOpts{
+		takeover: *takeover, public: *public, privateSet: privateSet, private: *private,
+		save: func() { saveSiteFile(".", siteFile{Name: *name, Server: cfg.Server, Dir: relDir}) },
+	}
+	in := catchInterrupts() // from here on Ctrl-C stops the deploy and gives the site back (lease.go)
+	code := runPublish(in, cfg, *name, tok, dir, pl, opts, os.Stdout, os.Stderr)
+	in.stop()
+	if code != 0 {
+		os.Exit(code)
+	}
+}
+
+type deployOpts struct {
+	takeover           bool
+	public, privateSet bool
+	private            string
+	save               func() // record the folder's site (.quick)
+}
+
+// runPublish publishes the folder and applies the visibility asked for,
+// reporting to out/errOut, and returns the exit status: 0, 1 on failure, or
+// 130/143 when a signal arrived (recorded by in, honored here whenever it
+// came). Any lease is released before it returns.
+func runPublish(in *interrupts, cfg *cliConfig, name, tok, dir string, pl *plan, o deployOpts, out, errOut io.Writer) int {
+	res, st, delta, err := publishFolder(cfg, name, tok, dir, pl, o.takeover)
+	if err != nil {
+		if code := in.code(); code != 0 {
+			fmt.Fprintln(errOut, "\n"+interruptedReport(err))
+			return code
+		}
+		fmt.Fprintln(errOut, "error:", err)
+		return 1
+	}
+	if delta {
+		fmt.Fprintf(out, "%s uploaded %s of %s\n", check(), humanSize(st.sent), humanSize(st.total))
+	}
+	fmt.Fprintf(out, "%s %s published → %s\n", check(), cBold(name), cCyan(res.URL))
+	o.save()
 
 	// optional visibility applied right after the deploy.
+	var req *quick.PolicyRequest
+	var done string
 	switch {
-	case *public:
-		callPolicy(cfg, *name, tok, quick.PolicyRequest{Access: new(quick.AccessPublic)})
-		fmt.Println("  → public (no SSO)")
-	case privateSet:
-		code := *private
+	case o.public:
+		req, done = &quick.PolicyRequest{Access: new(quick.AccessPublic)}, "  → public (no SSO)"
+	case o.privateSet:
+		code := o.private
 		if code == "" {
 			code = genCode()
 		}
-		callPolicy(cfg, *name, tok, quick.PolicyRequest{Access: new(quick.AccessCode), Code: &code})
-		fmt.Printf("  → private, code: %s\n", code)
+		req, done = &quick.PolicyRequest{Access: new(quick.AccessCode), Code: &code}, "  → private, code: "+code
 	}
+	if req != nil {
+		if _, err := postPolicy(in.context(), cfg, name, tok, *req); err != nil {
+			if code := in.code(); code != 0 {
+				fmt.Fprintln(errOut, "\npublished; visibility change interrupted")
+				return code
+			}
+			fmt.Fprintln(errOut, "error:", err)
+			return 1
+		}
+		fmt.Fprintln(out, done)
+	}
+	return in.code() // a signal after everything still counts
 }
 
 // publishFolder publishes with the delta deploy when the server supports it

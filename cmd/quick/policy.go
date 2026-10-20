@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
@@ -92,24 +93,34 @@ func policyCmd(action string, args []string) {
 }
 
 func callPolicy(cfg *cliConfig, name, tok string, payload quick.PolicyRequest) quick.PolicyResponse {
+	res, err := postPolicy(context.Background(), cfg, name, tok, payload)
+	fatal(err)
+	return res
+}
+
+// postPolicy changes the site's policy; ctx cancels it (interrupts).
+func postPolicy(ctx context.Context, cfg *cliConfig, name, tok string, payload quick.PolicyRequest) (quick.PolicyResponse, error) {
+	var res quick.PolicyResponse
 	body, _ := json.Marshal(payload)
 	endpoint := cfg.Server + "/api/site/" + url.PathEscape(name) + "/policy"
-	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
-	fatal(err)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return res, err
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+tok)
 
 	resp, err := httpClient.Do(req)
-	fatal(err)
+	if err != nil {
+		return res, err
+	}
 	defer resp.Body.Close()
 	rb, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		fmt.Fprintf(os.Stderr, "failed (%d): %s\n", resp.StatusCode, strings.TrimSpace(string(rb)))
-		os.Exit(1)
+		return res, fmt.Errorf("failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(rb)))
 	}
-	var res quick.PolicyResponse
 	json.Unmarshal(rb, &res)
-	return res
+	return res, nil
 }
 
 // genCode creates a short, readable access code (no ambiguous characters).
