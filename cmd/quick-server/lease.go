@@ -264,6 +264,21 @@ func (t *leaseTable) join(site, id, owner string) (*deployLease, *leaseError) {
 	return cur, nil
 }
 
+// holds checks that l is still site's live lease, owner's (not broken by a
+// takeover nor expired), without starting a request.
+func (t *leaseTable) holds(site string, l *deployLease, owner string) *leaseError {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	cur, err := t.use(site, l.id, owner, t.clock())
+	if err != nil {
+		return err
+	}
+	if cur != l {
+		return t.refusal(cur, refLost)
+	}
+	return nil
+}
+
 // end finishes a request; the deploy goes on (idle timer restarts).
 func (t *leaseTable) end(l *deployLease) {
 	t.mu.Lock()

@@ -335,36 +335,40 @@ func (s *server) pruneIndexes(site string, p policy) {
 
 // liveIndexForPlan returns the live chunk map for an unlocked plan: the stored
 // index if valid, else a rebuild under the site lock (saved for next time).
-func (s *server) liveIndexForPlan(site string, cur policy) (map[[32]byte]chunkLoc, error) {
+// version is the metadata Version the map belongs to, so the plan can check
+// it is still the live one when it answers.
+func (s *server) liveIndexForPlan(site string, cur policy) (idx map[[32]byte]chunkLoc, version string, err error) {
 	if idx, ok := s.storedIndex(site, cur); ok {
-		return idx, nil
+		return idx, cur.Version, nil
 	}
 	unlock := s.locks.lock(site)
 	defer unlock()
 	p, err := s.meta.loadFresh(site)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if idx, ok := s.storedIndex(site, p); ok { // rebuilt or republished meanwhile
-		return idx, nil
+		return idx, p.Version, nil
 	}
 	files, err := s.walkIndex(site)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	// An empty site has nothing to remember, and saving would create metadata
 	// for a site that doesn't exist.
+	version = p.Version // what the metadata says, if recording the rebuild fails
 	if len(files) > 0 {
 		if v := s.saveIndex(site, files); v != "" {
 			p.Version = v
 			if err := s.meta.save(site, p); err != nil {
 				log.Printf("site %s: recording the rebuilt index failed: %v", site, err)
 			} else {
+				version = v
 				s.pruneIndexes(site, p)
 			}
 		}
 	}
-	return locsOf(files), nil
+	return locsOf(files), version, nil
 }
 
 // liveIndexLocked is the commit's view of the live chunks (site lock held):

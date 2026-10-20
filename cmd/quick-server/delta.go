@@ -230,7 +230,15 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	idx, err := s.liveIndexForPlan(name, cur)
+	// Reading the body can take long: who may deploy (and see) the site, and
+	// whose deploy it is, may have changed meanwhile. The checks run again on
+	// fresh state before the live index is read, and once more before
+	// answering, when the index must still be the live version's: the answer
+	// never reflects a version published after the caller lost access.
+	if cur, ok = s.recheckPlan(w, r, name, ident, lease); !ok {
+		return
+	}
+	idx, version, err := s.liveIndexForPlan(name, cur)
 	if err != nil {
 		http.Error(w, "could not read the live version: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -262,6 +270,14 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), code)
 		return
 	}
+	// What was computed is discarded (the requests just expire) if access or
+	// the deploy changed meanwhile.
+	if now, ok := s.recheckPlan(w, r, name, ident, lease); !ok {
+		return
+	} else if now.Version != version {
+		http.Error(w, "the site changed while planning: plan again", http.StatusConflict)
+		return
+	}
 	for _, h := range order {
 		if size, ok := admitted[h]; ok {
 			res.Missing = append(res.Missing, hex.EncodeToString(h[:]))
@@ -276,6 +292,35 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 	// Undelivered (write deadline): the client never learned the id, so a
 	// lease opened here is released; a renewed one just idles out.
 	planned = err == nil
+}
+
+// recheckPlan repeats a plan's checks on fresh metadata (site lock held):
+// the identity against the current tokens, deploy rights, chosen people
+// (blindDeploy) and that the plan's lease is still this deploy's. ok=false:
+// response written.
+func (s *server) recheckPlan(w http.ResponseWriter, r *http.Request, name string, ident authIdentity, lease *deployLease) (policy, bool) {
+	cur, err := s.meta.loadFresh(name)
+	if err != nil {
+		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
+		return policy{}, false
+	}
+	fresh, err := s.authenticateForSite(r, name, cur, quick.TokenScopeDeploy)
+	if err != nil || ownerOf(fresh) != ownerOf(ident) {
+		http.Error(w, "auth: credentials no longer valid for this site", http.StatusUnauthorized)
+		return policy{}, false
+	}
+	if ok, reason := s.canWrite(cur, ident.Email, actDeploy); !ok {
+		http.Error(w, reason, http.StatusForbidden)
+		return policy{}, false
+	}
+	if refuseBlindDelta(w, cur, ident) {
+		return policy{}, false
+	}
+	if err := s.leases.holds(name, lease, ownerOf(ident)); err != nil {
+		leaseRefused(w, r, err)
+		return policy{}, false
+	}
+	return cur, true
 }
 
 func (s *server) handleDeployChunks(w http.ResponseWriter, r *http.Request) {
