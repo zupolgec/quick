@@ -201,6 +201,11 @@ risponde 503 in HTTP ai domini sconosciuti). Procedura in `docs/custom-domains.m
 ## Visibilità e lock
 
 ```bash
+quick access    foo                      # chi può vedere foo
+quick access    foo only-me              # solo tu (il proprietario)
+quick access    foo add giulia@acme.com  # tu più persone scelte dell'azienda
+quick access    foo remove giulia@acme.com
+quick access    foo team                 # di nuovo tutta l'azienda (default)
 quick publish   foo            # aperto a chiunque, niente SSO
 quick unpublish foo            # torna dietro l'SSO aziendale (default)
 quick private   foo            # accesso con codice (lo genera e te lo stampa)
@@ -212,7 +217,14 @@ quick unlock    foo
 Il cambio di visibilità è **istantaneo** (solo un file di metadata). La decisione
 di accesso la prende `quick-server`: pubblico → servito sempre; codice → pagina di
 inserimento codice, poi un cookie firmato vale 7 giorni; SSO → verifica la sessione
-Google via oauth2-proxy. Il **lock** registra te (dalla tua identità Google) come
+Google via oauth2-proxy. **Persone scelte** (`only-me`, `add`, `remove`): SSO più un elenco; entrano solo il
+proprietario (chi ha creato il sito) e gli account in elenco, gli altri vedono una
+pagina "sito riservato" con il nome del proprietario (mai l'elenco). Elenco,
+visibilità ed eliminazione di questi siti spettano solo al proprietario, in ogni
+modalità; il deploy segue le regole di sempre, e chi non può aprire il sito (e ogni
+token di deploy) carica tutta la cartella invece delle sole differenze. In una
+cartella collegata con `.quick` il nome del sito è facoltativo (`quick access
+only-me`). Il **lock** registra te (dalla tua identità Google) come
 owner: gli altri non possono più sovrascrivere né cambiare policy finché non fai
 `unlock`.
 

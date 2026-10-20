@@ -199,6 +199,11 @@ answers 503 over HTTP to unknown domains). Procedure in `docs/custom-domains.md`
 ## Visibility and lock
 
 ```bash
+quick access    foo                      # who can see foo
+quick access    foo only-me              # only you (the owner)
+quick access    foo add giulia@acme.com  # you plus chosen company accounts
+quick access    foo remove giulia@acme.com
+quick access    foo team                 # back to everyone at the company (default)
 quick publish   foo            # open to anyone, no SSO
 quick unpublish foo            # back behind the company SSO (default)
 quick private   foo            # access by code (generated and printed)
@@ -209,7 +214,13 @@ quick unlock    foo
 
 Changing visibility is **instant** (just a metadata file). `quick-server` makes the
 access decision: public → always served; code → code entry page, then a signed cookie
-valid for 7 days; SSO → checks the Google session through oauth2-proxy. The **lock**
+valid for 7 days; SSO → checks the Google session through oauth2-proxy. **Chosen people** (`only-me`, `add`, `remove`):
+SSO plus a list; only the owner (the creator) and the listed accounts get in, others
+see a "restricted" page naming the owner (never the list). Only the owner changes the
+list or the visibility of such a site, or deletes it, in every ownership mode; deploys
+follow the usual rules, and whoever can't open the site (and any deploy token) uploads
+the whole folder instead of a delta. In a folder linked with `.quick` the site name is
+optional (`quick access only-me`). The **lock**
 records you (from your Google identity) as owner: others can no longer overwrite it
 or change its policy until you `unlock`.
 

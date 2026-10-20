@@ -135,3 +135,31 @@ func TestDescribeSiteAccess(t *testing.T) {
 		}
 	}
 }
+
+// In a folder linked with .quick the site is optional: a first word that is an
+// access level or add/remove is the operation, not a site name. A site that is
+// literally named like a level can still be targeted explicitly.
+func TestParseAccessArgsSiteOptional(t *testing.T) {
+	cases := []struct {
+		args     []string
+		name, op string
+		emails   int
+	}{
+		{[]string{"only-me"}, "", "only-me", 0},
+		{[]string{"team"}, "", "team", 0},
+		{[]string{"code", "--code", "x1"}, "", "code", 0},
+		{[]string{"add", "a@example.com", "b@example.com"}, "", "add", 2},
+		{[]string{"remove", "a@example.com"}, "", "remove", 1},
+		{[]string{"team", "team"}, "team", "team", 0},              // site named "team"
+		{[]string{"add", "add", "a@example.com"}, "add", "add", 1}, // site named "add"
+		{[]string{"mysite", "only-me"}, "mysite", "only-me", 0},
+		{[]string{"mysite"}, "mysite", "", 0},
+		{nil, "", "", 0},
+	}
+	for _, c := range cases {
+		a, err := parseAccessArgs(c.args)
+		if err != nil || a.Name != c.name || a.Op != c.op || len(a.Emails) != c.emails {
+			t.Errorf("%v: got name=%q op=%q emails=%v err=%v", c.args, a.Name, a.Op, a.Emails, err)
+		}
+	}
+}

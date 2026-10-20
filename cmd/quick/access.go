@@ -42,7 +42,10 @@ func parseAccessArgs(args []string) (accessArgs, error) {
 		pos = append(pos, fs.Arg(0))
 		args = fs.Args()[1:]
 	}
-	if len(pos) > 0 {
+	// The site is optional in a folder linked with .quick: a leading level
+	// (alone) or add/remove (followed by emails) is the operation. With more
+	// words, the first is the site, so a site named like a level still works.
+	if len(pos) > 0 && !accessOpFirst(pos) {
 		a.Name, pos = pos[0], pos[1:]
 	}
 	if len(pos) > 0 {
@@ -58,7 +61,7 @@ func parseAccessArgs(args []string) (accessArgs, error) {
 			a.Emails = append(a.Emails, quick.SplitList(p)...)
 		}
 		if len(a.Emails) == 0 {
-			return a, fmt.Errorf("quick access <site> %s <email>...: missing email", a.Op)
+			return a, fmt.Errorf("quick access [<site>] %s <email>...: missing email", a.Op)
 		}
 	default:
 		return a, fmt.Errorf("unknown access %q (use team, public, code, only-me, add or remove)", a.Op)
@@ -67,6 +70,17 @@ func parseAccessArgs(args []string) (accessArgs, error) {
 		return a, errors.New("--code only goes with `code`")
 	}
 	return a, nil
+}
+
+// accessOpFirst reports whether the words start with the operation (no site).
+func accessOpFirst(pos []string) bool {
+	switch pos[0] {
+	case "team", "public", "code", "only-me":
+		return len(pos) == 1
+	case "add", "remove":
+		return len(pos) > 1 && strings.Contains(pos[1], "@")
+	}
+	return false
 }
 
 // accessRequest is the policy change for a parsed command (not for show).

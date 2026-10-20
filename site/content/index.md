@@ -15,7 +15,7 @@ quick deploy launch ./dist                           # -> https://launch.quick.a
 
 ## What you get
 
-- **Private by default.** Every site starts behind your company sign-in: Google Workspace or any OIDC provider. Open one to the world with `quick publish`, or hand out an access code with `quick private`.
+- **Private by default.** Every site starts behind your company sign-in: Google Workspace or any OIDC provider. Keep one to yourself or a few colleagues with `quick access`, open it to the world with `quick publish`, or hand out an access code with `quick private`.
 - **Agents ship too.** `quick skill` teaches Claude Code, Codex, Gemini or Cursor to deploy for you. Deploy tokens are tied to one site and can only deploy it.
 - **Your box, your bucket.** Two containers and a wildcard DNS record. Files on local disk or any S3-compatible bucket. MIT licensed, no account anywhere.
 - **Redeploys send the diff.** Files are split into content-defined chunks; only new chunks travel. Nine measured redeploys of a 3.1 MB build sent 457.2 KB in total, instead of 27.9 MB.

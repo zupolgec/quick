@@ -7,18 +7,26 @@ description: Who can open a site, who can change it, one deploy at a time, rollb
 
 ## Who can open a site
 
-Every site has one of three visibilities. Changing it is instant.
+Every site has one of these visibilities. Changing it is instant.
 
 ```bash
-quick unpublish launch            # company sign-in (the default)
-quick publish   launch            # anyone, no sign-in
-quick private   launch            # access code, generated and printed
-quick private   launch --code abc # access code you choose
+quick access launch                         # who can see it now
+quick access launch team                    # everyone at the company (the default)
+quick access launch only-me                 # only you
+quick access launch add giulia@acme.com     # you and the people you choose
+quick access launch remove giulia@acme.com
+quick access launch code [--code abc]       # access code, generated if you don't give one
+quick access launch public                  # anyone, no sign-in
 ```
 
-- **Company sign-in** checks the visitor's session with your identity provider (Google Workspace or any OIDC provider). Only accounts in the allowed email domains get in.
+Inside a folder linked to the site (it has a `.quick` file) you can drop the name: `quick access only-me`, `quick access add giulia@acme.com`.
+
+- **Everyone at the company** checks the visitor's session with your identity provider (Google Workspace or any OIDC provider). Only accounts in the allowed email domains get in.
+- **Chosen people** works like company sign-in, but only the owner (whoever created the site) and the accounts on the list get in. Anyone else at the company sees a page saying the site is restricted and who owns it, never who else is on the list. "Only me" is the same with an empty list. The list takes company accounts only.
 - **Access code** shows a page asking for the code. Once entered, it is remembered for 7 days.
 - **Public** serves the site to everyone.
+
+`quick publish`, `quick unpublish` and `quick private` still work as shortcuts for `public`, `team` and `code`. The same choices are on the site's page in the dashboard.
 
 ## Who can change a site
 
@@ -36,6 +44,8 @@ In any mode, the owner can lock a site:
 quick lock launch     # from now on only you can overwrite or change it
 quick unlock launch
 ```
+
+A site limited to chosen people is stricter in every mode: only its owner changes who can see it or deletes it. Deploys follow the rules above, so on an unlocked site a colleague may publish to it without being able to open it; lock it if that matters. Such a colleague, and any deploy token, always uploads the whole folder instead of only the changes, and the site's tokens and custom domains stay hidden from people who can't open it.
 
 When the last deploy of a site was by someone else, the CLI asks you to type the site name before replacing their work.
 
