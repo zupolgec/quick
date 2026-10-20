@@ -32,6 +32,28 @@ func canView(p policy, email string) bool {
 	return email != "" && (isOwner(p, email) || slices.Contains(p.Viewers, email))
 }
 
+// blindDeploy reports whether a deploy must not touch the site's live content
+// on the caller's behalf: a people site and a caller who can't open it. Such a
+// caller may still publish (canWrite), but the delta deploy would be an
+// oracle (which chunks a plan asks for, whether a commit can reuse a live
+// chunk, both reveal content), so the delta endpoints answer 404 and the CLI
+// falls back to the full upload, which never reads the live files. Deploy
+// tokens never count as viewers, whoever created them.
+func blindDeploy(p policy, ident authIdentity) bool {
+	return p.Access == quick.AccessPeople && (ident.Token || !canView(p, ident.Email))
+}
+
+// refuseBlindDelta answers 404 to a delta request from a blind deployer
+// (blindDeploy), before any lease or manifest is looked at, so every such
+// request gets the same answer.
+func refuseBlindDelta(w http.ResponseWriter, p policy, ident authIdentity) bool {
+	if !blindDeploy(p, ident) {
+		return false
+	}
+	http.Error(w, "delta deploy not available for this site: upload the whole folder", http.StatusNotFound)
+	return true
+}
+
 // Kinds of policy errors the dashboard shows in its own words.
 const (
 	errNotOwner     = "not_owner"     // arg: the owner

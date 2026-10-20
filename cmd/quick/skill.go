@@ -217,7 +217,8 @@ Use ` + "`quick status`" + ` or ` + "`quick deploy ... --dry-run`" + ` to see in
   never the list. Emails must be company accounts (max 100 per site). Only the owner can limit a site
   to chosen people, change who sees such a site (in any ownership mode), or delete it;
   other users get ` + "`only the owner (x) can change who can see this site`" + `. Deploys are unchanged:
-  whoever may deploy the site still can, even without seeing it. Such sites are listed (dashboard,
+  whoever may deploy the site still can, even without seeing it (then, and with deploy
+  tokens, the whole folder is uploaded every time: no delta). Such sites are listed (dashboard,
   ` + "`/api/sites`" + `) only to their people. ` + "`publish`/`unpublish`/`private`" + ` still work as shortcuts
   (` + "`unpublish`" + ` = ` + "`access <site> team`" + `).
 `

@@ -208,6 +208,9 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if refuseBlindDelta(w, cur, ident) {
+		return
+	}
 	lease, ok := s.beginLease(w, r, name, ident, nil)
 	if !ok {
 		return
@@ -280,8 +283,11 @@ func (s *server) handleDeployChunks(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	_, ident, ok := s.authorizeDeploy(w, r, name, false)
+	cur, ident, ok := s.authorizeDeploy(w, r, name, false)
 	if !ok {
+		return
+	}
+	if refuseBlindDelta(w, cur, ident) {
 		return
 	}
 	lease, ok := s.joinLease(w, r, name, ident, nil)
@@ -535,6 +541,9 @@ func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
 	defer unlock()
 	cur, ident, ok := s.authorizeDeploy(w, r, name, true)
 	if !ok {
+		return
+	}
+	if refuseBlindDelta(w, cur, ident) {
 		return
 	}
 	lease, ok := s.joinLease(w, r, name, ident, unlock)
