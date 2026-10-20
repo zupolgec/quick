@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/zupolgec/quick/internal/quick"
@@ -277,8 +278,11 @@ func TestCustomDomainPlainHTTP(t *testing.T) {
 // "doesn't exist" seen before the user created the record, up to the zone's
 // negative TTL).
 func TestPublicResolverDialsPublicServers(t *testing.T) {
+	var mu sync.Mutex // the resolver may dial from several goroutines
 	var got []string
 	r := publicResolver(func(_ context.Context, network, addr string) (net.Conn, error) {
+		mu.Lock()
+		defer mu.Unlock()
 		got = append(got, addr)
 		return nil, errors.New("offline")
 	})
