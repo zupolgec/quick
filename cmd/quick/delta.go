@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
@@ -146,15 +147,14 @@ func buildManifest(dir string, p *plan) (quick.DeployManifest, map[string]localC
 // errNoDelta if the server doesn't have the endpoints. The first plan opens
 // the site's deploy lease (takeover breaks another deploy's); every later
 // request, re-plans included, carries it.
-// While it holds the lease it is recorded in held: given back if the process
-// is interrupted or the deploy fails, kept for the tar fallback (busy server).
+// While it holds the lease it is recorded in held: given back (before
+// returning) if the deploy fails or is interrupted (lease.go), kept for the
+// tar fallback (busy server).
 func deltaDeploy(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) (quick.DeployResponse, deltaStats, error) {
 	res, st, err := deltaRounds(cfg, name, tok, dir, p, takeover)
 	switch {
 	case err == nil:
 		held.clear() // the commit released it
-	case errors.Is(err, errInterrupted):
-		// The interrupt handler releases it and exits.
 	case errors.Is(err, errDeltaBusy):
 		if st.lease == "" {
 			held.clear() // the refused first plan opened nothing
@@ -178,14 +178,25 @@ func deltaRounds(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) 
 	}
 	st := deltaStats{total: p.totalSize}
 	q := "?name=" + url.QueryEscape(name)
-	held.startPlan(cfg, tok, name) // an interrupt from here waits for the plan's lease
 	for attempt := 1; ; attempt++ {
-		pq := q
-		if takeover && attempt == 1 {
-			pq += "&takeover=1"
+		if err := intr.stopped(); err != nil {
+			return res, st, err
 		}
-		code, out, err := deltaPost(cfg, tok, "/api/deploy/plan"+pq, st.lease, body, true)
+		pq := q
+		ctx := intr.context()
+		if attempt == 1 {
+			if takeover {
+				pq += "&takeover=1"
+			}
+			// The server may open the lease before we learn its id: this
+			// answer is still awaited for a while after an interrupt.
+			ctx = intr.planContext()
+		}
+		code, out, err := deltaPost(ctx, cfg, tok, "/api/deploy/plan"+pq, st.lease, body, true)
 		if err != nil {
+			if intr.stopped() != nil {
+				return res, st, errInterrupted
+			}
 			return res, st, err
 		}
 		if (code == http.StatusNotFound || code == http.StatusMethodNotAllowed) && attempt == 1 {
@@ -205,8 +216,9 @@ func deltaRounds(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) 
 			return res, st, err
 		}
 		st.lease = pl.Lease
-		if !held.set(cfg, tok, name, st.lease) {
-			return res, st, errInterrupted
+		held.set(cfg, tok, name, st.lease)
+		if err := intr.stopped(); err != nil {
+			return res, st, err // deltaDeploy releases it
 		}
 		if attempt == 1 {
 			fmt.Printf("  sending %s of %s\n", humanSize(pl.MissingBytes), humanSize(pl.TotalBytes))
@@ -219,8 +231,14 @@ func deltaRounds(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) 
 		if err != nil {
 			return res, st, err
 		}
-		code, out, err = deltaPost(cfg, tok, "/api/deploy/commit"+q, st.lease, body, true)
+		if err := intr.stopped(); err != nil {
+			return res, st, err
+		}
+		code, out, err = deltaPost(intr.context(), cfg, tok, "/api/deploy/commit"+q, st.lease, body, true)
 		if err != nil {
+			if intr.stopped() != nil {
+				return res, st, errPublishStarted
+			}
 			return res, st, err
 		}
 		if err := lockedResponse(code, out); err != nil {
@@ -249,11 +267,17 @@ func uploadChunks(cfg *cliConfig, tok, q, lease string, missing []string, locs m
 		if err := gz.Close(); err != nil {
 			return err
 		}
-		code, out, err := deltaPost(cfg, tok, "/api/deploy/chunks"+q, lease, buf.Bytes(), false)
+		if err := intr.stopped(); err != nil {
+			return err
+		}
+		code, out, err := deltaPost(intr.context(), cfg, tok, "/api/deploy/chunks"+q, lease, buf.Bytes(), false)
 		if err != nil {
+			if intr.stopped() != nil {
+				return errInterrupted
+			}
 			// The server reads only part of a refused upload and may close
 			// the connection before we read its 423: ask with an empty batch.
-			if pc, pout, perr := deltaPost(cfg, tok, "/api/deploy/chunks"+q, lease, emptyGzip(), false); perr == nil {
+			if pc, pout, perr := deltaPost(intr.context(), cfg, tok, "/api/deploy/chunks"+q, lease, emptyGzip(), false); perr == nil {
 				if lerr := lockedResponse(pc, pout); lerr != nil {
 					return lerr
 				}
@@ -340,8 +364,8 @@ func gzipJSON(v any) ([]byte, error) {
 }
 
 // deltaPost POSTs a gzip body and returns status and response body.
-func deltaPost(cfg *cliConfig, tok, path, lease string, body []byte, manifest bool) (int, []byte, error) {
-	req, err := http.NewRequest(http.MethodPost, cfg.Server+path, bytes.NewReader(body))
+func deltaPost(ctx context.Context, cfg *cliConfig, tok, path, lease string, body []byte, manifest bool) (int, []byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.Server+path, bytes.NewReader(body))
 	if err != nil {
 		return 0, nil, err
 	}

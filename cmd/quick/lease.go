@@ -1,19 +1,27 @@
-// Deploy lease (client side): while the CLI holds a site's lease it gives it
-// back when it stops early, interrupted (SIGINT/SIGTERM) or failing, so a
-// rerun doesn't wait for the server's idle timeout.
+// Deploy lease (client side) and interrupts.
 //
-// The server opens the lease while answering the first plan, before the CLI
-// knows its id: an interrupt in that window waits up to planWait for the
-// answer, releases the id it brings and stops the deploy there.
+// While the CLI holds a site's lease it gives it back when it stops early,
+// so a rerun doesn't wait for the server's idle timeout. One owner: the main
+// goroutine. The first SIGINT/SIGTERM only cancels the deploy's context
+// (interrupts): the request in flight is abandoned, nothing new is sent
+// (every step checks it), and the deploy returns errInterrupted. On the way
+// out it releases the lease (bounded, releaseTimeout) before main exits with
+// 130/143. A second signal exits at once.
+//
+//   - The server opens the lease while answering the first plan, before the
+//     CLI knows its id: that request runs on a context that outlives the
+//     interrupt by planWait, so the id usually arrives and is released.
+//   - A commit (or tar upload) in flight when the signal arrives may still
+//     complete on the server: errPublishStarted, reported as such.
 //
 // Best effort, remaining gaps (the lease then idles out on the server, 2
-// minutes): the plan answer arrives later than planWait or never (the
-// server releases a lease whose plan answer it can't deliver), the release
-// request fails or times out (releaseTimeout), the process is killed
-// (SIGKILL, crash, lost network).
+// minutes): the plan answer takes longer than planWait (the server releases
+// a lease whose answer it can't deliver), the release request fails or
+// times out, a second signal cuts it short, the process is killed.
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -28,59 +36,122 @@ import (
 // releaseTimeout bounds the release request: the user is waiting to exit.
 const releaseTimeout = 2 * time.Second
 
-// planWait bounds how long an interrupt waits for a plan in flight.
+// planWait is how long the first plan may still take after an interrupt.
 var planWait = 2 * time.Second
 
-// errInterrupted: the deploy stops, the interrupt handler releases and exits.
-var errInterrupted = errors.New("interrupted")
+var (
+	// errInterrupted: the deploy stopped on a signal.
+	errInterrupted = errors.New("interrupted")
+	// errPublishStarted: interrupted while the commit or tar upload was in
+	// flight; the server may have published.
+	errPublishStarted = fmt.Errorf("%w: the publish had already started and may have completed", errInterrupted)
+)
+
+// interrupts turns the first SIGINT/SIGTERM into a cancelled context.
+type interrupts struct {
+	ctx, plan  context.Context
+	cancel     context.CancelFunc
+	cancelPlan context.CancelFunc
+	mu         sync.Mutex
+	sig        os.Signal
+}
+
+// intr is the deploy's interrupt state (nil: none, e.g. tests).
+var intr *interrupts
+
+// newInterrupts watches sigs: the first cancels, a second calls exit.
+func newInterrupts(sigs <-chan os.Signal, exit func(int)) *interrupts {
+	in := &interrupts{}
+	in.ctx, in.cancel = context.WithCancel(context.Background())
+	in.plan, in.cancelPlan = context.WithCancel(context.Background())
+	wait := planWait
+	go func() {
+		first := <-sigs
+		in.mu.Lock()
+		in.sig = first
+		in.mu.Unlock()
+		in.cancel()
+		time.AfterFunc(wait, in.cancelPlan)
+		<-sigs
+		exit(in.code())
+	}()
+	return in
+}
+
+// catchInterrupts installs the signal handling for a deploy.
+func catchInterrupts() *interrupts {
+	sigs := make(chan os.Signal, 2)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	intr = newInterrupts(sigs, os.Exit)
+	return intr
+}
+
+// code is the exit status for the signal received (128 + signal), 0 if none.
+func (in *interrupts) code() int {
+	if in == nil {
+		return 0
+	}
+	in.mu.Lock()
+	defer in.mu.Unlock()
+	switch in.sig {
+	case nil:
+		return 0
+	case syscall.SIGTERM:
+		return 143
+	}
+	return 130
+}
+
+// context is for the deploy's requests; planContext for the first plan.
+func (in *interrupts) context() context.Context {
+	if in == nil {
+		return context.Background()
+	}
+	return in.ctx
+}
+
+func (in *interrupts) planContext() context.Context {
+	if in == nil {
+		return context.Background()
+	}
+	return in.plan
+}
+
+// stopped is errInterrupted once a signal arrived: check before each step.
+func (in *interrupts) stopped() error {
+	if in.context().Err() != nil {
+		return errInterrupted
+	}
+	return nil
+}
+
+// interruptedReport is what the CLI says when it stops on a signal.
+func interruptedReport(err error) string {
+	if errors.Is(err, errPublishStarted) {
+		return "interrupted: the publish had already started and may have completed"
+	}
+	return "interrupted: nothing was published, the site is free again"
+}
 
 // activeLease is the lease this process holds, if any.
 type activeLease struct {
-	mu          sync.Mutex
-	cfg         *cliConfig
-	tok, site   string
-	id          string
-	planning    chan struct{} // open while the first plan is in flight
-	interrupted bool
+	mu        sync.Mutex
+	cfg       *cliConfig
+	tok, site string
+	id        string
 }
 
 // held is the process's lease (one deploy per process).
 var held activeLease
 
-// startPlan records that the first plan is about to be sent: the server may
-// open a lease before we learn its id.
-func (a *activeLease) startPlan(cfg *cliConfig, tok, site string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.cfg, a.tok, a.site, a.id = cfg, tok, site, ""
-	a.planning, a.interrupted = make(chan struct{}), false
-}
-
-func (a *activeLease) donePlanning() {
-	if a.planning != nil {
-		close(a.planning)
-		a.planning = nil
-	}
-}
-
-// set records the lease id. false: the process was interrupted meanwhile,
-// stop (the interrupt handler releases it).
-func (a *activeLease) set(cfg *cliConfig, tok, site, id string) bool {
+func (a *activeLease) set(cfg *cliConfig, tok, site, id string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.cfg, a.tok, a.site, a.id = cfg, tok, site, id
-	a.donePlanning()
-	return !a.interrupted
 }
 
-// clear forgets the lease: the server released it (deploy ended) or none was
-// opened.
-func (a *activeLease) clear() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.cfg, a.tok, a.site, a.id = nil, "", "", ""
-	a.donePlanning()
-}
+// clear forgets the lease: the server released it (deploy ended).
+func (a *activeLease) clear() { a.set(nil, "", "", "") }
 
 func (a *activeLease) held() bool {
 	a.mu.Lock()
@@ -88,64 +159,26 @@ func (a *activeLease) held() bool {
 	return a.id != ""
 }
 
-// release gives the lease back to the server (best effort) and forgets it.
+// release gives the lease back to the server (best effort, bounded, on a
+// context of its own) and forgets it.
 func (a *activeLease) release() {
 	a.mu.Lock()
 	cfg, tok, site, id := a.cfg, a.tok, a.site, a.id
 	a.cfg, a.tok, a.site, a.id = nil, "", "", ""
-	a.donePlanning()
 	a.mu.Unlock()
 	if id == "" {
 		return
 	}
-	req, err := http.NewRequest(http.MethodDelete, cfg.Server+"/api/deploy/lease?name="+url.QueryEscape(site), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), releaseTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, cfg.Server+"/api/deploy/lease?name="+url.QueryEscape(site), nil)
 	if err != nil {
 		return
 	}
 	req.Header.Set("Authorization", "Bearer "+tok)
 	leaseRequest(req, id)
-	resp, err := (&http.Client{Timeout: releaseTimeout}).Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err == nil {
 		resp.Body.Close()
 	}
-}
-
-// interrupt stops the deploy: waits (bounded) for a plan in flight, then
-// releases whatever lease is held. Reports whether there was one.
-func (a *activeLease) interrupt() bool {
-	a.mu.Lock()
-	a.interrupted = true
-	planning := a.planning
-	a.mu.Unlock()
-	if planning != nil {
-		select {
-		case <-planning:
-		case <-time.After(planWait):
-		}
-	}
-	if !a.held() {
-		return false
-	}
-	fmt.Fprintln(os.Stderr, "\ninterrupted: giving the site back to other deploys")
-	a.release()
-	return true
-}
-
-// catchInterrupts makes SIGINT/SIGTERM release the held lease before exiting.
-func catchInterrupts() {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
-	go watchInterrupts(sigs, &held, os.Exit)
-}
-
-// watchInterrupts waits for a signal, releases a's lease and exits with the
-// shell's interrupted status (128 + signal).
-func watchInterrupts(sigs <-chan os.Signal, a *activeLease, exit func(int)) {
-	sig := <-sigs
-	a.interrupt()
-	code := 130
-	if sig == syscall.SIGTERM {
-		code = 143
-	}
-	exit(code)
 }

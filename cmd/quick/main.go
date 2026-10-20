@@ -298,10 +298,17 @@ func deploy(args []string) {
 
 	// Delta deploy when the server supports it (only changed chunks travel);
 	// otherwise, or if the server turns out not to have it, the whole tar.
-	catchInterrupts() // from here on Ctrl-C gives the site back (lease.go)
+	in := catchInterrupts() // from here on Ctrl-C stops the deploy and gives the site back (lease.go)
 	res, st, delta, err := publishFolder(cfg, *name, tok, dir, pl, *takeover)
-	if errors.Is(err, errInterrupted) {
-		select {} // the interrupt handler releases the lease and exits
+	// publishFolder released any lease before returning: every exit below is
+	// after the release.
+	if code := in.code(); code != 0 {
+		if err == nil { // the signal came after the publish
+			fmt.Printf("%s %s published → %s\n", check(), cBold(*name), cCyan(res.URL))
+		} else {
+			fmt.Fprintln(os.Stderr, "\n"+interruptedReport(err))
+		}
+		os.Exit(code)
 	}
 	fatal(err)
 	if delta {
@@ -344,7 +351,9 @@ func publishFolder(cfg *cliConfig, name, tok, dir string, pl *plan, takeover boo
 		}
 	}
 	// The lease of a delta attempt that fell back (busy server) goes along.
-	res, err = tarDeploy(cfg, name, tok, dir, pl, takeover && st.lease == "", st.lease)
+	if err = intr.stopped(); err == nil {
+		res, err = tarDeploy(cfg, name, tok, dir, pl, takeover && st.lease == "", st.lease)
+	}
 	if err != nil {
 		held.release() // the upload may have failed before the server got it
 	} else {
@@ -366,7 +375,7 @@ func tarDeploy(cfg *cliConfig, name, tok, dir string, pl *plan, takeover bool, l
 	if takeover {
 		u += "&takeover=1"
 	}
-	req, err := http.NewRequest(http.MethodPost, u, payload)
+	req, err := http.NewRequestWithContext(intr.context(), http.MethodPost, u, payload)
 	if err != nil {
 		return res, err
 	}
@@ -375,6 +384,9 @@ func tarDeploy(cfg *cliConfig, name, tok, dir string, pl *plan, takeover bool, l
 	leaseRequest(req, lease)
 	resp, err := deployClient.Do(req)
 	if err != nil {
+		if intr.stopped() != nil {
+			return res, errPublishStarted // the server may have got it all
+		}
 		return res, err
 	}
 	defer resp.Body.Close()

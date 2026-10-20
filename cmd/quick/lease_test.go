@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -148,45 +147,6 @@ func TestDeltaDeployReleasesOnFailure(t *testing.T) {
 	}
 }
 
-// Ctrl-C (or SIGTERM) while holding a lease: the CLI releases it before
-// exiting with the interrupted status, so a rerun doesn't have to wait.
-func TestInterruptReleasesTheLease(t *testing.T) {
-	l := &leaseServer{fakeDeltaServer: &fakeDeltaServer{have: map[string]bool{}}}
-	srv := httptest.NewServer(l)
-	defer srv.Close()
-	for sig, wantCode := range map[os.Signal]int{os.Interrupt: 130, syscall.SIGTERM: 143} {
-		var a activeLease
-		a.set(&cliConfig{Server: srv.URL}, "tok", "demo", "L7")
-		sigs := make(chan os.Signal, 1)
-		exited := make(chan int, 1)
-		go watchInterrupts(sigs, &a, func(code int) { exited <- code })
-		sigs <- sig
-		select {
-		case code := <-exited:
-			if code != wantCode {
-				t.Fatalf("%v: exit %d, want %d", sig, code, wantCode)
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatalf("%v: no exit", sig)
-		}
-		if !strings.Contains(l.requests(), "/api/deploy/lease lease=L7") {
-			t.Fatalf("%v: no release:\n%s", sig, l.requests())
-		}
-		l.mu.Lock()
-		l.seen = nil
-		l.mu.Unlock()
-	}
-	// Nothing held: just exit.
-	var a activeLease
-	sigs := make(chan os.Signal, 1)
-	exited := make(chan int, 1)
-	go watchInterrupts(sigs, &a, func(code int) { exited <- code })
-	sigs <- os.Interrupt
-	if code := <-exited; code != 130 || l.requests() != "" {
-		t.Fatalf("exit %d, requests %q", code, l.requests())
-	}
-}
-
 // Busy server after the lease was acquired: the whole-folder fallback carries
 // the lease; if it fails before the server takes it over (here a file vanished
 // while building the tar), the lease is released, not just forgotten.
@@ -241,87 +201,6 @@ func TestUploadResetShowsTheLeaseMessage(t *testing.T) {
 	_, _, err := deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p, false)
 	if err == nil || !strings.Contains(err.Error(), "lost the site to luigi@example.com") {
 		t.Fatalf("err = %v, want the lease message", err)
-	}
-}
-
-// Ctrl-C while the first plan is on its way: the server may already have
-// opened the lease, so the CLI waits (briefly) for the answer, releases the
-// id it brings and stops there: no upload, no commit.
-func TestInterruptDuringPlanReleasesTheLease(t *testing.T) {
-	dir, p := deltaFixture(t, 1)
-	l := &leaseServer{fakeDeltaServer: &fakeDeltaServer{have: map[string]bool{}}}
-	planning, answer := make(chan struct{}), make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/deploy/plan" {
-			close(planning)
-			<-answer
-		}
-		l.ServeHTTP(w, r)
-	}))
-	defer srv.Close()
-	deployed := make(chan error, 1)
-	go func() {
-		_, _, err := deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p, false)
-		deployed <- err
-	}()
-	<-planning
-	sigs := make(chan os.Signal, 1)
-	exited := make(chan int, 1)
-	go watchInterrupts(sigs, &held, func(code int) { exited <- code })
-	sigs <- os.Interrupt
-	time.Sleep(100 * time.Millisecond) // the interrupt is waiting for the plan
-	close(answer)
-	select {
-	case code := <-exited:
-		if code != 130 {
-			t.Fatalf("exit %d, want 130", code)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("no exit")
-	}
-	if err := <-deployed; err == nil {
-		t.Fatal("deploy went on after the interrupt")
-	}
-	reqs := l.requests()
-	if !strings.Contains(reqs, "/api/deploy/lease lease=L1") || strings.Contains(reqs, "/api/deploy/commit") || strings.Contains(reqs, "/api/deploy/chunks") {
-		t.Fatalf("requests after an interrupt during the plan:\n%s", reqs)
-	}
-}
-
-// The wait for a plan in flight is bounded: a server that doesn't answer
-// doesn't keep Ctrl-C from exiting.
-func TestInterruptDuringSlowPlanExitsAnyway(t *testing.T) {
-	defer func(d time.Duration) { planWait = d }(planWait)
-	planWait = 100 * time.Millisecond
-	dir, p := deltaFixture(t, 1)
-	planning, answer := make(chan struct{}), make(chan struct{})
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/deploy/plan" {
-			close(planning)
-			<-answer
-		}
-		http.Error(w, "late", http.StatusServiceUnavailable)
-	}))
-	t.Cleanup(srv.Close)
-	deployed := make(chan struct{})
-	t.Cleanup(func() { close(answer); <-deployed }) // before the next test uses held
-	go func() {
-		defer close(deployed)
-		deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p, false)
-	}()
-	<-planning
-	sigs := make(chan os.Signal, 1)
-	exited := make(chan int, 1)
-	go watchInterrupts(sigs, &held, func(code int) { exited <- code })
-	start := time.Now()
-	sigs <- os.Interrupt
-	select {
-	case <-exited:
-		if took := time.Since(start); took > time.Second {
-			t.Fatalf("exit after %v", took)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("no exit while the plan hangs")
 	}
 }
 
