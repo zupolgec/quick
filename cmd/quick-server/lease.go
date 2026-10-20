@@ -396,11 +396,11 @@ func (s *server) joinLease(w http.ResponseWriter, r *http.Request, site string, 
 // already gone); 423 if another deploy holds the site. Never publishes: a
 // commit already running completes, later requests of that deploy get 423.
 func (s *server) handleDeployLease(w http.ResponseWriter, r *http.Request) {
+	w = s.boundIO(w, r, s.timeouts.manifestOr())
 	if r.Method != http.MethodDelete {
 		http.Error(w, "DELETE only", http.StatusMethodNotAllowed)
 		return
 	}
-	w = s.boundIO(w, r, s.timeouts.manifestOr())
 	name, ok := deployName(w, r)
 	if !ok {
 		return

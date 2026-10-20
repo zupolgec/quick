@@ -218,6 +218,41 @@ func TestUnreadPlanResponseDoesNotPinTheLease(t *testing.T) {
 	(&deltaClient{t: t, s: s, site: "demo"}).leased()
 }
 
+// Even the early answers of the deploy endpoints (wrong method, delta
+// deploy off) are written under the deadline.
+func TestEarlyDeployAnswersHaveAWriteDeadline(t *testing.T) {
+	s := newDeltaTestServer(t)
+	s.timeouts.write = 200 * time.Millisecond
+	off := newDeltaTestServer(t)
+	off.timeouts.write = 200 * time.Millisecond
+	off.stage = nil
+	off.apexMux = off.buildApexMux()
+	cases := []struct {
+		s            *server
+		method, path string
+	}{
+		{s, http.MethodGet, "/api/deploy/plan"},
+		{s, http.MethodGet, "/api/deploy/chunks"},
+		{s, http.MethodGet, "/api/deploy/commit"},
+		{s, http.MethodGet, "/api/deploy"},
+		{s, http.MethodGet, "/api/deploy/lease"},
+		{off, http.MethodPost, "/api/deploy/plan"},
+	}
+	for _, c := range cases {
+		w := &stuckWriter{hdr: http.Header{}, stop: make(chan struct{})}
+		r := httptest.NewRequest(c.method, c.path+"?name=demo", nil)
+		done := make(chan int, 1)
+		go func() { c.s.apexMux.ServeHTTP(w, r); done <- 1 }()
+		select {
+		case <-done:
+		case <-time.After(3 * time.Second):
+			close(w.stop)
+			t.Fatalf("%s %s: answer not bounded by the write deadline", c.method, c.path)
+		}
+		close(w.stop)
+	}
+}
+
 // Refused requests read only a bounded part of their body, for a bounded
 // time, before answering.
 func TestRefusedDrainIsBounded(t *testing.T) {

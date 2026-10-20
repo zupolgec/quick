@@ -277,11 +277,11 @@ func hostNoPort(h string) string {
 }
 
 func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
+	w = s.boundIO(w, r, s.timeouts.uploadOr()) // it holds the site lock while it reads
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
-	w = s.boundIO(w, r, s.timeouts.uploadOr()) // it holds the site lock while it reads
 	name, ok := deployName(w, r)
 	if !ok {
 		return

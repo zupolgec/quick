@@ -182,6 +182,7 @@ type chunkLoc struct {
 // The request gets the deadlines of timeouts.go (body total from now): use
 // the returned writer.
 func (s *server) deltaRequest(w http.ResponseWriter, r *http.Request, total time.Duration) (http.ResponseWriter, string, bool) {
+	w = s.boundIO(w, r, total) // early answers too
 	if s.stage == nil {
 		http.NotFound(w, r)
 		return w, "", false
@@ -190,7 +191,6 @@ func (s *server) deltaRequest(w http.ResponseWriter, r *http.Request, total time
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return w, "", false
 	}
-	w = s.boundIO(w, r, total)
 	name, ok := deployName(w, r)
 	return w, name, ok
 }
