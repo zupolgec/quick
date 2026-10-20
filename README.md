@@ -348,7 +348,13 @@ siti pubblicati prima di questo schema (file direttamente in `sites/<sito>/`)
 continuano a funzionare e passano al nuovo schema al primo deploy; i vecchi file
 vengono rimossi da un deploy successivo, passato il periodo di tolleranza. Se
 la scrittura del puntatore ha un esito incerto (connessione caduta) il deploy
-risponde con un errore del server e la CLI segnala che l'esito non è noto. Un
+risponde con un errore del server e la CLI segnala che l'esito non è noto.
+Limite noto: senza scritture condizionali sul bucket, una scrittura del puntatore
+rimasta in sospeso per un problema di rete può arrivare a S3 in ritardo, anche
+dopo un deploy successivo riuscito, e riportare il sito alla versione di quel
+deploy. Se arrivasse dopo il periodo di tolleranza, il puntatore indicherebbe una
+versione già rimossa (il sito risponderebbe 404 fino al deploy seguente). È un
+caso molto improbabile; se succede basta rifare il deploy. Un
 puntatore illeggibile blocca i deploy del sito con un errore chiaro;
 eliminare il sito lo ripulisce comunque. Al bucket non serve nulla di
 particolare (niente versioning, niente scritture condizionali); conviene una
