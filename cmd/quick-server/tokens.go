@@ -37,6 +37,10 @@ func (s *server) handleTokenList(w http.ResponseWriter, r *http.Request, name st
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
+	if !canView(p, email) {
+		http.Error(w, "site not found", http.StatusNotFound) // a people site, as on the dashboard
+		return
+	}
 	if ok, reason := s.canWrite(p, email, actToken); !ok {
 		http.Error(w, reason, http.StatusForbidden)
 		return

@@ -299,6 +299,9 @@ func (s *server) handleDomains(w http.ResponseWriter, r *http.Request, name, res
 		http.Error(w, "auth: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
+	if !s.siteVisibleTo(w, name, email) {
+		return
+	}
 	switch {
 	case rest == "" && r.Method == http.MethodGet:
 		s.listDomains(w, r, name)
@@ -373,6 +376,10 @@ func (s *server) addDomain(w http.ResponseWriter, r *http.Request, name, raw, em
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
+	if !canView(cur, email) {
+		http.Error(w, "site not found", http.StatusNotFound)
+		return
+	}
 	if ok, reason := s.canWrite(cur, email, actPolicy); !ok {
 		http.Error(w, reason, http.StatusForbidden)
 		return
@@ -423,6 +430,10 @@ func (s *server) removeDomain(w http.ResponseWriter, name, raw, email string) {
 	cur, err := s.meta.loadFresh(name)
 	if err != nil {
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	if !canView(cur, email) {
+		http.Error(w, "site not found", http.StatusNotFound)
 		return
 	}
 	if ok, reason := s.canWrite(cur, email, actPolicy); !ok {

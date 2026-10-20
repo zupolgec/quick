@@ -58,6 +58,22 @@ func refuseBlindDelta(w http.ResponseWriter, p policy, ident authIdentity) bool 
 	return true
 }
 
+// siteVisibleTo answers 404 (as the dashboard does) when the site is a people
+// site email can't open, so its per-site metadata stays theirs; it reports
+// whether the caller may go on. Writers re-check under the site lock.
+func (s *server) siteVisibleTo(w http.ResponseWriter, name, email string) bool {
+	p, err := s.meta.load(name)
+	if err != nil {
+		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
+		return false
+	}
+	if !canView(p, email) {
+		http.Error(w, "site not found", http.StatusNotFound)
+		return false
+	}
+	return true
+}
+
 // Kinds of policy errors the dashboard shows in its own words.
 const (
 	errNotOwner     = "not_owner"     // arg: the owner

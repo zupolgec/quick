@@ -121,6 +121,42 @@ func TestDashboardMineIgnoresCase(t *testing.T) {
 	}
 }
 
+// Per-site metadata (deploy tokens, custom domains) of a people site is read
+// only by its people: anyone else gets 404, as on the dashboard.
+func TestPeopleMetadataHiddenFromNonViewers(t *testing.T) {
+	e := newPeopleEnv(t)
+	p := peoplePolicy(bob)
+	p.Tokens = []siteToken{{ID: "tok1", Name: "secret-ci", Scopes: []string{quick.TokenScopeDeploy}, CreatedBy: ann}}
+	p.Domains = []siteDomain{{Name: "hidden.example.org", VerifiedAt: "2026-01-01T00:00:00Z"}}
+	e.setPolicy(t, "app", p)
+	for _, c := range []struct{ method, path string }{
+		{http.MethodGet, "/api/site/app/tokens"},
+		{http.MethodGet, "/api/site/app/domains"},
+		{http.MethodPost, "/api/site/app/domains"},
+		{http.MethodDelete, "/api/site/app/domains/hidden.example.org"},
+	} {
+		var body any
+		if c.method == http.MethodPost {
+			body = quick.DomainRequest{Domain: "www.example.net"}
+		}
+		w := e.api(t, carl, c.method, c.path, body)
+		if w.Code != http.StatusNotFound || strings.Contains(w.Body.String(), "secret-ci") || strings.Contains(w.Body.String(), "hidden.example.org") {
+			t.Errorf("%s %s as a non-viewer: %d %s", c.method, c.path, w.Code, w.Body)
+		}
+	}
+	if got := e.policyOf(t, "app"); len(got.Domains) != 1 {
+		t.Errorf("domains changed by a non-viewer: %+v", got.Domains)
+	}
+	for _, who := range []string{ann, bob} {
+		if w := e.api(t, who, http.MethodGet, "/api/site/app/tokens", nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "secret-ci") {
+			t.Errorf("tokens as %s: %d %s", who, w.Code, w.Body)
+		}
+		if w := e.api(t, who, http.MethodGet, "/api/site/app/domains", nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "hidden.example.org") {
+			t.Errorf("domains as %s: %d %s", who, w.Code, w.Body)
+		}
+	}
+}
+
 // Deploy tokens never count as viewers of a people site, whoever made them.
 func TestPeopleDeltaBlindForTokens(t *testing.T) {
 	p := policy{CreatedBy: ann, Access: quick.AccessPeople, Viewers: []string{bob}}
