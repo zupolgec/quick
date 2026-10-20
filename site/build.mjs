@@ -65,9 +65,7 @@ const page = ({ slug, meta, html, docs }) => {
 <meta property="og:description" content="${esc(meta.description)}">
 <meta name="theme-color" content="#0e1018">
 <link rel="icon" href="/favicon.png" type="image/png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="preload" href="/fonts/hanken-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/docs.css">
 </head>
 <body class="docs">
@@ -116,6 +114,10 @@ for (const f of ['index.html', '404.html']) {
   await writeFile(p, (await readFile(p, 'utf8')).replaceAll('{{logo}}', logo));
 }
 await mkdir(join(dist, 'docs'), { recursive: true });
+
+// The grotesk, self-hosted: the same file the quick server embeds.
+await mkdir(join(dist, 'fonts'), { recursive: true });
+await cp(join(repo, 'cmd/quick-server/fonts/hanken-grotesk-latin.woff2'), join(dist, 'fonts/hanken-grotesk-latin.woff2'));
 
 // Install scripts: the same files every quick server serves.
 await cp(join(repo, 'cmd/quick-server/install/install.sh'), join(dist, 'install.sh'));
@@ -171,6 +173,21 @@ ${docs.map((d) => `- [${d.meta.title}](${site}${mdUrlOf(d.slug)}): ${d.meta.desc
 await writeFile(join(dist, 'llms.txt'), llms);
 const full = [`# quick: full documentation\n\n> ${home.meta.description}\n`, ...docs.map((d) => `<!-- ${site}${urlOf(d.slug)} -->\n\n${d.body.trim()}\n`)].join('\n---\n\n');
 await writeFile(join(dist, 'llms-full.txt'), full);
+
+// Stylesheets inlined into every page, so nothing blocks the first render.
+const inlineCSS = async (dir) => {
+  for (const e of await readdir(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) { await inlineCSS(p); continue; }
+    if (!e.name.endsWith('.html')) continue;
+    let html = await readFile(p, 'utf8');
+    for (const [tag, name] of html.matchAll(/<link rel="stylesheet" href="\/([\w-]+\.css)">/g)) {
+      html = html.replace(tag, `<style>${(await readFile(join(here, 'public', name), 'utf8')).trim()}</style>`);
+    }
+    await writeFile(p, html);
+  }
+};
+await inlineCSS(dist);
 
 await writeFile(join(dist, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">

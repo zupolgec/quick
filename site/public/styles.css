@@ -1,4 +1,5 @@
 /* quick-cli.com: only the logo's colours (lavender, letter navy, violet, dark ground, white), one grotesk. */
+@font-face { font-family: "Hanken Grotesk"; font-style: normal; font-weight: 400 700; font-display: swap; src: url("/fonts/hanken-grotesk-latin.woff2") format("woff2"); }
 :root {
   --bg: #0e1018;
   --surface: #181b26;
