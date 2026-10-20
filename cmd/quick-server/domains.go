@@ -35,6 +35,29 @@ type resolver interface {
 	LookupIPAddr(ctx context.Context, host string) ([]net.IPAddr, error)
 }
 
+// publicResolvers answer the domain checks. The server's own resolver may
+// still cache the "doesn't exist" it saw before the user created the record
+// (up to the zone's negative TTL, often 30 minutes).
+var publicResolvers = []string{"1.1.1.1:53", "8.8.8.8:53"}
+
+// publicResolver queries publicResolvers in order; dial is net.Dialer's
+// DialContext (replaceable in tests).
+func publicResolver(dial func(ctx context.Context, network, addr string) (net.Conn, error)) *net.Resolver {
+	return &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			var err error
+			for _, addr := range publicResolvers {
+				var c net.Conn
+				if c, err = dial(ctx, network, addr); err == nil {
+					return c, nil
+				}
+			}
+			return nil, err
+		},
+	}
+}
+
 type domainClaim struct {
 	site   string
 	active bool

@@ -125,7 +125,7 @@ func main() {
 	if s.domains, err = loadDomainIndex(store, s.meta); err != nil {
 		log.Fatal(err)
 	}
-	s.resolver = net.DefaultResolver
+	s.resolver = publicResolver((&net.Dialer{Timeout: 3 * time.Second}).DialContext)
 	s.stage = newChunkStage(quick.Env("QUICK_CHUNK_DIR", filepath.Join(os.TempDir(), "quick-chunks")))
 	go s.stage.sweepLoop()
 	go s.leases.sweepLoop()

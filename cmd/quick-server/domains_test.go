@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -269,5 +270,28 @@ func TestCustomDomainPlainHTTP(t *testing.T) {
 	addDomain(t, s, "app", "pending.example.com")
 	if w := plainHTTPGet(s, "pending.example.com", "/"); w.Code != http.StatusServiceUnavailable {
 		t.Errorf("pending over http: %d, want 503", w.Code)
+	}
+}
+
+// Domain checks ask public resolvers, never the server's own (which caches the
+// "doesn't exist" seen before the user created the record, up to the zone's
+// negative TTL).
+func TestPublicResolverDialsPublicServers(t *testing.T) {
+	var got []string
+	r := publicResolver(func(_ context.Context, network, addr string) (net.Conn, error) {
+		got = append(got, addr)
+		return nil, errors.New("offline")
+	})
+	_, _ = r.LookupCNAME(context.Background(), "example.com")
+	if len(got) == 0 {
+		t.Fatal("no dial")
+	}
+	for _, a := range got {
+		if a != "1.1.1.1:53" && a != "8.8.8.8:53" {
+			t.Fatalf("dialed %s, want only public resolvers", a)
+		}
+	}
+	if !slices.Contains(got, "8.8.8.8:53") {
+		t.Errorf("no fallback to 8.8.8.8: %v", got)
 	}
 }
