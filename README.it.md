@@ -1,5 +1,9 @@
 # quick
 
+[English](README.md) · **Italiano**
+
+Sito e documentazione: [quick-cli.com](https://quick-cli.com)
+
 Hosting interno in stile [Quick di Shopify](https://shopify.engineering/quick):
 pubblichi una cartella di HTML/asset e ottieni `<nome>.<tuo-dominio>`. Di default
 un sito è visibile solo agli account del dominio aziendale (SSO Google o un IdP OIDC), ma puoi
@@ -15,10 +19,13 @@ serve il tuo stesso dominio):
 
 ```bash
 # macOS / Linux
-curl -fsSL https://<il-tuo-dominio>/install.sh | sh
+curl -fsSL https://quick-cli.com/install.sh | sh
 # Windows (PowerShell)
-irm https://<il-tuo-dominio>/install.ps1 | iex
+irm https://quick-cli.com/install.ps1 | iex
 ```
+
+Ogni server quick serve gli stessi script anche dal proprio dominio
+(`https://<il-tuo-dominio>/install.sh`).
 
 Oppure, se hai Go:
 
@@ -335,6 +342,7 @@ sito (same-origin, dietro lo stesso controllo di accesso dei file): libreria
 | `internal/quick/` | Contratto condiviso CLI↔server (DTO, validazione nomi, modi di accesso) |
 | `internal/storage/` | Backend storage: `local` (FS) e `s3` (minio-go) |
 | `internal/chunk/` | Divisione dei file in blocchi per il deploy incrementale (FastCDC) |
+| `site/` | [quick-cli.com](https://quick-cli.com): homepage, docs, llms.txt (Worker Cloudflare) |
 | `docker-compose.yaml` | Stack per Coolify (label Caddy + env) |
 | oauth2-proxy (env `OAUTH2_PROXY_*`) | SSO Google o OIDC (`QUICK_SSO_PROVIDER`) |
 
@@ -417,6 +425,10 @@ QUICK_DEV_NOAUTH=1 QUICK_BASE_DOMAIN=quick.localhost \
 ```
 `QUICK_DEV_NOAUTH=1` salta la verifica del token (solo locale). Per lo storage S3 si
 testa con un MinIO in Docker (vedi `QUICK_S3_*`).
+
+Il sito sta in `site/`: `npm install`, poi `npm run dev` (locale) o `npm run deploy`
+(Cloudflare). Le pagine nascono da `site/content/`; `skill.md` lo genera la CLI stessa
+e gli script di installazione vengono da `cmd/quick-server/install/`.
 
 ## Licenza
 

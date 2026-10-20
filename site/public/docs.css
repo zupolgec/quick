@@ -1,0 +1,94 @@
+/* quick-cli.com docs: the homepage's charcoal ground and grotesk, set for reading. */
+:root {
+  --bg: #0e1018;
+  --surface: #181b26;
+  --surface-2: #232737;
+  --ink: #ffffff;
+  --muted: #a3a7b7;
+  --violet: #4a3ddb;
+  --lavender: #e8e6fd;
+  --font: "Hanken Grotesk", system-ui, sans-serif;
+  --font-code: ui-monospace, "SF Mono", Menlo, Consolas, monospace; /* taste-skill-ignore: real code only */
+  --margin: clamp(1rem, 2.8vw, 2.5rem);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-padding-top: 1.5rem; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 1.125rem; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+::selection { background: var(--violet); color: #fff; }
+:focus-visible { outline: 2px solid var(--lavender); outline-offset: 3px; }
+.link { text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 0.22em; transition: text-decoration-color 180ms ease; }
+.link-plain { text-decoration: underline; text-underline-offset: 0.18em; text-decoration-thickness: 0.07em; }
+@media (hover: hover) { .link:hover { text-decoration-color: currentColor; } }
+
+.docs-top { display: flex; justify-content: space-between; align-items: center; padding: 1.25rem var(--margin); background: var(--surface); }
+.docs-mark { display: block; color: var(--ink); }
+.docs-mark .logo { display: block; height: 1.75rem; width: auto; }
+.docs-top nav { display: flex; gap: 1.5rem; font-size: 0.9375rem; }
+
+.docs-body { display: grid; grid-template-columns: 15rem minmax(0, 44rem) 13rem; gap: clamp(2rem, 4vw, 4.5rem); padding: 3.5rem var(--margin) 8rem; }
+.docs-nav ul, .docs-toc ul { list-style: none; margin: 0; padding: 0; }
+.docs-nav { position: sticky; top: 1.5rem; align-self: start; }
+.docs-nav a { display: block; padding: 0.4rem 0.75rem; margin-left: -0.75rem; text-decoration: none; color: var(--muted); transition: color 180ms ease, background-color 180ms ease; }
+.docs-nav a[aria-current="page"] { color: var(--ink); background: var(--surface); }
+@media (hover: hover) { .docs-nav a:hover { color: var(--ink); } }
+.docs-toc { position: sticky; top: 1.5rem; align-self: start; font-size: 0.9375rem; }
+.docs-toc p { margin: 0 0 0.5rem; }
+.docs-toc a { display: block; padding: 0.2rem 0; color: var(--muted); text-decoration: none; }
+@media (hover: hover) { .docs-toc a:hover { color: var(--ink); } }
+
+.prose { min-width: 0; }
+.prose h1 { font-size: clamp(2.5rem, 1.6rem + 3vw, 4rem); line-height: 1; letter-spacing: -0.04em; font-weight: 500; margin: 0 0 2rem; }
+.prose h2 { font-size: 1.875rem; line-height: 1.15; letter-spacing: -0.025em; font-weight: 500; margin: 3.5rem 0 1rem; }
+.prose h3 { font-size: 1.375rem; font-weight: 500; margin: 2.25rem 0 0.75rem; }
+.prose .anchor { text-decoration: none; }
+.prose h2 code, .prose h3 code, .docs-toc code { background: none; padding: 0; font-size: 0.9em; }
+.prose p, .prose ul, .prose ol { margin: 0 0 1.1rem; }
+.prose ul, .prose ol { padding-left: 1.25rem; }
+.prose li { margin-bottom: 0.4rem; }
+.prose li::marker { color: var(--muted); }
+.prose strong { font-weight: 700; }
+.prose a:not(.anchor) { text-decoration: underline; text-underline-offset: 0.18em; text-decoration-thickness: 0.07em; transition: color 180ms ease; }
+@media (hover: hover) { .prose a:not(.anchor):hover { color: var(--lavender); } }
+.prose code { font-family: var(--font-code); font-size: 0.875em; background: var(--surface); padding: 0.1em 0.35em; }
+.prose .code { position: relative; margin: 0 0 1.25rem; background: var(--surface-2); }
+.prose .code pre { margin: 0; padding: 1.1rem 5rem 1.1rem 1.25rem; overflow-x: auto; font-size: 0.9375rem; line-height: 1.6; }
+.prose .code code { background: none; padding: 0; font-size: inherit; }
+.copy { position: absolute; top: 0.6rem; right: 0.6rem; min-height: 2.5rem; padding: 0 0.85rem; background: var(--bg); font-size: 0.875rem; transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1), background-color 180ms ease; }
+.copy:active { transform: scale(0.95); }
+.copy.done { background: var(--surface); }
+.prose .table { overflow-x: auto; margin: 0 0 1.5rem; }
+.prose table { border-collapse: collapse; width: 100%; font-size: 1rem; }
+.prose th { text-align: left; font-weight: 500; padding: 0.6rem 0.9rem; background: var(--surface-2); }
+.prose td { padding: 0.6rem 0.9rem; vertical-align: top; }
+.prose tr:nth-child(even) td { background: var(--surface); }
+.prose td code { white-space: nowrap; }
+.page-md { margin-top: 4rem !important; font-size: 0.9375rem; color: var(--muted); }
+.pager { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem; }
+.pager a { display: block; padding: 1.1rem 1.25rem; background: var(--surface); text-decoration: none !important; font-size: 1.25rem; font-weight: 500; transition: background-color 180ms ease, transform 140ms ease; }
+.pager a:active { transform: scale(0.98); }
+.pager a:last-child { text-align: right; }
+.pager a span { display: block; font-size: 0.9375rem; font-weight: 400; color: var(--muted); }
+@media (hover: hover) { .pager a:hover { background: var(--surface-2); } }
+
+@media (max-width: 1180px) {
+  .docs-body { grid-template-columns: 13rem minmax(0, 1fr); }
+  .docs-toc { display: none; }
+}
+@media (max-width: 760px) {
+  body { font-size: 1.0625rem; }
+  .docs-body { grid-template-columns: minmax(0, 1fr); padding-top: 1.5rem; gap: 2rem; }
+  .docs-nav { position: static; }
+  .docs-nav ul { display: flex; gap: 0.25rem; overflow-x: auto; margin: 0 calc(var(--margin) * -1); padding: 0 var(--margin); }
+  .docs-nav a { white-space: nowrap; margin-left: 0; }
+  .prose h2 { font-size: 1.625rem; }
+  .prose table, .prose tbody, .prose tr, .prose td { display: block; }
+  .prose thead { display: none; }
+  .prose tr { padding: 0.75rem 0.9rem; }
+  .prose tr:nth-child(even), .prose tr:nth-child(even) td { background: var(--surface); }
+  .prose td { padding: 0.1rem 0; }
+  .prose td code { white-space: normal; }
+  .prose td:first-child { font-weight: 500; }
+}

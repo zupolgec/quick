@@ -1,0 +1,28 @@
+[
+  {
+    "file": "site/public/img/letterpress.webm",
+    "media": "video",
+    "poster": "site/public/img/letterpress-poster.jpg",
+    "ref": "commons:35691483",
+    "title": "Printing in a letterpress",
+    "creator": "Subhashish Panigrahi",
+    "creatorUrl": null,
+    "date": "2014-09-27",
+    "license": "CC BY-SA 4.0",
+    "licenseCode": "by-sa",
+    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+    "creditRequired": true,
+    "page": "https://commons.wikimedia.org/wiki/File:Printing_in_a_letterpress.webm",
+    "via": "Wikimedia Commons",
+    "video": "https://upload.wikimedia.org/wikipedia/commons/1/15/Printing_in_a_letterpress.webm",
+    "width": 1077,
+    "height": 606,
+    "duration": 27.2,
+    "bytes": 6961622,
+    "credit": "\"Printing in a letterpress\" by Subhashish Panigrahi, CC BY-SA 4.0, via Wikimedia Commons",
+    "notes": [
+      "Share-alike: an altered version (recoloured, combined with other pictures) must be shared under the same licence."
+    ],
+    "saved": "2026-10-20T11:32:43.075Z"
+  }
+]

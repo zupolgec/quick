@@ -1,0 +1,15 @@
+/install.sh
+  Content-Type: text/x-shellscript; charset=utf-8
+/install.ps1
+  Content-Type: text/plain; charset=utf-8
+/*.md
+  Content-Type: text/markdown; charset=utf-8
+  Access-Control-Allow-Origin: *
+/llms.txt
+  Content-Type: text/plain; charset=utf-8
+  Access-Control-Allow-Origin: *
+/llms-full.txt
+  Content-Type: text/plain; charset=utf-8
+  Access-Control-Allow-Origin: *
+/img/*
+  Cache-Control: public, max-age=86400

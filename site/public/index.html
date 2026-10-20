@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>quick: publish a folder, get a private URL</title>
+<meta name="description" content="quick is a self-hosted CLI and server for internal static sites. Run quick deploy, get name.yourdomain behind your company sign-in.">
+<link rel="canonical" href="https://quick-cli.com/">
+<link rel="alternate" type="text/markdown" href="/index.md" title="This page as Markdown">
+<link rel="help" type="text/plain" href="/llms.txt" title="llms.txt">
+<meta property="og:title" content="quick: publish a folder, get a private URL">
+<meta property="og:description" content="Self-hosted static hosting for teams. One command, a subdomain, your company sign-in.">
+<meta property="og:url" content="https://quick-cli.com/">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#e8e6fd">
+<link rel="icon" href="/favicon.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<script>document.documentElement.classList.add('js')</script>
+</head>
+<body>
+
+<header class="hero" id="top">
+  <nav class="top" aria-label="Main">
+    <span></span>
+    <div class="top-links">
+      <a class="link" href="/docs/">Docs</a>
+      <a class="link only-wide" href="/llms.txt">llms.txt</a>
+      <a class="link" href="https://github.com/zupolgec/quick">GitHub</a>
+      <a class="button button-small" href="#install">Install</a>
+    </div>
+  </nav>
+  <h1 class="hero-name lines">
+    <span class="line"><span data-line style="--i:0" class="hero-logo">{{logo}}<span class="sr-only">quick</span></span></span>
+    <span class="line"><span data-line style="--i:1" class="ink-dark">deploy.</span></span>
+  </h1>
+  <p class="hero-lead" data-rise style="--i:4">Publish a folder from your terminal.<br>It goes live at its own subdomain, behind your company sign-in.</p>
+</header>
+
+<main>
+
+  <section class="fields" aria-label="What you get">
+    <div class="field-panel f-ink" data-reveal-group>
+      <p class="field-note" data-reveal>Every site starts behind your company sign-in: Google Workspace or any OIDC provider. Open one to the world with <code>quick publish</code>, or hand out an access code.</p>
+      <h2 class="field-phrase" data-reveal>Private by default.</h2>
+    </div>
+    <div class="field-panel f-violet mirror" data-reveal-group>
+      <p class="field-note" data-reveal><code>quick skill</code> teaches Claude Code, Codex, Gemini or Cursor to deploy for you. Deploy tokens are tied to one site and can only deploy it.</p>
+      <h2 class="field-phrase" data-reveal>Agents ship too.</h2>
+    </div>
+    <div class="field-panel f-lavender" data-reveal-group>
+      <p class="field-note" data-reveal>One container and a wildcard DNS record. Files on local disk or any S3-compatible bucket. MIT licensed, no account anywhere.</p>
+      <h2 class="field-phrase" data-reveal>Your box, your bucket.</h2>
+    </div>
+  </section>
+
+  <figure class="film">
+    <video autoplay muted loop playsinline preload="metadata" poster="/img/letterpress-poster.webp" width="960" height="540" aria-label="A letterpress at work: an arm feeds paper while red ink rollers turn">
+      <source src="/img/letterpress-loop.webm" type="video/webm">
+      <source src="/img/letterpress-loop.mp4" type="video/mp4">
+    </video>
+    <figcaption>Publishing, the slow way. Footage: “Printing in a letterpress”, CC BY-SA 4.0.</figcaption>
+  </figure>
+
+  <section class="receipt-section" aria-labelledby="receipt-h">
+    <div class="receipt-left">
+      <div data-reveal-group>
+        <h2 id="receipt-h" class="head" data-reveal>Redeploys send the diff.</h2>
+        <p class="receipt-note" data-reveal>Files are split into content-defined chunks of about 64 KiB. The server keeps the ones it already has; only new chunks travel.</p>
+      </div>
+      <div class="total" data-reveal-group>
+        <p class="total-figure nums" data-reveal>457 KB</p>
+        <p class="total-caption" data-reveal>sent over nine redeploys of a 3.1 MB build. Full uploads would have sent 27.9 MB.</p>
+      </div>
+    </div>
+    <div class="slip" data-reveal>
+      <p class="slip-title">Nine redeploys, measured with <code>quick deploy</code></p>
+      <div class="slip-rows nums">
+        <p class="slip-group">Pages</p>
+        <p class="row"><span>Fixed a typo in index.html</span><span>9.2 KB</span></p>
+        <p class="row"><span>Added about.html</span><span>9.2 KB</span></p>
+        <p class="row"><span>Changed the title on both pages</span><span>18.4 KB</span></p>
+        <p class="slip-group">Code</p>
+        <p class="row"><span>Renamed a rule across app.js</span><span>127.0 KB</span></p>
+        <p class="row"><span>Appended one line to app.js</span><span>45.1 KB</span></p>
+        <p class="slip-group">Files</p>
+        <p class="row"><span>Renamed a photo</span><span>0 B</span></p>
+        <p class="row"><span>Deleted a screenshot</span><span>0 B</span></p>
+        <p class="row"><span>Re-encoded a photo</span><span>248.3 KB</span></p>
+        <p class="row"><span>Redeployed with no changes</span><span>0 B</span></p>
+        <p class="row row-total"><span>Sent in total</span><span>457.2 KB</span></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="compare" aria-labelledby="compare-h">
+    <div class="compare-top" data-reveal-group>
+      <h2 id="compare-h" class="lead-head" data-reveal>html for you, .md for agents.</h2>
+      <p data-reveal>Every page on this site also exists as Markdown: add <code>.md</code> to the address, or ask for <code>text/markdown</code>. <a class="link-plain" href="/llms.txt">llms.txt</a> lists them all, <a class="link-plain" href="/llms-full.txt">llms-full.txt</a> holds them in one file, and the agent skill that ships with the CLI is at <a class="link-plain" href="/skill.md">skill.md</a>.</p>
+    </div>
+    <div class="specimens">
+      <div class="specimen" data-reveal><p class="specimen-word" aria-hidden="true">html</p></div>
+      <div class="specimen" data-reveal><p class="specimen-word" aria-hidden="true">.md</p></div>
+    </div>
+  </section>
+
+  <section class="steps" id="install" aria-labelledby="steps-h">
+    <h2 id="steps-h" class="lead-head" data-reveal>Three commands.</h2>
+
+    <div class="step" data-reveal-group>
+      <p class="step-say" data-reveal>First, install it.</p>
+      <div class="call" data-reveal>
+        <div class="tabs" role="tablist" aria-label="Operating system">
+          <button role="tab" aria-selected="true" data-os="unix">macOS and Linux</button>
+          <button role="tab" aria-selected="false" data-os="win">Windows</button>
+        </div>
+        <pre><code data-os-code="unix">curl -fsSL https://quick-cli.com/install.sh | sh</code><code data-os-code="win" hidden>irm https://quick-cli.com/install.ps1 | iex</code></pre>
+        <button class="copy" type="button">Copy</button>
+      </div>
+      <div class="response" data-ui data-reveal>
+        <pre><code>Downloading quick (darwin/arm64)…
+<span class="ok">✓</span> quick installed in /Users/giulia/.local/bin/quick</code></pre>
+      </div>
+    </div>
+
+    <div class="step" data-reveal-group>
+      <p class="step-say" data-reveal>Then sign in to your server.</p>
+      <div class="call" data-reveal>
+        <pre><code>quick login --server quick.acme.com</code></pre>
+        <button class="copy" type="button">Copy</button>
+      </div>
+      <div class="response" data-ui data-reveal>
+        <pre><code>Opening the browser for login…
+<span class="ok">✓</span> logged in to https://quick.acme.com</code></pre>
+      </div>
+    </div>
+
+    <div class="step" data-reveal-group>
+      <p class="step-say" data-reveal>Now publish a folder.</p>
+      <label class="name-field" data-reveal>
+        <span>Name your site</span>
+        <input id="site-name" type="text" value="launch" maxlength="40" autocomplete="off" spellcheck="false" inputmode="url" aria-describedby="site-url">
+      </label>
+      <div class="call" data-reveal>
+        <pre><code>quick deploy <span data-name>launch</span> ./dist</code></pre>
+        <button class="copy" type="button">Copy</button>
+      </div>
+      <div class="response" data-ui data-reveal>
+        <pre><code><span class="ok">✓</span> Authenticated as giulia
+About to publish https://<span data-name>launch</span>.quick.acme.com
+  3 files, 879.0 KB (excluded by: default rules)
+Proceed? [y/N]: y
+  sending 879.0 KB of 879.0 KB
+<span class="ok">✓</span> uploaded 879.0 KB of 879.0 KB
+<span class="ok">✓</span> <span data-name>launch</span> published → <span id="site-url">https://<span data-name>launch</span>.quick.acme.com</span></code></pre>
+      </div>
+      <figure class="result" data-reveal>
+        <img src="/img/ui-dash.webp" width="2080" height="1520" alt="The quick dashboard listing five sites with their visibility (SSO, public, code), who published them and when" loading="lazy" decoding="async">
+        <figcaption>Every site shows up in the dashboard at quick.acme.com, with who published it and who can open it.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="pair" aria-labelledby="pair-h">
+    <h2 id="pair-h" class="sr-only">Access and tokens</h2>
+    <figure data-reveal>
+      <img src="/img/ui-code.webp" width="2080" height="1520" alt="A protected site asking for its access code" loading="lazy" decoding="async">
+      <figcaption><code>quick private launch</code> swaps the company sign-in for a code you can share with a client.</figcaption>
+    </figure>
+    <figure data-reveal>
+      <img src="/img/ui-manage.webp" width="2080" height="1520" alt="The site page in the dashboard with the form to create a deploy token" loading="lazy" decoding="async">
+      <figcaption>Deploy tokens for CI and hosted agents: one site, deploy only, expiring in 30 to 365 days.</figcaption>
+    </figure>
+  </section>
+
+  <section class="lineup" aria-labelledby="lineup-h">
+    <h2 id="lineup-h" class="sr-only">What a site can do</h2>
+    <div class="lineup-group">
+      <h3 class="lineup-day">Routing</h3>
+      <ul class="lineup-rows">
+        <li><span>index.html</span><span>Folder index</span><span>docs/index.html at /docs/</span><span>Built in</span></li>
+        <li><span>Clean URLs</span><span>No .html in links</span><span>about.html at /about</span><span>Built in</span></li>
+        <li><span>404.html</span><span>Your own not-found page</span><span>Nearest folder wins</span><span>Built in</span></li>
+        <li><span>200.html</span><span>Single-page app shell</span><span>Every route that is not a file</span><span>Built in</span></li>
+        <li><span>_redirects</span><span>Redirects, rewrites, proxy</span><span>/api/* to a public API</span><span>Built in</span></li>
+      </ul>
+    </div>
+    <div class="lineup-group">
+      <h3 class="lineup-day">Files and runtime</h3>
+      <ul class="lineup-rows">
+        <li><span>.br and .gz</span><span>Served precompressed</span><span>Unity WebGL as is</span><span>Built in</span></li>
+        <li><span>.quickignore</span><span>What stays out</span><span>Secrets never leave</span><span>Built in</span></li>
+        <li><span>quick.js</span><span>Who is signed in</span><span>quick.id.me()</span><span>Built in</span></li>
+        <li><span>Custom domains</span><span>Your own hostname</span><span>www.acme.com</span><span>Built in</span></li>
+      </ul>
+    </div>
+    <div class="lineup-group">
+      <h3 class="lineup-day">Next</h3>
+      <ul class="lineup-rows">
+        <li class="soon"><span>_headers</span><span>Headers per path</span><span>Cache-Control, CSP</span><span>Planned</span></li>
+        <li class="soon"><span>/mcp</span><span>quick as an MCP server</span><span>Deploy as a tool call</span><span>Planned</span></li>
+      </ul>
+    </div>
+  </section>
+
+
+  <section class="close" aria-labelledby="close-h">
+    <h2 id="close-h" class="close-head" data-reveal>Publish it.<br>Keep it yours.</h2>
+    <div class="close-foot" data-reveal-group>
+      <p data-reveal>One binary for macOS, Linux and Windows. The server runs wherever you run containers.</p>
+      <a class="button button-large" href="/docs/" data-reveal>Read the docs</a>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="foot-cols">
+    <ul>
+      <li>Docs</li>
+      <li><a class="link" href="/docs/">Getting started</a></li>
+      <li><a class="link" href="/docs/cli">CLI reference</a></li>
+      <li><a class="link" href="/docs/sites">Site conventions</a></li>
+      <li><a class="link" href="/docs/self-hosting">Self-hosting</a></li>
+    </ul>
+    <ul>
+      <li>For agents</li>
+      <li><a class="link" href="/llms.txt">llms.txt</a></li>
+      <li><a class="link" href="/llms-full.txt">llms-full.txt</a></li>
+      <li><a class="link" href="/skill.md">skill.md</a></li>
+      <li><a class="link" href="/index.md">This page as Markdown</a></li>
+    </ul>
+    <ul>
+      <li>Source</li>
+      <li><a class="link" href="https://github.com/zupolgec/quick">GitHub</a></li>
+      <li><a class="link" href="https://github.com/zupolgec/quick/releases">Releases</a></li>
+      <li><a class="link" href="https://github.com/zupolgec/quick/blob/main/LICENSE">MIT licence</a></li>
+    </ul>
+    <ul class="credits">
+      <li>Pictures</li>
+      <li><a class="link" href="https://commons.wikimedia.org/wiki/File:Printing_in_a_letterpress.webm">Letterpress footage</a>, Wikimedia Commons, CC BY-SA 4.0</li>
+    </ul>
+  </div>
+  <a class="wordmark" href="#top" aria-label="quick, back to top">{{logo}}</a>
+  <p class="legal">Made by 16bit. Inspired by Shopify’s internal Quick. Not affiliated with Shopify.</p>
+</footer>
+
+<script src="/main.js" defer></script>
+</body>
+</html>
