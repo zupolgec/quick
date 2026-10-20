@@ -155,7 +155,7 @@ func accessCmd(args []string) {
 	a, err := parseAccessArgs(args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
-		fmt.Fprintln(os.Stderr, "usage: quick access <site> [team | public | code [--code X] | only-me | add <email>... | remove <email>...]")
+		fmt.Fprintln(os.Stderr, "usage: quick access [<site>] [team | public | code [--code X] | only-me | add <email>... | remove <email>...]")
 		os.Exit(2)
 	}
 	sf := loadSiteFile(".")
