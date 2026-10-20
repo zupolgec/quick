@@ -610,14 +610,15 @@ func (s *server) writePolicy(w http.ResponseWriter, name string, p policy, email
 		access = "sso"
 	}
 	var viewers []string
-	if p.Access == quick.AccessPeople && canView(p, email) {
+	visible := canView(p, email)
+	if p.Access == quick.AccessPeople && visible {
 		viewers = p.Viewers
 	}
 	exists, _ := s.store.SiteExists(name)
 	_ = json.NewEncoder(w).Encode(quick.PolicyResponse{
 		Site: name, Access: access, Locked: p.Locked, Owner: p.Owner, Exists: exists,
 		CreatedBy: p.CreatedBy, CreatedAt: p.CreatedAt, UpdatedBy: p.UpdatedBy, UpdatedAt: p.UpdatedAt,
-		Viewers: viewers,
+		Viewers: viewers, ViewersHidden: !visible,
 	})
 }
 

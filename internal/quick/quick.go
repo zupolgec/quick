@@ -51,6 +51,8 @@ type PolicyResponse struct {
 	// Viewers of a "people" site (owner excluded), only for those who can
 	// open it.
 	Viewers []string `json:"viewers,omitempty"`
+	// A "people" site whose list the caller can't see (not on it).
+	ViewersHidden bool `json:"viewers_hidden,omitempty"`
 }
 
 // SiteInfo describes a site in the /api/sites list (and the dashboard).

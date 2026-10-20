@@ -16,7 +16,8 @@ description: >-
   Publishes and manages static sites on the internal "quick" hosting with the ` + "`quick`" + ` CLI.
   Use it when the user wants to put a folder of HTML/assets online and get
   a <name>.<domain> URL, republish a site, change its visibility (public,
-  access code, company SSO), lock or delete it, check its status,
+  access code, company SSO, only some people), share it with chosen
+  colleagues, lock or delete it, check its status,
   create deploy tokens for CI/agent environments, attach a custom domain, or understand why a deploy
   excludes certain files. Covers mirror deploys, .quickignore, the 404.html /
   200.html / clean URL / _redirects conventions (redirects, SPA rewrites and
@@ -28,7 +29,8 @@ description: >-
 ` + "`quick`" + ` is the CLI for an internal static hosting: you publish a folder of
 HTML/assets and get ` + "`https://<name>.<domain>`" + `. By default a site is visible
 only to accounts in the company domain (company SSO); you can open it to the public,
-protect it with a code, or lock it against overwrites.
+protect it with a code, limit it to yourself or to chosen colleagues, or lock it
+against overwrites.
 
 The server configures itself: the only required input is the URL, via ` + "`--server`" + `
 or the ` + "`QUICK_SERVER`" + ` variable. After the first deploy, the folder remembers site
@@ -53,6 +55,9 @@ quick deploy my-site ./build                    # -> https://my-site.quick.examp
 | ` + "`quick servers [use <server>]`" + ` | Known servers with login status; ` + "`use`" + ` changes the default |
 | ` + "`quick deploy [<site>] [folder]`" + ` | Publish a folder (default: the current one) |
 | ` + "`quick ignore [folder]`" + ` | Create an editable ` + "`.quickignore`" + ` with the defaults already inside |
+| ` + "`quick access [<site>]`" + ` | Who can see the site: level, owner, and the people list (if you are on it) |
+| ` + "`quick access [<site>] team \\| public \\| code [--code X] \\| only-me`" + ` | Set who can see it: everyone at the company (default), public, by code, or only you |
+| ` + "`quick access [<site>] add <email>...`" + ` / ` + "`remove <email>...`" + ` | Share with (or stop sharing with) chosen company accounts; ` + "`add`" + ` limits the site to the owner + the list |
 | ` + "`quick publish [<site>]`" + ` | Open to the public (no SSO) |
 | ` + "`quick unpublish [<site>]`" + ` | Back behind company SSO (default) |
 | ` + "`quick private [<site>] [--code X]`" + ` | Access by code (generated if absent) |
@@ -200,13 +205,21 @@ Use ` + "`quick status`" + ` or ` + "`quick deploy ... --dry-run`" + ` to see in
   so the browser decompresses it); no server config needed.
 - Every site can import the browser library ` + "`/__quick/quick.js`" + ` (ESM, types at
   ` + "`/__quick/quick.d.ts`" + `). ` + "`await quick.id.me()`" + ` returns the signed-in user
-  (` + "`{email}`" + `) on SSO sites, ` + "`null`" + ` on public or access-code sites. The
+  (` + "`{email}`" + `) on SSO and chosen-people sites, ` + "`null`" + ` on public or access-code sites. The
   ` + "`/__quick/`" + ` path prefix is reserved for quick: a deploy containing a ` + "`__quick/`" + ` folder at the root is refused.
 
 ## Notes
 
 - New subdomains are immediate; visibility changes are instant.
 - A **locked** site can be overwritten or deleted only by its owner.
+- **Chosen people** (` + "`quick access <site> add|remove|only-me`" + `): visitors sign in with SSO and must be the
+  owner (the site's creator) or on its list; anyone else gets a "restricted" page that names the owner,
+  never the list. Emails must be company accounts (max 100 per site). Only the owner can limit a site
+  to chosen people, change who sees such a site (in any ownership mode), or delete it;
+  other users get ` + "`only the owner (x) can change who can see this site`" + `. Deploys are unchanged:
+  whoever may deploy the site still can, even without seeing it. Such sites are listed (dashboard,
+  ` + "`/api/sites`" + `) only to their people. ` + "`publish`/`unpublish`/`private`" + ` still work as shortcuts
+  (` + "`unpublish`" + ` = ` + "`access <site> team`" + `).
 `
 
 func skillCmd(args []string) {

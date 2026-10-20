@@ -92,6 +92,8 @@ func runCmd(cmd string, args []string) {
 		upgradeCmd(args)
 	case "delete", "rm":
 		deleteCmd(args)
+	case "access":
+		accessCmd(args)
 	case "publish", "unpublish", "private", "lock", "unlock":
 		policyCmd(cmd, args)
 	default:
@@ -132,6 +134,9 @@ func printUsage(w io.Writer) {
   quick ignore  [folder]            # create an editable .quickignore
   quick skill   [--target codex|gemini|…] [--project] [--all]  # publish the Agent Skill (SKILL.md)
   quick delete    [<site>]          # delete the site (irreversible)
+  quick access    [<site>]          # who can see the site (level, owner, people)
+  quick access    [<site>] team | public | code [--code X] | only-me
+  quick access    [<site>] add|remove <email>...  # share with chosen company accounts
   quick publish   [<site>]          # open to the public (no SSO)
   quick unpublish [<site>]          # back behind company SSO
   quick private   [<site>] [--code X] # access by code (generated if absent)

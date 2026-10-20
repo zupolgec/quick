@@ -592,7 +592,7 @@ h2{font-size:1.5rem;color:var(--ink);margin:0 0 1.25rem}
   <div class="guide">
     <h2>{{.T.GuideTitle}}</h2>
     <div class="row"><code>quick deploy</code><span class="desc">{{.T.GuideUpdate}}</span></div>
-    <div class="row"><code>quick private</code><span class="desc">{{.T.GuideVisibility}}</span></div>
+    <div class="row"><code>quick access</code><span class="desc">{{.T.GuideVisibility}}</span></div>
     <div class="row"><code>quick status</code><span class="desc">{{.T.GuideStatus}}</span></div>
     <div class="row"><code>quick rollback</code><span class="desc">{{.T.GuideRollback}}</span></div>
   </div>

@@ -368,7 +368,7 @@ func TestPeoplePolicyRead(t *testing.T) {
 		w := e.api(t, who, http.MethodGet, "/api/site/app/policy", nil)
 		var res quick.PolicyResponse
 		_ = json.Unmarshal(w.Body.Bytes(), &res)
-		if w.Code != http.StatusOK || res.Access != quick.AccessPeople || res.CreatedBy != ann || !slices.Equal(res.Viewers, want) {
+		if w.Code != http.StatusOK || res.Access != quick.AccessPeople || res.CreatedBy != ann || !slices.Equal(res.Viewers, want) || res.ViewersHidden != (who == carl) {
 			t.Errorf("%s: code %d res %+v", who, w.Code, res)
 		}
 		if who == carl && strings.Contains(w.Body.String(), bob) {

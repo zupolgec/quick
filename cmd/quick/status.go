@@ -99,6 +99,8 @@ func describeAccess(access string) string {
 		return "public (no SSO)"
 	case quick.AccessCode:
 		return "private, access by code"
+	case quick.AccessPeople:
+		return "only the owner and chosen people (see `quick access`)"
 	default:
 		return "behind company SSO"
 	}

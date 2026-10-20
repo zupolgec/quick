@@ -138,7 +138,7 @@ var uiTexts = map[lang]uiText{
 
 		GuideTitle:      "How it works",
 		GuideUpdate:     "Re-run it to update: every deploy replaces the site's files.",
-		GuideVisibility: "Choose who can open the site: company SSO, an access code, or public.",
+		GuideVisibility: "Choose who can open the site: company SSO, chosen people, an access code, or public.",
 		GuideStatus:     "Check the site's URL, visibility and last deploy.",
 		GuideRollback:   "Restore the previous version when something goes wrong.",
 
@@ -253,7 +253,7 @@ var uiTexts = map[lang]uiText{
 
 		GuideTitle:      "Come funziona",
 		GuideUpdate:     "Ripubblica per aggiornare: ogni deploy sostituisce i file del sito.",
-		GuideVisibility: "Scegli chi può aprire il sito: SSO aziendale, codice di accesso o pubblico.",
+		GuideVisibility: "Scegli chi può aprire il sito: SSO aziendale, persone scelte, codice di accesso o pubblico.",
 		GuideStatus:     "Controlla URL, visibilità e ultimo deploy del sito.",
 		GuideRollback:   "Torna alla versione precedente quando qualcosa va storto.",
 
