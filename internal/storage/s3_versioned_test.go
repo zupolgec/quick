@@ -31,6 +31,7 @@ func s3On(t *testing.T, srv *s3fake.Server) *s3 {
 	if err != nil {
 		t.Fatal(err)
 	}
+	b.grace = 0 // collect at once unless a test opts into the grace period
 	return b
 }
 
@@ -458,7 +459,7 @@ func TestS3PointerWriteOutcomes(t *testing.T) {
 		srv.Hook = func(m, k string) s3fake.Fault {
 			if isPtr(m, k) {
 				written.Store(true)
-				return s3fake.ApplyAndFail
+				return s3fake.ApplyAndDrop
 			}
 			if written.Load() && m == "GET" && strings.HasPrefix(k, "q/live/") {
 				return s3fake.Fail

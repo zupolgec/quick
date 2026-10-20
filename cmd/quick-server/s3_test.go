@@ -177,7 +177,7 @@ func TestS3UncertainSwitchIsNotARefusal(t *testing.T) {
 		}
 		if method == http.MethodPut {
 			switched.Store(true)
-			return s3fake.ApplyAndFail
+			return s3fake.ApplyAndDrop // applied, the answer lost
 		}
 		if switched.Load() {
 			return s3fake.Fail
@@ -218,11 +218,14 @@ func TestS3LegacySiteServedAndMigratedByDeploy(t *testing.T) {
 	if sent := c.deploy(map[string][]byte{"index.html": []byte("legacy"), "new.html": []byte("new")}); sent != 3 {
 		t.Fatalf("first deploy of a legacy site sent %d bytes, want 3 (index.html reused)", sent)
 	}
-	if ks := srv.Keys("sites/"); len(ks) != 0 {
-		t.Fatalf("flat objects left: %v", ks)
-	}
+	// The flat objects stay for the grace period (a request may still read
+	// them) but are no longer served.
+	srv.Put("sites/old/flat-only.html", []byte("flat"))
 	if w := hostGet(s, "old.quick.example.com", "/new"); w.Code != http.StatusOK || w.Body.String() != "new" {
 		t.Fatalf("after migration: %d %q", w.Code, w.Body.String())
+	}
+	if w := hostGet(s, "old.quick.example.com", "/flat-only"); w.Code == http.StatusOK {
+		t.Fatal("flat layout still served after migration")
 	}
 	// Delete through the API removes every object of the site.
 	if w := c.do(http.MethodDelete, "/api/site/old", nil, nil); w.Code != http.StatusOK {
