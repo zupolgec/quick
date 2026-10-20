@@ -243,7 +243,7 @@ func (s *server) renderDashboard(w http.ResponseWriter, l lang, email string) {
 			Locked:  p.Locked,
 			Updated: updatedLabel(p),
 			at:      p.UpdatedAt,
-			Mine:    p.CreatedBy != "" && p.CreatedBy == email,
+			Mine:    isOwner(p, email),
 		})
 	}
 	// Most recent first; rows without a timestamp sink to the bottom, by name.

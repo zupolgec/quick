@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/zupolgec/quick/internal/quick"
@@ -62,6 +63,61 @@ func TestPeopleDeltaIsNoOracleForNonViewers(t *testing.T) {
 	}
 	if w := c.commit(present); w.Code != http.StatusOK {
 		t.Errorf("viewer commit: %d %s", w.Code, w.Body)
+	}
+}
+
+// Identities match however the IdP or an old record cased them: creator, lock
+// owner and viewers alike, in every ownership mode.
+func TestIdentityMatchIgnoresCase(t *testing.T) {
+	const stored, signedIn = "Ann@Example.com", "ann@example.com"
+	for _, mode := range []string{"free", "shared", "owned"} {
+		s := &server{ownership: mode}
+		p := policy{CreatedBy: stored}
+		for _, act := range []string{actDeploy, actDelete, actPolicy, actToken} {
+			if ok, why := s.canWrite(p, signedIn, act); !ok {
+				t.Errorf("%s %s by the creator: %s", mode, act, why)
+			}
+		}
+		locked := policy{CreatedBy: stored, Locked: true, Owner: stored}
+		if ok, why := s.canWrite(locked, signedIn, actDeploy); !ok {
+			t.Errorf("%s deploy by the lock owner: %s", mode, why)
+		}
+		if ok, _ := s.canWrite(locked, "bob@example.com", actDeploy); ok {
+			t.Errorf("%s: lock didn't stop someone else", mode)
+		}
+	}
+	if !sameUser(" Ann@Example.com ", "ann@example.com") || sameUser("", "") || sameUser("ann@example.com", "bob@example.com") {
+		t.Error("sameUser")
+	}
+}
+
+// A mixed-case creator unlocks, changes visibility and deletes through the API.
+func TestMixedCaseOwnerUnlocks(t *testing.T) {
+	for _, mode := range []string{"free", "shared", "owned"} {
+		e := newPeopleEnv(t)
+		e.s.ownership = mode
+		e.setPolicy(t, "app", policy{CreatedBy: "Ann@Example.com", Locked: true, Owner: "Ann@Example.com"})
+		if w, res := e.setAccess(t, ann, "app", quick.PolicyRequest{Locked: new(false)}); w.Code != http.StatusOK || res.Locked {
+			t.Errorf("%s unlock: %d %s", mode, w.Code, w.Body)
+		}
+		if w, _ := e.setAccess(t, ann, "app", quick.PolicyRequest{Access: new(quick.AccessPublic)}); w.Code != http.StatusOK {
+			t.Errorf("%s public: %d %s", mode, w.Code, w.Body)
+		}
+		if w := e.api(t, ann, http.MethodDelete, "/api/site/app", nil); w.Code != http.StatusOK {
+			t.Errorf("%s delete: %d %s", mode, w.Code, w.Body)
+		}
+	}
+}
+
+// The dashboard counts a mixed-case creator's sites as theirs.
+func TestDashboardMineIgnoresCase(t *testing.T) {
+	e := newPeopleEnv(t)
+	e.setPolicy(t, "app", policy{CreatedBy: "Ann@Example.com"})
+	e.setPolicy(t, "open", policy{CreatedBy: bob})
+	b := e.visit("quick.test", ann, "/dashboard", nil).Body.String()
+	mine := b[:strings.Index(b, "All sites")]
+	if !strings.Contains(mine, "app.quick.test") || strings.Contains(mine, "open.quick.test") {
+		t.Errorf("your sites:\n%s", mine)
 	}
 }
 

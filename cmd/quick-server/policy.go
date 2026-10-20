@@ -57,7 +57,7 @@ func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
 // change: whoever may deploy here may deploy a people site, even one they
 // can't open.
 func (s *server) canWrite(p policy, email, action string) (bool, string) {
-	if p.Locked && p.Owner != "" && p.Owner != email {
+	if p.Locked && p.Owner != "" && !sameUser(p.Owner, email) {
 		return false, "site locked by " + p.Owner
 	}
 	if action == actDelete && p.Access == quick.AccessPeople && !isOwner(p, email) {
@@ -70,7 +70,7 @@ func (s *server) canWrite(p policy, email, action string) (bool, string) {
 	case "shared":
 		creatorOnly = action != actDeploy
 	}
-	if creatorOnly && p.CreatedBy != "" && p.CreatedBy != email {
+	if creatorOnly && p.CreatedBy != "" && !isOwner(p, email) {
 		return false, "site owned by " + p.CreatedBy + " (" + s.ownership + " mode)"
 	}
 	return true, ""
@@ -574,7 +574,7 @@ func (s *server) applyPolicy(cur *policy, email string, req quick.PolicyRequest)
 	}
 	// Only the creator can change the lock: stops someone from "stealing" another
 	// person's site by locking it under their own name (matters in free mode).
-	if req.Locked != nil && cur.CreatedBy != "" && cur.CreatedBy != email {
+	if req.Locked != nil && cur.CreatedBy != "" && !isOwner(*cur, email) {
 		return &policyErr{status: http.StatusForbidden, msg: "only the creator (" + cur.CreatedBy + ") can lock the site"}
 	}
 	if changesAccess {

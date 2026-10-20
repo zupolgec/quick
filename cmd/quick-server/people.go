@@ -16,10 +16,15 @@ import (
 	"github.com/zupolgec/quick/internal/quick"
 )
 
-// isOwner reports whether email is the site's creator (case-insensitive).
-func isOwner(p policy, email string) bool {
-	return p.CreatedBy != "" && strings.EqualFold(p.CreatedBy, email)
+// sameUser compares two identities (emails) the one way used everywhere:
+// trimmed, case-insensitive; an empty identity matches nothing.
+func sameUser(a, b string) bool {
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	return a != "" && strings.EqualFold(a, b)
 }
+
+// isOwner reports whether email is the site's creator.
+func isOwner(p policy, email string) bool { return sameUser(p.CreatedBy, email) }
 
 // canView reports whether the signed-in email may open the site's contents.
 // Only "people" sites restrict signed-in users; everything else is up to the
@@ -28,8 +33,7 @@ func canView(p policy, email string) bool {
 	if p.Access != quick.AccessPeople {
 		return true
 	}
-	email = strings.ToLower(strings.TrimSpace(email))
-	return email != "" && (isOwner(p, email) || slices.Contains(p.Viewers, email))
+	return isOwner(p, email) || slices.ContainsFunc(p.Viewers, func(v string) bool { return sameUser(v, email) })
 }
 
 // blindDeploy reports whether a deploy must not touch the site's live content
@@ -91,7 +95,7 @@ func (s *server) editViewers(cur policy, req quick.PolicyRequest) ([]string, *po
 		if perr != nil {
 			return nil, perr
 		}
-		if !isOwner(cur, v) && !slices.Contains(list, v) {
+		if !isOwner(cur, v) && !slices.ContainsFunc(list, func(e string) bool { return sameUser(e, v) }) {
 			list = append(list, v)
 		}
 	}
@@ -101,7 +105,7 @@ func (s *server) editViewers(cur policy, req quick.PolicyRequest) ([]string, *po
 			return nil, &policyErr{status: http.StatusBadRequest, kind: errOwnerAlways, arg: cur.CreatedBy,
 				msg: "the owner (" + cur.CreatedBy + ") can always see the site and can't be removed"}
 		}
-		list = slices.DeleteFunc(list, func(e string) bool { return e == v })
+		list = slices.DeleteFunc(list, func(e string) bool { return sameUser(e, v) })
 	}
 	if len(list) > maxViewers {
 		return nil, &policyErr{status: http.StatusBadRequest, kind: errTooMany,
