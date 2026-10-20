@@ -34,11 +34,12 @@
 // publish path (limits, atomic swap, rollback copy) as the tar upload. Reused
 // live chunks:
 //
-//   - atomic backends (local): read straight from the live tree in both
-//     passes. PutSite extracts to a temp dir and swaps only at the end, and the
-//     site lock keeps other writers out, so the live files are stable for the
-//     whole commit. Nothing is copied: staging holds only uploads.
-//   - backends that overwrite in place (s3): copied into staging during
+//   - atomic backends (local, s3): read straight from the live tree in both
+//     passes. PutSite writes the new version apart (local: a temp dir; s3: a
+//     new version prefix) and switches only after the whole tar is consumed,
+//     and the site lock keeps other writers out, so the live files are stable
+//     for the whole commit. Nothing is copied: staging holds only uploads.
+//   - backends that overwrite in place (none built in): copied into staging during
 //     verification (a file must never be read after PutSite replaced it). The
 //     copies count toward the aggregate staging cap and are released at the
 //     end of the commit, success or not.
@@ -595,8 +596,7 @@ func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
 	pr.Close() // unblocks the writer if PutSite stopped early
 	<-done
 	if err != nil {
-		s.publishFailed(name, &cur, old)
-		http.Error(w, "deploy: "+err.Error(), http.StatusBadRequest) // as handleDeploy
+		http.Error(w, "deploy: "+err.Error(), s.publishFailed(name, &cur, old, err)) // as handleDeploy
 		return
 	}
 	cur.Version, cur.PrevVersion = s.saveIndex(name, indexOfManifest(files)), old.live

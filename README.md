@@ -223,8 +223,13 @@ rispettano il turno: il loro caricamento viene rifiutato con lo stesso messaggio
 quick rollback foo   # ripristina la versione precedente (un secondo rollback la rifà)
 ```
 
-Ogni deploy conserva la versione precedente: `rollback` le scambia. Disponibile
-sullo storage locale; sull'object storage va gestito col versioning del bucket.
+Ogni deploy conserva la versione precedente: `rollback` le scambia. Vale sia
+sullo storage locale sia sull'object storage.
+
+La pubblicazione è atomica su entrambi: la nuova versione viene scritta a parte
+e diventa visibile tutta insieme solo alla fine, quindi chi visita il sito vede
+la versione vecchia o quella nuova, mai un misto. Un deploy che fallisce lascia
+il sito com'era.
 
 ## Chi può modificare un sito
 
@@ -330,6 +335,17 @@ dopo 24 ore). Accanto ai metadati il server tiene la mappa dei blocchi della
 versione pubblicata e di quella precedente (`<sito>.<versione>.idx` nella cartella
 dei metadati, `index/<sito>/` su S3), così il deploy incrementale non rilegge il
 sito; se manca o non è valida viene ricostruita dai file pubblicati.
+
+Su S3 ogni deploy scrive i file in `versions/<sito>/<id>/` e poi aggiorna in un
+colpo solo il puntatore `live/<sito>.json`, che indica la versione pubblicata e
+quella precedente (il rollback le scambia). Le versioni più vecchie vengono
+rimosse dopo ogni deploy riuscito. Il server tiene il puntatore in cache per
+pochi secondi: con più istanze sullo stesso bucket le altre vedono il cambio
+entro quel tempo. I siti pubblicati prima di questo schema (file direttamente in
+`sites/<sito>/`) continuano a funzionare e passano al nuovo schema al primo
+deploy, che rimuove i vecchi file. Al bucket non serve nulla di particolare
+(niente versioning, niente scritture condizionali); conviene una regola di
+lifecycle che elimini gli upload multiparte incompleti.
 Con un IdP OIDC (es. Zitadel): `QUICK_SSO_PROVIDER=oidc`, `QUICK_OIDC_ISSUER`, e in
 `GOOGLE_CLIENT_ID/SECRET` il client Web dell'IdP per oauth2-proxy; per la CLI un client
 nativo con PKCE e redirect `http://127.0.0.1:8765/callback`.

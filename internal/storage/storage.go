@@ -21,6 +21,12 @@ import (
 
 var ErrNotFound = errors.New("storage: not found")
 
+// ErrUncertain wraps a PutSite or Rollback error after which the backend can't
+// tell whether the new version went live (the switch was reported failed and
+// couldn't be checked). Any other error from them on an atomic backend means
+// the live site is unchanged.
+var ErrUncertain = errors.New("storage: outcome unknown, the new version may be live")
+
 // Anti-bomb caps applied during tar extraction: limiting the incoming gzip
 // stream isn't enough, since a small archive can expand hugely (gzip bomb) or
 // hold a vast number of tiny files. Exported so the delta deploy can check a
@@ -48,7 +54,8 @@ type Backend interface {
 	PutSite(site string, tr *tar.Reader) error
 	// AtomicPutSite reports whether PutSite consumes the whole tar before
 	// touching the live version (so the live files can be read while the tar
-	// is being produced). False for backends that overwrite in place.
+	// is being produced) and, failing, leaves it unchanged (except with
+	// ErrUncertain). False for backends that overwrite in place.
 	AtomicPutSite() bool
 	// OpenFile opens a single site file; ErrNotFound if missing or a dir.
 	OpenFile(site, p string) (io.ReadSeekCloser, FileInfo, error)

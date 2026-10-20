@@ -33,9 +33,6 @@
 // no longer matches (files changed outside quick), the commit answers 409 and
 // drops the recorded version, so the next plan rebuilds it. Sites published
 // before the index existed have no version recorded: rebuilt on first plan.
-//
-// s3 has no rollback, so its PrevVersion blob is never used (one extra small
-// object per site).
 package main
 
 import (
@@ -50,6 +47,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"time"
 
 	"github.com/zupolgec/quick/internal/chunk"
@@ -422,16 +420,24 @@ func (s *server) restoreVersions(site string, cur *policy, v versions) {
 	}
 }
 
-// publishFailed handles a PutSite error: on atomic backends the trees are as
-// they were, so the versions go back; a backend writing in place may have
-// changed part of the live tree, which stays unindexed until rebuilt.
-func (s *server) publishFailed(site string, cur *policy, v versions) {
+// publishFailed handles a PutSite error and returns the status to answer: on
+// atomic backends the trees are as they were, so the versions go back and the
+// answer is a refusal (400: nothing published). A backend writing in place may
+// have changed part of the live tree, which stays unindexed until rebuilt.
+// With storage.ErrUncertain the new version may be live: nothing is undone
+// (the trees stay unindexed, the creator stays) and the answer is 500, so the
+// CLI reports an unknown outcome rather than "nothing published".
+func (s *server) publishFailed(site string, cur *policy, v versions, err error) int {
+	if errors.Is(err, storage.ErrUncertain) {
+		return http.StatusInternalServerError
+	}
 	if v.reserved {
 		s.unreserveCreator(site, cur, v)
 	}
 	if s.store.AtomicPutSite() {
 		s.restoreVersions(site, cur, v)
 	}
+	return http.StatusBadRequest
 }
 
 // unreserveCreator undoes a first deploy's creator reservation when nothing

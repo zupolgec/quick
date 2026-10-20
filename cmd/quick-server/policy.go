@@ -431,8 +431,9 @@ func (s *server) handleRollback(w http.ResponseWriter, r *http.Request, name str
 		return
 	}
 	ok, err := s.store.Rollback(name)
-	if err != nil || !ok {
-		// Rollback leaves the trees as they were when it fails.
+	if (err != nil || !ok) && !errors.Is(err, storage.ErrUncertain) {
+		// Rollback leaves the trees as they were when it fails (unless the
+		// outcome is unknown: then they stay unindexed until rebuilt).
 		s.restoreVersions(name, &cur, old)
 	}
 	if err != nil {

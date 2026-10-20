@@ -325,8 +325,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	pr.Close() // unblocks the indexer if PutSite stopped early
 	<-done
 	if err != nil {
-		s.publishFailed(name, &cur, old)
-		http.Error(w, "deploy: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "deploy: "+err.Error(), s.publishFailed(name, &cur, old, err))
 		return
 	}
 	cur.PrevVersion = old.live
