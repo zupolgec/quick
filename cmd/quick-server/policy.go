@@ -586,29 +586,20 @@ var codeForm = template.Must(template.New("code").Parse(`<!doctype html>
 <title>{{.T.CodeTitle}}</title>` + brandHead + `
 <style>` + brandCSS + `
   body{display:grid;place-items:center;padding:1.5rem}
-  .card{width:min(360px,100%);background:var(--card);border:1px solid var(--border);
-    border-radius:18px;padding:2.25rem 1.75rem;
-    box-shadow:0 1px 2px rgba(13,24,50,.05),0 18px 48px rgba(13,24,50,.10)}
-  .badge{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;
-    background:color-mix(in srgb,var(--brand) 10%,transparent);border:1px solid color-mix(in srgb,var(--brand) 22%,transparent);margin-bottom:1.2rem}
-  .badge svg{width:22px;height:22px;stroke:var(--brand);fill:none;
-    stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-  h1{font-size:1.2rem;font-weight:700;margin:0 0 .35rem;letter-spacing:-.01em;color:var(--ink)}
-  p{margin:0 0 1.4rem;color:var(--muted);font-size:.9rem}
-  p b{color:var(--ink);font-weight:600;overflow-wrap:anywhere}
-  label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .4rem}
-  input[type=password]{width:100%;padding:.72rem .85rem;font-size:1rem;color:var(--fg);
-    background:transparent;border:1px solid var(--border);border-radius:11px;outline:none;
-    transition:border-color .15s,box-shadow .15s;font-family:var(--font-body)}
-  input[type=password]:focus{border-color:var(--ring)}
-  .btn{width:100%;margin-top:1.05rem;padding:.8rem;font-size:.95rem}
-  .err{margin-top:.9rem;padding:.55rem .7rem;border-radius:9px;font-size:.83rem;
-    color:var(--err);background:var(--err-bg)}
+  .card{width:min(420px,100%);background:var(--card);padding:2.5rem 2rem 2.25rem}
+  .card .brand{margin-bottom:2rem}
+  .card .logo{height:2rem}
+  h1{font-size:1.75rem;line-height:1.1;margin:0 0 .5rem;color:var(--ink)}
+  p{margin:0 0 1.5rem;color:var(--muted);font-size:1rem}
+  p b{color:var(--ink);font-weight:500;overflow-wrap:anywhere}
+  label{display:block;font-size:.88rem;color:var(--muted);margin:0 0 .4rem}
+  input[type=password]{width:100%;height:3rem;padding:0 .9rem;font-size:1.05rem;color:var(--fg);
+    background:var(--sunk);border:0;border-radius:0;font-family:var(--font-body)}
+  .btn{width:100%;margin-top:1rem;min-height:3rem;font-size:1rem}
+  .err{margin-top:1rem;font-size:.92rem;color:var(--err)}
 </style></head><body>
 <form class="card" method="post" action="/__quick/code">
-  <div class="badge" aria-hidden="true">
-    <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-  </div>
+  ` + brandWordmark + `
   <h1>{{.T.CodeHeading}}</h1>
   <p>{{.T.CodeIntro}} <b>{{.Host}}</b>.</p>
   <input type="hidden" name="rd" value="{{.RD}}">

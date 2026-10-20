@@ -7,13 +7,18 @@ import (
 	"strings"
 )
 
-// Shared branding for the server-rendered pages: the Quick design language
-// (self-hosted Manrope display + system body, Quick Violet → Electric Violet).
-// The logo and favicon are raster assets (PNG) for now; all assets are embedded
-// in the binary and served same-origin from /fonts and /img — no external deps.
+// Shared branding for the server-rendered pages, the same flat style as
+// quick-cli.com: Hanken Grotesk (self-hosted), only the logo's colours
+// (lavender, the letters' navy, violet, a dark ground in dark mode), square
+// corners, no shadows or borders. The vector logo is inlined so its letters
+// follow each colour scheme; PNGs stay for external links. All assets are
+// embedded in the binary and served same-origin from /fonts and /img.
 
-//go:embed fonts/manrope-latin.woff2 img/logo.png img/logo-dark.png img/favicon.png
+//go:embed fonts/hanken-grotesk-latin.woff2 img/logo.png img/logo-dark.png img/logo.svg img/favicon.png img/favicon.svg
 var assets embed.FS
+
+//go:embed img/logo-inline.svg
+var logoInline string
 
 // handleAsset serves the embedded fonts/images. Wired in route() for every host
 // so asset URLs are always same-origin (no CORS, works on site subdomains too).
@@ -34,6 +39,8 @@ func (s *server) handleAsset(w http.ResponseWriter, r *http.Request) {
 		ct = "font/woff2"
 	case strings.HasSuffix(p, ".png"):
 		ct = "image/png"
+	case strings.HasSuffix(p, ".svg"):
+		ct = "image/svg+xml"
 	}
 	w.Header().Set("Content-Type", ct)
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
@@ -41,38 +48,36 @@ func (s *server) handleAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 // brandHead loads the favicon (the Q from the logo). Concatenated into each <head>.
-const brandHead = `<link rel="icon" type="image/png" href="/img/favicon.png"><link rel="apple-touch-icon" href="/img/favicon.png">`
-
-// logoImg is the "Quick" wordmark, swapping a light/dark variant by color scheme.
-const logoImg = `<picture><source srcset="/img/logo-dark.png" media="(prefers-color-scheme:dark)"><img src="/img/logo.png" alt="Quick" class="logo" width="422" height="120"></picture>`
+const brandHead = `<link rel="icon" type="image/svg+xml" href="/img/favicon.svg"><link rel="icon" type="image/png" href="/img/favicon.png"><link rel="apple-touch-icon" href="/img/favicon.png">`
 
 // brandLink is the clickable logo for page headers; brandWordmark the static one.
-const brandLink = `<a class="brand" href="/">` + logoImg + `</a>`
-const brandWordmark = `<span class="brand">` + logoImg + `</span>`
+var brandLink = `<a class="brand" href="/" aria-label="Quick">` + strings.TrimSpace(logoInline) + `</a>`
+var brandWordmark = `<span class="brand" role="img" aria-label="Quick">` + strings.TrimSpace(logoInline) + `</span>`
 
 // brandCSS holds the design tokens, base typography and the shared brand/button
-// primitives. Each page appends its own layout CSS after this. Manrope (display)
-// is self-hosted; body text uses the native system stack.
-const brandCSS = `@font-face{font-family:'Manrope';font-style:normal;font-weight:200 800;font-display:swap;src:url("/fonts/manrope-latin.woff2") format("woff2")}
+// primitives. Each page appends its own layout CSS after this.
+const brandCSS = `@font-face{font-family:'Hanken Grotesk';font-style:normal;font-weight:400 700;font-display:swap;src:url("/fonts/hanken-grotesk-latin.woff2") format("woff2")}
 :root{
-  --bg:#f5f6fb;--card:#fff;--ink:#0d1832;--fg:#0d1832;--muted:#6b7280;--border:#e6e8f0;
-  --brand:#4e36f5;--brand-2:#6b57ff;--ring:#4e36f5;
-  --btn:linear-gradient(135deg,#4e36f5,#6b57ff);--btn-fg:#fff;--accent:#4e36f5;
-  --err:#dc2626;--err-bg:#fef2f2;--ok:#16a34a;
-  --font-head:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
-  --font-body:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,system-ui,sans-serif}
+  --bg:#e8e6fd;--card:#ffffff;--sunk:#f3f2fe;--ink:#1a2238;--fg:#1a2238;--muted:#5b5878;
+  --brand:#4a3ddb;--brand-hover:#3a2ec4;--btn:#4a3ddb;--btn-fg:#fff;--accent:#4a3ddb;--ring:#4a3ddb;
+  --err:#b42318;--ok:#4a3ddb;
+  --font-head:'Hanken Grotesk',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --font-body:'Hanken Grotesk',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+  --font-code:ui-monospace,SFMono-Regular,Menlo,monospace}
 @media (prefers-color-scheme:dark){:root{
-  --bg:#080b16;--card:#121829;--ink:#eef0f6;--fg:#eef0f6;--muted:#98a2b8;--border:#222a3d;
-  --brand:#6b57ff;--brand-2:#8b7bff;--ring:#8b7bff;--accent:#a89bff;
-  --err:#f87171;--err-bg:#2a1416;--ok:#34d399}}
+  --bg:#0e1018;--card:#181b26;--sunk:#232737;--ink:#ffffff;--fg:#ffffff;--muted:#a3a7b7;
+  --accent:#e8e6fd;--ring:#e8e6fd;--err:#ff8a7a;--ok:#e8e6fd}}
 *{box-sizing:border-box}
 html,body{width:100%;overflow-x:hidden}
-body{margin:0;min-height:100vh;font:400 16px/1.6 var(--font-body);background:var(--bg);color:var(--fg);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
-h1,h2,h3{font-family:var(--font-head)}
-a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
-a:focus-visible,button:focus-visible,input:focus-visible{outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 35%,transparent)}
-.brand{display:inline-flex;align-items:center}
+body{margin:0;min-height:100vh;font:400 17px/1.55 var(--font-body);letter-spacing:-.005em;background:var(--bg);color:var(--fg);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+h1,h2,h3{font-family:var(--font-head);font-weight:500;letter-spacing:-.025em}
+a{color:var(--accent);text-decoration:underline;text-decoration-color:transparent;text-underline-offset:.2em;transition:text-decoration-color .18s}
+a:hover{text-decoration-color:currentColor}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ring);outline-offset:2px}
+::selection{background:var(--brand);color:#fff}
+.brand{display:inline-flex;align-items:center;color:var(--ink)}
 .brand:hover{text-decoration:none}
-.logo{height:1.5rem;width:auto;display:block}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:.45rem;font-family:var(--font-head);font-weight:700;border:0;border-radius:12px;background:var(--btn);color:var(--btn-fg);cursor:pointer;transition:filter .15s}
-.btn:hover{filter:brightness(1.07);text-decoration:none}`
+.logo{height:1.6rem;width:auto;display:block}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.45rem;font-family:var(--font-head);font-weight:500;border:0;border-radius:0;background:var(--btn);color:var(--btn-fg);cursor:pointer;text-decoration:none;transition:background-color .18s,transform .14s}
+.btn:hover{background:var(--brand-hover);text-decoration:none}
+.btn:active{transform:scale(.97)}`

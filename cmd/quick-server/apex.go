@@ -222,11 +222,13 @@ var ssoPage = template.Must(template.New("sso").Parse(`<!doctype html>
 <title>{{.T.SSOTitle}}</title>` + brandHead + `
 <style>` + brandCSS + `
 body{display:grid;place-items:center;padding:1.5rem}
-.card{width:min(360px,100%);background:var(--card);border:1px solid var(--border);border-radius:18px;padding:2.25rem 1.75rem;text-align:center;box-shadow:0 1px 2px rgba(13,24,50,.05),0 18px 48px rgba(13,24,50,.10)}
-.card .brand{font-size:1.5rem;margin-bottom:.9rem}
-h1{font-size:1.15rem;font-weight:700;margin:0 0 .35rem;color:var(--ink)}
-p{margin:0 0 1.6rem;color:var(--muted);font-size:.9rem;overflow-wrap:anywhere}
-.btn{width:100%;padding:.8rem;font-size:.95rem}
+.card{width:min(420px,100%);background:var(--card);padding:2.5rem 2rem 2.25rem}
+.card .brand{margin-bottom:2rem}
+.card .logo{height:2rem}
+h1{font-size:1.75rem;line-height:1.1;margin:0 0 .5rem;color:var(--ink)}
+p{margin:0 0 1.75rem;color:var(--muted);font-size:1rem;overflow-wrap:anywhere}
+p b{color:var(--ink);font-weight:500}
+.btn{width:100%;min-height:3rem;font-size:1rem}
 </style></head><body>
 <div class="card">
   ` + brandWordmark + `
@@ -241,10 +243,13 @@ var notFoundPage = template.Must(template.New("404").Parse(`<!doctype html>
 <title>{{.T.NotFoundTitle}}</title>` + brandHead + `
 <style>` + brandCSS + `
 body{display:grid;place-items:center;padding:1.5rem}
-.card{width:min(360px,100%);background:var(--card);border:1px solid var(--border);border-radius:18px;padding:2.25rem 1.75rem;text-align:center;box-shadow:0 1px 2px rgba(13,24,50,.05),0 18px 48px rgba(13,24,50,.10)}
-.card .brand{font-size:1.5rem;margin-bottom:.9rem}
-h1{font-size:1.15rem;font-weight:700;margin:0 0 .35rem;color:var(--ink)}
-p{margin:0;color:var(--muted);font-size:.9rem;overflow-wrap:anywhere}
+.card{width:min(420px,100%);background:var(--card);padding:2.5rem 2rem 2.25rem}
+.card .brand{margin-bottom:2rem}
+.card .logo{height:2rem}
+h1{font-size:1.75rem;line-height:1.1;margin:0 0 .5rem;color:var(--ink)}
+p{margin:0;color:var(--muted);font-size:1rem;overflow-wrap:anywhere}
+p b{color:var(--ink);font-weight:500}
+.btn{width:100%;min-height:3rem;font-size:1rem}
 </style></head><body>
 <div class="card">
   ` + brandWordmark + `
@@ -271,23 +276,25 @@ var dashboardPage = template.Must(template.New("dash").Parse(`<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.T.DashTitle}}</title>` + brandHead + `
 <style>` + brandCSS + `
-.wrap{max-width:780px;margin:0 auto;padding:2rem 1.25rem}
-header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:1.5rem}
-.who{min-width:0;color:var(--muted);font-size:.85rem;overflow-wrap:anywhere;text-align:right}
-h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:1.8rem 0 .6rem}
-.site{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:.85rem;padding:.85rem .95rem;background:var(--card);border:1px solid var(--border);border-radius:12px;margin-bottom:.5rem}
+.wrap{max-width:820px;margin:0 auto;padding:2.5rem 1.25rem 4rem}
+header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:2.5rem}
+.who{min-width:0;color:var(--muted);font-size:.95rem;overflow-wrap:anywhere;text-align:right}
+h2{font-size:1.5rem;color:var(--ink);margin:2.75rem 0 .9rem}
+header+h2{margin-top:0}
+.site{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:1rem;padding:1rem 1.15rem;background:var(--card);margin-bottom:4px}
 .site-main{min-width:0}
-.titleline{display:flex;align-items:center;gap:.38rem;flex-wrap:wrap;min-width:0}
-.site .name{font-weight:600;font-family:var(--font-head)}
-.site .name a{overflow-wrap:anywhere}
-.site .meta{min-width:0;color:var(--muted);font-size:.8rem;overflow-wrap:anywhere;margin-top:.35rem}
-.manage{display:inline-flex;align-items:center;justify-content:center;min-height:32px;border:1px solid var(--border);border-radius:9px;padding:.25rem .65rem;font-size:.78rem;color:var(--brand);font-weight:700;background:var(--card);white-space:nowrap}
-.manage:hover{text-decoration:none;border-color:var(--brand)}
-.tag{display:inline-flex;align-items:center;font-size:.7rem;line-height:1;border:1px solid var(--border);border-radius:999px;padding:.26rem .5rem;color:var(--muted)}
-.empty{color:var(--muted);font-size:.9rem}
-.help{margin-top:2.5rem;padding-top:1.5rem;border-top:1px solid var(--border);color:var(--muted);font-size:.85rem}
-code{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.1rem .35rem;font-size:.85em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-@media(max-width:640px){.wrap{padding:1.35rem .9rem}header{display:grid;grid-template-columns:minmax(0,1fr) auto}.who{text-align:left;grid-column:1/-1;margin-top:.75rem}.site{grid-template-columns:minmax(0,1fr) auto;padding:.85rem}.manage{align-self:start}.help code{overflow-wrap:anywhere}}
+.titleline{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;min-width:0}
+.site .name{font-size:1.15rem;font-weight:500;font-family:var(--font-head)}
+.site .name a{color:var(--ink);overflow-wrap:anywhere}
+.site .meta{min-width:0;color:var(--muted);font-size:.88rem;overflow-wrap:anywhere;margin-top:.2rem}
+.manage{display:inline-flex;align-items:center;justify-content:center;min-height:2.5rem;padding:0 1rem;font-size:.92rem;font-weight:500;color:var(--ink);background:var(--sunk);white-space:nowrap;text-decoration:none;transition:background-color .18s,color .18s}
+.manage:hover{background:var(--brand);color:#fff;text-decoration:none}
+.tag{display:inline-flex;align-items:center;font-size:.8rem;line-height:1;padding:.3rem .5rem;background:var(--sunk);color:var(--muted)}
+.empty{color:var(--muted);font-size:1rem}
+.help{margin-top:3rem;color:var(--muted);font-size:.95rem}
+code{background:var(--sunk);padding:.12rem .4rem;font-size:.88em;font-family:var(--font-code)}
+.help code{background:var(--card)}
+@media(max-width:640px){.wrap{padding:1.5rem 1rem 3rem}header{display:grid;grid-template-columns:minmax(0,1fr) auto}.who{text-align:left;grid-column:1/-1;margin-top:.75rem}.site{padding:.9rem}.help code{overflow-wrap:anywhere}}
 </style></head><body>
 <div class="wrap">
   <header>` + brandLink + `<div class="who">{{.Email}}</div></header>
@@ -317,40 +324,42 @@ var dashboardSitePage = template.Must(template.New("dash-site").Parse(`<!doctype
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Name}} · {{.T.SiteTokens}}</title>` + brandHead + `
 <style>` + brandCSS + `
-.wrap{max-width:860px;margin:0 auto;padding:2rem 1.25rem}
-header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:1.5rem}
-.who{min-width:0;color:var(--muted);font-size:.85rem;overflow-wrap:anywhere;text-align:right}
-.back{display:inline-flex;margin-bottom:1.1rem;font-size:.86rem;font-weight:700;color:var(--brand)}
-.top{display:flex;justify-content:space-between;align-items:flex-start;gap:1.5rem;margin-bottom:1.75rem}
-h1{font-size:1.75rem;font-weight:700;letter-spacing:-.02em;margin:0;color:var(--ink);overflow-wrap:anywhere}
-.url{color:var(--muted);font-size:.92rem;margin-top:.3rem;overflow-wrap:anywhere}
+.wrap{max-width:860px;margin:0 auto;padding:2.5rem 1.25rem 4rem}
+header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:2.25rem}
+.who{min-width:0;color:var(--muted);font-size:.95rem;overflow-wrap:anywhere;text-align:right}
+.back{display:inline-flex;margin-bottom:1.25rem;font-size:.95rem;font-weight:500}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:1.5rem;margin-bottom:2rem}
+h1{font-size:2.5rem;line-height:1;letter-spacing:-.035em;margin:0;color:var(--ink);overflow-wrap:anywhere}
+.url{font-size:1rem;margin-top:.5rem;overflow-wrap:anywhere}
 .url a{overflow-wrap:anywhere}
 .tags{display:flex;gap:.4rem;flex-wrap:wrap;justify-content:flex-end}
-.tag{font-size:.72rem;border:1px solid var(--border);border-radius:999px;padding:.12rem .5rem;color:var(--muted)}
-.panel{border-top:1px solid var(--border);padding-top:1.35rem;margin-top:1.35rem}
-.panel h2{font-size:1rem;font-weight:700;margin:0 0 .35rem;color:var(--ink)}
-.hint{color:var(--muted);font-size:.9rem;margin:.15rem 0 1rem;max-width:64ch}
-.token{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.75rem 0;border-top:1px solid var(--border)}
-.token:first-of-type{border-top:0}
+.tag{font-size:.8rem;line-height:1;padding:.3rem .5rem;background:var(--card);color:var(--muted)}
+.panel{background:var(--card);padding:1.5rem 1.5rem 1.6rem;margin-top:4px}
+.panel h2{font-size:1.35rem;margin:0 0 .4rem;color:var(--ink)}
+.hint{color:var(--muted);font-size:.95rem;margin:0 0 1.1rem;max-width:64ch}
+.token{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.8rem 1rem;background:var(--sunk);margin-top:4px}
 .token-main{min-width:0}
-.token-name{font-weight:700;color:var(--ink);overflow-wrap:anywhere}
-.token-meta{color:var(--muted);font-size:.82rem;margin-top:.18rem;overflow-wrap:anywhere;word-break:break-word}
-.empty{color:var(--muted);font-size:.9rem;margin:.8rem 0 0}
-form.create{display:flex;flex-wrap:wrap;align-items:end;gap:.65rem;margin-top:1rem}
-.field{display:grid;gap:.32rem}
+.token-name{font-weight:500;color:var(--ink);overflow-wrap:anywhere}
+.token-meta{color:var(--muted);font-size:.86rem;margin-top:.15rem;overflow-wrap:anywhere;word-break:break-word}
+.empty{color:var(--muted);font-size:.95rem;margin:.5rem 0 0}
+form.create{display:flex;flex-wrap:wrap;align-items:end;gap:.65rem;margin-top:.5rem}
+.field{display:grid;gap:.35rem}
 .field.name{flex:1 1 220px}
-label{font-size:.78rem;color:var(--muted)}
-input,select{width:100%;height:36px;border:1px solid var(--border);border-radius:9px;background:var(--card);color:var(--fg);font:inherit;font-size:.9rem;padding:0 .7rem}
-input:focus,select:focus{outline:2px solid var(--ring);outline-offset:0}
-.btn,.btn-secondary{height:36px;border-radius:9px;border:1px solid var(--border);font-family:var(--font-head);font-size:.86rem;font-weight:700;padding:0 .75rem;cursor:pointer}
-.btn{border-color:var(--btn);background:var(--btn);color:var(--btn-fg)}
-.btn-secondary{background:transparent;color:var(--muted)}
-.reveal{border:1px solid color-mix(in srgb,var(--ok) 28%,var(--border));background:color-mix(in srgb,var(--ok) 8%,transparent);border-radius:12px;padding:1rem;margin:0 0 1.35rem}
-.reveal p{margin:.25rem 0 .75rem;color:var(--muted);font-size:.9rem}
+label{font-size:.88rem;color:var(--muted)}
+input,select{width:100%;height:2.75rem;border:0;border-radius:0;background:var(--sunk);color:var(--fg);font:inherit;font-size:1rem;padding:0 .8rem}
+.btn,.btn-secondary{height:2.75rem;border:0;border-radius:0;font-family:var(--font-head);font-size:.95rem;font-weight:500;padding:0 1rem;cursor:pointer;transition:background-color .18s,color .18s,transform .14s}
+.btn-secondary{background:var(--card);color:var(--ink)}
+.token .btn-secondary{background:var(--card)}
+.btn-secondary:hover{background:var(--brand);color:#fff}
+.btn-secondary:active{transform:scale(.97)}
+.reveal{background:var(--brand);color:#fff;padding:1.25rem 1.5rem;margin:0 0 4px}
+.reveal p{margin:.3rem 0 .9rem;color:#fff;font-size:.95rem}
+.reveal code.inline{background:rgba(255,255,255,.18);color:#fff}
 .secret{display:flex;align-items:center;gap:.5rem}
-.secret code{flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:9px;padding:.65rem .75rem;overflow-x:auto;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.84rem}
-code.inline{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.1rem .35rem;font-size:.85em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-@media(max-width:680px){.wrap{padding:1.35rem .9rem}header{display:block}.top{display:block}.tags{justify-content:flex-start;margin-top:.8rem}.token{display:block}.token form{margin-top:.65rem}.token .btn-secondary{width:100%}.who{text-align:left;margin-top:.75rem}.secret{display:block}.secret .btn-secondary{width:100%;margin-top:.55rem}form.create{display:grid;grid-template-columns:minmax(0,1fr)}.field.name{min-width:0}.btn{width:100%}input,select,.btn,.btn-secondary{height:42px;font-size:1rem}}
+.secret code{flex:1;min-width:0;background:#fff;color:#1a2238;padding:.7rem .8rem;overflow-x:auto;white-space:nowrap;font-family:var(--font-code);font-size:.88rem}
+.secret .btn-secondary{background:#1a2238;color:#fff}
+code.inline{background:var(--sunk);padding:.1rem .35rem;font-size:.88em;font-family:var(--font-code)}
+@media(max-width:680px){.wrap{padding:1.5rem 1rem 3rem}header{display:block}.top{display:block}.tags{justify-content:flex-start;margin-top:.9rem}.token{display:block}.token form{margin-top:.65rem}.token .btn-secondary{width:100%}.who{text-align:left;margin-top:.75rem}.secret{display:block}.secret .btn-secondary{width:100%;margin-top:.55rem}form.create{display:grid;grid-template-columns:minmax(0,1fr)}.field.name{min-width:0}.btn{width:100%}h1{font-size:2rem}}
 </style></head><body>
 <div class="wrap">
   <header>` + brandLink + `<div class="who">{{.Email}}</div></header>
@@ -405,35 +414,32 @@ var landingPage = template.Must(template.New("landing").Parse(`<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.T.LandingTitle}}</title>` + brandHead + `
 <style>` + brandCSS + `
-.wrap{max-width:640px;margin:0 auto;padding:2rem 1.25rem}
-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:3.5rem}
-.nav{font-family:var(--font-head);font-size:.9rem;font-weight:700;border:1px solid var(--border);border-radius:10px;padding:.45rem .9rem;color:var(--ink)}
-.nav:hover{text-decoration:none;border-color:var(--brand);color:var(--brand)}
-h1{font-size:2.6rem;font-weight:800;letter-spacing:-.035em;line-height:1.07;margin:0 0 .7rem;color:var(--ink);max-width:22ch;text-wrap:balance}
-.tagline{color:var(--muted);font-size:1.05rem;margin:0 0 3rem;max-width:46ch;text-wrap:pretty}
-h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 1.2rem}
-.step{margin-bottom:1.4rem}
-.step .label{font-family:var(--font-head);font-size:.92rem;font-weight:700;margin-bottom:.5rem;display:flex;gap:.6rem;align-items:center}
-.step .n{flex:none;display:grid;place-items:center;width:1.45rem;height:1.45rem;border-radius:999px;background:var(--btn);color:var(--btn-fg);font-size:.76rem;font-weight:700}
-.cmd{display:flex;align-items:stretch;gap:.5rem}
-.cmd code{flex:1;background:var(--card);border:1px solid var(--border);border-radius:11px;padding:.72rem .85rem;font-size:.88rem;overflow-x:auto;white-space:nowrap;color:var(--fg);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.cmd .copy{flex:none;width:2.7rem;display:grid;place-items:center;border:1px solid var(--border);border-radius:11px;background:var(--card);color:var(--muted);cursor:pointer;transition:border-color .15s,color .15s}
-.cmd .copy:hover{border-color:var(--brand);color:var(--brand)}
-.cmd .copy svg{width:17px;height:17px;display:block}
+.wrap{max-width:680px;margin:0 auto;padding:2.5rem 1.25rem 4rem}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4rem}
+.nav{font-family:var(--font-head);font-size:.95rem;font-weight:500;background:var(--card);padding:.6rem 1rem;color:var(--ink);text-decoration:none;transition:background-color .18s,color .18s}
+.nav:hover{background:var(--brand);color:#fff;text-decoration:none}
+h1{font-size:clamp(2.6rem,7vw,4.25rem);line-height:.98;letter-spacing:-.045em;margin:0 0 1rem;color:var(--ink);max-width:14ch;text-wrap:balance}
+.tagline{color:var(--muted);font-size:1.25rem;line-height:1.4;margin:0 0 3.5rem;max-width:40ch;text-wrap:pretty}
+h2{font-size:1.5rem;color:var(--ink);margin:0 0 1.25rem}
+.step{margin-bottom:1.6rem}
+.step .label{font-family:var(--font-head);font-size:1.1rem;font-weight:500;margin-bottom:.5rem;color:var(--ink)}
+.cmd{display:flex;align-items:stretch;gap:4px}
+.cmd code{flex:1;background:var(--card);padding:.85rem 1rem;font-size:.92rem;overflow-x:auto;white-space:nowrap;color:var(--fg);font-family:var(--font-code)}
+.cmd .copy{flex:none;width:3rem;display:grid;place-items:center;border:0;border-radius:0;background:var(--card);color:var(--muted);cursor:pointer;transition:background-color .18s,color .18s}
+.cmd .copy:hover{background:var(--brand);color:#fff}
+.cmd .copy svg{width:18px;height:18px;display:block}
 .t-icon-swap{position:relative;display:inline-grid}
-.t-icon-swap .t-icon{grid-area:1/1;display:grid;place-items:center;transition:opacity .25s ease-in-out,filter .25s ease-in-out,transform .25s ease-in-out;will-change:opacity,filter,transform}
-.t-icon-swap[data-state="a"] .t-icon[data-icon="a"],.t-icon-swap[data-state="b"] .t-icon[data-icon="b"]{opacity:1;filter:blur(0);transform:scale(1)}
-.t-icon-swap[data-state="a"] .t-icon[data-icon="b"],.t-icon-swap[data-state="b"] .t-icon[data-icon="a"]{opacity:0;filter:blur(2px);transform:scale(.25)}
-.t-icon-swap .t-icon[data-icon="b"]{color:var(--ok)}
+.t-icon-swap .t-icon{grid-area:1/1;display:grid;place-items:center;transition:opacity .25s ease-in-out,transform .25s ease-in-out;will-change:opacity,transform}
+.t-icon-swap[data-state="a"] .t-icon[data-icon="a"],.t-icon-swap[data-state="b"] .t-icon[data-icon="b"]{opacity:1;transform:scale(1)}
+.t-icon-swap[data-state="a"] .t-icon[data-icon="b"],.t-icon-swap[data-state="b"] .t-icon[data-icon="a"]{opacity:0;transform:scale(.25)}
 @media (prefers-reduced-motion:reduce){.t-icon-swap .t-icon{transition:none!important}}
-.result{color:var(--muted);font-size:.82rem;margin:.55rem 0 0}
-.result code{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.1rem .35rem;font-size:.85em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.guide{margin-top:3rem;padding-top:2rem;border-top:1px solid var(--border)}
-.guide .row{display:flex;gap:.85rem;align-items:baseline;padding:.55rem 0}
-.guide .row+.row{border-top:1px solid var(--border)}
-.guide code{flex:none;background:var(--card);border:1px solid var(--border);border-radius:7px;padding:.18rem .5rem;font-size:.82rem;color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-.guide .desc{color:var(--muted);font-size:.9rem}
-@media(max-width:560px){.wrap{padding:1.35rem .9rem}header{gap:1rem;margin-bottom:2.4rem}.brand{min-width:0}.nav{margin-left:auto;white-space:nowrap}.cmd{align-items:stretch}.guide .row{display:block}.guide code{display:inline-block;margin-bottom:.35rem}.guide .desc{display:block}}
+.result{color:var(--muted);font-size:.95rem;margin:.6rem 0 0}
+.result code{background:var(--card);padding:.12rem .4rem;font-size:.88em;font-family:var(--font-code)}
+.guide{margin-top:3.5rem}
+.guide .row{display:flex;gap:1rem;align-items:baseline;padding:.75rem 1rem;background:var(--card);margin-bottom:4px}
+.guide code{flex:none;font-size:.9rem;color:var(--ink);font-family:var(--font-code)}
+.guide .desc{color:var(--muted);font-size:.98rem}
+@media(max-width:560px){.wrap{padding:1.5rem 1rem 3rem}header{gap:1rem;margin-bottom:2.75rem}.brand{min-width:0}.nav{margin-left:auto;white-space:nowrap}.guide .row{display:block}.guide code{display:block;margin-bottom:.25rem}.guide .desc{display:block}}
 </style></head><body>
 <div class="wrap">
   <header>
@@ -447,17 +453,17 @@ h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut
   <h2>{{.T.LandingGetStarted}}</h2>
 
   <div class="step">
-    <div class="label"><span class="n">1</span>{{.T.LandingInstall}}</div>
+    <div class="label">{{.T.LandingInstall}}</div>
     <div class="cmd"><code id="install" data-win="{{.InstallWin}}">{{.Install}}</code>` + copyBtn + `</div>
   </div>
 
   <div class="step">
-    <div class="label"><span class="n">2</span>{{.T.LandingLogin}}</div>
+    <div class="label">{{.T.LandingLogin}}</div>
     <div class="cmd"><code>{{.Login}}</code>` + copyBtn + `</div>
   </div>
 
   <div class="step">
-    <div class="label"><span class="n">3</span>{{.T.LandingDeploy}}</div>
+    <div class="label">{{.T.LandingDeploy}}</div>
     <div class="cmd"><code>{{.Deploy}}</code>` + copyBtn + `</div>
     <p class="result">→ <code>&lt;name&gt;.{{.Base}}</code></p>
   </div>

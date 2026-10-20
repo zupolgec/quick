@@ -116,7 +116,7 @@ func TestApexPublicEndpointsSkipSSO(t *testing.T) {
 		{http.MethodGet, "/oauth2/callback", http.StatusOK, "oauth2-proxy /oauth2/callback"},
 		{http.MethodGet, "/install.sh", http.StatusOK, "#!"},
 		{http.MethodGet, "/install.ps1", http.StatusOK, ""},
-		{http.MethodGet, "/fonts/manrope-latin.woff2", http.StatusOK, ""},
+		{http.MethodGet, "/fonts/hanken-grotesk-latin.woff2", http.StatusOK, ""},
 		{http.MethodGet, "/img/logo.png", http.StatusOK, ""},
 		{http.MethodGet, "/img/favicon.png", http.StatusOK, ""},
 	}

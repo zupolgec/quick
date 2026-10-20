@@ -74,7 +74,7 @@ func TestLandingLocalized(t *testing.T) {
 	if !strings.Contains(b, `href="/dashboard"`) {
 		t.Errorf("landing missing the dashboard link:\n%s", b)
 	}
-	if !strings.Contains(b, `class="brand"`) || !strings.Contains(b, `/img/logo.png`) {
+	if !strings.Contains(b, `class="brand"`) || !strings.Contains(b, `<svg class="logo"`) {
 		t.Errorf("landing missing the brand logo:\n%s", b)
 	}
 	if !strings.Contains(b, "Publish a folder, get a URL.") {
