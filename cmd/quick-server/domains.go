@@ -361,21 +361,10 @@ func (s *server) addDomain(w http.ResponseWriter, r *http.Request, name, raw, em
 	}
 	pointsHere := s.verifyDNS(r.Context(), d, name)
 
+	// Every check runs on fresh state (the DNS lookup above can take a while)
+	// before anything changes: a refused add leaves the domain where it was.
 	s.domainsMu.Lock()
 	defer s.domainsMu.Unlock()
-	if c, ok := s.domains.get(d); ok && c.site != name {
-		// DNS decides: a domain that now points here can move from another site.
-		if !pointsHere {
-			http.Error(w, "domain already used by site "+c.site, http.StatusConflict)
-			return
-		}
-		if err := s.dropDomainFromSite(c.site, d); err != nil {
-			http.Error(w, "could not update site "+c.site+": "+err.Error(), http.StatusServiceUnavailable)
-			return
-		}
-		log.Printf("domain %s moved from %q to %q by %s", d, c.site, name, email)
-	}
-
 	unlock := s.locks.lock(name)
 	defer unlock()
 	cur, err := s.meta.loadFresh(name)
@@ -392,11 +381,21 @@ func (s *server) addDomain(w http.ResponseWriter, r *http.Request, name, raw, em
 		return
 	}
 	i := slices.IndexFunc(cur.Domains, func(x siteDomain) bool { return x.Name == d })
-	if i < 0 {
-		if len(cur.Domains) >= maxSiteDomains {
-			http.Error(w, "too many domains for this site", http.StatusBadRequest)
+	if i < 0 && len(cur.Domains) >= maxSiteDomains {
+		http.Error(w, "too many domains for this site", http.StatusBadRequest)
+		return
+	}
+	from := ""
+	if c, ok := s.domains.get(d); ok && c.site != name {
+		// DNS decides: a domain that now points here can move from another site.
+		if !pointsHere {
+			http.Error(w, s.domainTakenMessage(c.site, email), http.StatusConflict)
 			return
 		}
+		from = c.site
+	}
+	prev := cur.clone()
+	if i < 0 {
 		cur.Domains = append(cur.Domains, siteDomain{Name: d, AddedBy: email, AddedAt: nowStamp()})
 		i = len(cur.Domains) - 1
 	}
@@ -407,9 +406,28 @@ func (s *server) addDomain(w http.ResponseWriter, r *http.Request, name, raw, em
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if from != "" {
+		if err := s.dropDomainFromSite(from, d); err != nil {
+			if rerr := s.meta.save(name, prev); rerr != nil {
+				log.Printf("domain %s: undoing the move to %q failed: %v", d, name, rerr)
+			}
+			http.Error(w, "could not move the domain: "+err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		log.Printf("domain %s moved from %q to %q by %s", d, from, name, email)
+	}
 	s.domains.set(d, name, cur.Domains[i].VerifiedAt != "")
 	log.Printf("domain %s added to %q by %s (active=%v)", d, name, email, pointsHere)
 	_ = json.NewEncoder(w).Encode(quick.DomainsResponse{Site: name, Domains: s.domainInfos(name, cur.Domains)})
+}
+
+// domainTakenMessage refuses a domain another site claims, naming that site
+// only to those who can open it (a people site's domains are its people's).
+func (s *server) domainTakenMessage(site, email string) string {
+	if p, err := s.meta.load(site); err == nil && canView(p, email) {
+		return "domain already used by site " + site
+	}
+	return "domain not available"
 }
 
 // dropDomainFromSite removes d from site's metadata. Caller holds domainsMu.
