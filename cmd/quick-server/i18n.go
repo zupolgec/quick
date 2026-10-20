@@ -88,12 +88,13 @@ type uiText struct {
 
 	SSOTitle, SSOHeading, SSOIntro, SSOButton string
 
-	DashTitle, DashYourSites, DashAllSites  string
-	DashEmptyMine, DashEmptyAll, DashLocked string
-	DashHelpPublish, DashHelpInstall        string
-	BadgePublic, BadgeCode, BadgeSSO        string
-	BadgePeople, BadgeOnlyMe                string
-	DashManage                              string
+	DashTitle, DashYourSites, DashAllSites      string
+	DashEmptyMine, DashEmptyAll, DashLocked     string
+	DashHelpPublish, DashHelpDocs               string
+	DashSearch, DashNoMatch, NavDocs, GuideMore string
+	BadgePublic, BadgeCode, BadgeSSO            string
+	BadgePeople, BadgeOnlyMe                    string
+	DashManage                                  string
 
 	AccessTitle, AccessOwner, AccessCurrent, AccessOwnerOnly, AccessSave string
 	AccessCodeLabel, AccessCodeKeep                                      string
@@ -155,7 +156,11 @@ var uiTexts = map[lang]uiText{
 		DashEmptyAll:    "No sites published.",
 		DashLocked:      "locked",
 		DashHelpPublish: "Publish a folder:",
-		DashHelpInstall: "Install the CLI with",
+		DashHelpDocs:    "Install the CLI and read the guides at",
+		DashSearch:      "Search by name",
+		DashNoMatch:     "No site matches.",
+		NavDocs:         "Docs",
+		GuideMore:       "All commands and guides",
 		BadgePublic:     "public",
 		DashManage:      "Manage",
 
@@ -271,7 +276,11 @@ var uiTexts = map[lang]uiText{
 		DashEmptyAll:    "Nessun sito pubblicato.",
 		DashLocked:      "bloccato",
 		DashHelpPublish: "Pubblica una cartella:",
-		DashHelpInstall: "Installa la CLI con",
+		DashHelpDocs:    "Installazione della CLI e guide su",
+		DashSearch:      "Cerca per nome",
+		DashNoMatch:     "Nessun sito corrisponde.",
+		NavDocs:         "Documentazione",
+		GuideMore:       "Tutti i comandi e le guide",
 		BadgePublic:     "pubblico",
 		DashManage:      "Gestisci",
 

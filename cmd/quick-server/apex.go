@@ -338,12 +338,19 @@ func renderNotFound(w http.ResponseWriter, r *http.Request, host string, page bo
 	})
 }
 
+// pageWidth is the column of the home, the dashboard and a site's page, so
+// moving between them doesn't shift the layout.
+const pageWidth = "860px"
+
+// docsURL is the public documentation.
+const docsURL = "https://quick-cli.com/docs/"
+
 var dashboardPage = template.Must(template.New("dash").Parse(`<!doctype html>
 <html lang="{{.Lang}}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.T.DashTitle}}</title>` + brandHead + `
 <style>` + brandCSS + `
-.wrap{max-width:820px;margin:0 auto;padding:2.5rem 1.25rem 4rem}
+.wrap{max-width:` + pageWidth + `;margin:0 auto;padding:2.5rem 1.25rem 4rem}
 header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:2.5rem}
 .who{min-width:0;color:var(--muted);font-size:.95rem;overflow-wrap:anywhere;text-align:right}
 h2{font-size:1.5rem;color:var(--ink);margin:2.75rem 0 .9rem}
@@ -361,37 +368,50 @@ header+h2{margin-top:0}
 .help{margin-top:3rem;color:var(--muted);font-size:.95rem}
 code{background:var(--sunk);padding:.12rem .4rem;font-size:.88em;font-family:var(--font-code)}
 .help code{background:var(--card)}
+.search{width:100%;height:2.75rem;border:0;border-radius:0;background:var(--card);color:var(--fg);font:inherit;font-size:1rem;padding:0 .9rem;margin:0}
+.site[hidden],.nomatch{display:none}
+.help a{white-space:nowrap}
 @media(max-width:640px){.wrap{padding:1.5rem 1rem 3rem}header{display:grid;grid-template-columns:minmax(0,1fr) auto}.who{text-align:left;grid-column:1/-1;margin-top:.75rem}.site{padding:.9rem}.help code{overflow-wrap:anywhere}}
 </style></head><body>
 <div class="wrap">
   <header>` + brandLink + `<div class="who">{{.Email}}</div></header>
 
+  {{if .All}}<input class="search" id="search" type="search" placeholder="{{.T.DashSearch}}" aria-label="{{.T.DashSearch}}" autocomplete="off">{{end}}
+
   <h2>{{.T.DashYourSites}}</h2>
+  <div class="list">
   {{if .Mine}}{{range .Mine}}
-  <div class="site">
+  <div class="site" data-name="{{.Name}}">
     <div class="site-main"><div class="titleline"><span class="name"><a href="{{.URL}}">{{.Name}}</a></span><span class="tag">{{.Badge}}</span>{{if .Locked}}<span class="tag">{{$.T.DashLocked}}</span>{{end}}</div><div class="meta">{{.Updated}}</div></div>
     <a class="manage" href="{{.Manage}}">{{$.T.DashManage}}</a>
-  </div>{{end}}{{else}}<p class="empty">{{.T.DashEmptyMine}} <code>quick deploy</code>.</p>{{end}}
+  </div>{{end}}<p class="empty nomatch">{{.T.DashNoMatch}}</p>{{else}}<p class="empty">{{.T.DashEmptyMine}} <code>quick deploy</code>.</p>{{end}}
+  </div>
 
   <h2>{{.T.DashAllSites}}</h2>
+  <div class="list">
   {{if .All}}{{range .All}}
-  <div class="site">
+  <div class="site" data-name="{{.Name}}">
     <div class="site-main"><div class="titleline"><span class="name"><a href="{{.URL}}">{{.Name}}</a></span><span class="tag">{{.Badge}}</span>{{if .Locked}}<span class="tag">{{$.T.DashLocked}}</span>{{end}}</div><div class="meta">{{.Updated}}</div></div>
     <a class="manage" href="{{.Manage}}">{{$.T.DashManage}}</a>
-  </div>{{end}}{{else}}<p class="empty">{{.T.DashEmptyAll}}</p>{{end}}
+  </div>{{end}}<p class="empty nomatch">{{.T.DashNoMatch}}</p>{{else}}<p class="empty">{{.T.DashEmptyAll}}</p>{{end}}
+  </div>
 
   <div class="help">
     {{.T.DashHelpPublish}} <code>quick deploy &lt;name&gt; ./folder</code> → <code>&lt;name&gt;.{{.Base}}</code>.
-    {{.T.DashHelpInstall}} <code>go install github.com/zupolgec/quick/cmd/quick@latest</code>.
+    {{.T.DashHelpDocs}} <a href="` + docsURL + `">quick-cli.com/docs</a>.
   </div>
-</div></body></html>`))
+</div>
+<script>
+(function(){var q=document.getElementById("search");if(!q)return;q.addEventListener("input",function(){var v=q.value.trim().toLowerCase();document.querySelectorAll(".list").forEach(function(l){var n=0;l.querySelectorAll(".site").forEach(function(s){var ok=s.dataset.name.indexOf(v)>=0;s.hidden=!ok;if(ok)n++});var m=l.querySelector(".nomatch");if(m)m.style.display=n?"none":"block"})})})();
+</script>
+</body></html>`))
 
 var dashboardSitePage = template.Must(template.New("dash-site").Parse(`<!doctype html>
 <html lang="{{.Lang}}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.Name}} · {{.T.SiteTitle}}</title>` + brandHead + `
 <style>` + brandCSS + `
-.wrap{max-width:860px;margin:0 auto;padding:2.5rem 1.25rem 4rem}
+.wrap{max-width:` + pageWidth + `;margin:0 auto;padding:2.5rem 1.25rem 4rem}
 header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:2.25rem}
 .who{min-width:0;color:var(--muted);font-size:.95rem;overflow-wrap:anywhere;text-align:right}
 .back{display:inline-flex;margin-bottom:1.25rem;font-size:.95rem;font-weight:500}
@@ -535,7 +555,7 @@ var landingPage = template.Must(template.New("landing").Parse(`<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{.T.LandingTitle}}</title>` + brandHead + `
 <style>` + brandCSS + `
-.wrap{max-width:680px;margin:0 auto;padding:2.5rem 1.25rem 4rem}
+.wrap{max-width:` + pageWidth + `;margin:0 auto;padding:2.5rem 1.25rem 4rem}
 header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4rem}
 .nav{font-family:var(--font-head);font-size:.95rem;font-weight:500;background:var(--card);padding:.6rem 1rem;color:var(--ink);text-decoration:none;transition:background-color .18s,color .18s}
 .nav:hover{background:var(--brand);color:#fff;text-decoration:none}
@@ -560,12 +580,14 @@ h2{font-size:1.5rem;color:var(--ink);margin:0 0 1.25rem}
 .guide .row{display:flex;gap:1rem;align-items:baseline;padding:.75rem 1rem;background:var(--card);margin-bottom:4px}
 .guide code{flex:none;font-size:.9rem;color:var(--ink);font-family:var(--font-code)}
 .guide .desc{color:var(--muted);font-size:.98rem}
+.navs{display:flex;gap:4px}
+.more{margin:1.1rem 0 0;font-size:.98rem}
 @media(max-width:560px){.wrap{padding:1.5rem 1rem 3rem}header{gap:1rem;margin-bottom:2.75rem}.brand{min-width:0}.nav{margin-left:auto;white-space:nowrap}.guide .row{display:block}.guide code{display:block;margin-bottom:.25rem}.guide .desc{display:block}}
 </style></head><body>
 <div class="wrap">
   <header>
     ` + brandLink + `
-    <a class="nav" href="/dashboard">{{.T.NavDashboard}}</a>
+    <nav class="navs"><a class="nav" href="` + docsURL + `">{{.T.NavDocs}}</a><a class="nav" href="/dashboard">{{.T.NavDashboard}}</a></nav>
   </header>
 
   <h1>{{.T.LandingHeadline}}</h1>
@@ -595,6 +617,7 @@ h2{font-size:1.5rem;color:var(--ink);margin:0 0 1.25rem}
     <div class="row"><code>quick access</code><span class="desc">{{.T.GuideVisibility}}</span></div>
     <div class="row"><code>quick status</code><span class="desc">{{.T.GuideStatus}}</span></div>
     <div class="row"><code>quick rollback</code><span class="desc">{{.T.GuideRollback}}</span></div>
+    <p class="more"><a href="` + docsURL + `">{{.T.GuideMore}} →</a></p>
   </div>
 </div>
 <script>
