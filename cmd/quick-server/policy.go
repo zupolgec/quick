@@ -425,7 +425,7 @@ func (s *server) handleRollback(w http.ResponseWriter, r *http.Request, name str
 		leaseRefused(w, r, err)
 		return
 	}
-	old, err := s.clearVersions(name, &cur)
+	old, err := s.clearVersions(name, &cur, "") // rollback: the site exists, no creator to reserve
 	if err != nil {
 		http.Error(w, "could not update site state: "+err.Error(), http.StatusServiceUnavailable)
 		return

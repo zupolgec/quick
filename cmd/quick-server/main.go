@@ -305,7 +305,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "gzip: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	old, err := s.clearVersions(name, &cur)
+	old, err := s.clearVersions(name, &cur, ident.Email)
 	if err != nil {
 		http.Error(w, "could not update site state: "+err.Error(), http.StatusServiceUnavailable)
 		return

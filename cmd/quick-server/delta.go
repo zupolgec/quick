@@ -580,7 +580,7 @@ func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
 	if beforePublish != nil {
 		beforePublish(name)
 	}
-	old, err := s.clearVersions(name, &cur)
+	old, err := s.clearVersions(name, &cur, ident.Email)
 	if err != nil {
 		http.Error(w, "could not update site state: "+err.Error(), http.StatusServiceUnavailable)
 		return

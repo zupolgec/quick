@@ -373,22 +373,39 @@ func (s *server) liveIndexLocked(site string, cur policy) (idx map[[32]byte]chun
 	return locsOf(files), false, nil
 }
 
-// versions are the index ids recorded for the live and previous trees.
-type versions struct{ live, prev string }
+// versions are the index ids recorded for the live and previous trees, plus
+// whether this publish reserved the site's creator (first deploy).
+type versions struct {
+	live, prev string
+	reserved   bool // CreatedBy was set by this publish, before writing files
+	hadMeta    bool // the site had metadata before the reservation
+}
 
-// clearVersions marks both trees as unindexed in the metadata before storage
-// changes them (site lock held). Returns what was recorded, for restore or to
-// carry over. Nothing is written if nothing was recorded (a new site must not
-// get metadata before its first publish succeeds).
-func (s *server) clearVersions(site string, cur *policy) (versions, error) {
-	v := versions{cur.Version, cur.PrevVersion}
-	if v.live == "" && v.prev == "" {
+// clearVersions runs before storage changes the site (site lock held): it
+// marks both trees as unindexed and, on a first deploy, records the creator,
+// so a live site can never end up without its owner even if saving the
+// metadata after the publish fails. Returns what was there, for
+// publishFailed. Nothing is written when there is nothing to change.
+func (s *server) clearVersions(site string, cur *policy, creator string) (versions, error) {
+	v := versions{live: cur.Version, prev: cur.PrevVersion}
+	if cur.CreatedBy == "" && creator != "" {
+		_, had, err := s.store.GetMeta(site)
+		if err != nil {
+			return v, err
+		}
+		v.reserved, v.hadMeta = true, had
+		cur.CreatedBy, cur.CreatedAt = creator, nowStamp()
+	}
+	if v.live == "" && v.prev == "" && !v.reserved {
 		return v, nil
 	}
 	cur.Version, cur.PrevVersion = "", ""
 	if err := s.meta.save(site, *cur); err != nil {
 		cur.Version, cur.PrevVersion = v.live, v.prev
-		return v, err
+		if v.reserved {
+			cur.CreatedBy, cur.CreatedAt = "", ""
+		}
+		return versions{live: v.live, prev: v.prev}, err
 	}
 	return v, nil
 }
@@ -409,8 +426,33 @@ func (s *server) restoreVersions(site string, cur *policy, v versions) {
 // they were, so the versions go back; a backend writing in place may have
 // changed part of the live tree, which stays unindexed until rebuilt.
 func (s *server) publishFailed(site string, cur *policy, v versions) {
+	if v.reserved {
+		s.unreserveCreator(site, cur, v)
+	}
 	if s.store.AtomicPutSite() {
 		s.restoreVersions(site, cur, v)
+	}
+}
+
+// unreserveCreator undoes a first deploy's creator reservation when nothing
+// was published (best effort). A site that had no metadata goes back to having
+// none, so a failed first deploy isn't listed.
+func (s *server) unreserveCreator(site string, cur *policy, v versions) {
+	// SiteExists counts metadata too (which the reservation just wrote): look
+	// at the files.
+	if live, err := s.store.ListFiles(site); err != nil || len(live) > 0 {
+		return // something is live (in-place backend): it keeps its creator
+	}
+	cur.CreatedBy, cur.CreatedAt = "", ""
+	if !v.hadMeta {
+		if _, err := s.store.DeleteSite(site); err != nil {
+			log.Printf("site %s: removing a failed first deploy's metadata failed: %v", site, err)
+		}
+		s.meta.forget(site)
+		return
+	}
+	if err := s.meta.save(site, *cur); err != nil {
+		log.Printf("site %s: undoing the creator reservation failed: %v", site, err)
 	}
 }
 
