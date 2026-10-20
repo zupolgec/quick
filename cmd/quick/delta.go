@@ -186,7 +186,10 @@ func deltaRounds(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) 
 		}
 		pq := q
 		ctx := intr.context()
-		if attempt == 1 {
+		// Until a plan succeeds there is no lease: a retried first plan is still
+		// a first plan (takeover included); later ones send the lease back.
+		first := st.lease == ""
+		if first {
 			if takeover {
 				pq += "&takeover=1"
 			}
@@ -201,7 +204,7 @@ func deltaRounds(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) 
 			}
 			return res, st, err
 		}
-		if (code == http.StatusNotFound || code == http.StatusMethodNotAllowed) && attempt == 1 {
+		if (code == http.StatusNotFound || code == http.StatusMethodNotAllowed) && first {
 			return res, st, errNoDelta
 		}
 		if code == http.StatusServiceUnavailable {
@@ -209,6 +212,9 @@ func deltaRounds(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) 
 		}
 		if err := lockedResponse(code, out); err != nil {
 			return res, st, err
+		}
+		if code == http.StatusConflict && attempt < commitAttempts {
+			continue // the site changed while planning: plan again
 		}
 		if code != http.StatusOK {
 			return res, st, fmt.Errorf("deploy failed (%d): %s", code, strings.TrimSpace(string(out)))
@@ -222,7 +228,7 @@ func deltaRounds(cfg *cliConfig, name, tok, dir string, p *plan, takeover bool) 
 		if err := intr.stopped(); err != nil {
 			return res, st, err // deltaDeploy releases it
 		}
-		if attempt == 1 {
+		if first {
 			fmt.Printf("  sending %s of %s\n", humanSize(pl.MissingBytes), humanSize(pl.TotalBytes))
 		}
 		n, err := uploadChunks(cfg, tok, q, st.lease, pl.Missing, locs)

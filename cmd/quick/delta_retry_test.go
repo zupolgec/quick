@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -25,8 +26,11 @@ type fakeDeltaServer struct {
 	mu              sync.Mutex
 	have            map[string]bool
 	plans, commits  int
-	commitConflicts int // commits answered 409 (dropping received chunks, as if they vanished)
-	uploadConflicts int // chunk uploads answered 409 (plan forgotten)
+	commitConflicts int          // commits answered 409 (dropping received chunks, as if they vanished)
+	uploadConflicts int          // chunk uploads answered 409 (plan forgotten)
+	planConflicts   map[int]bool // plan numbers (1-based) answered 409 (site changed while planning)
+	planLeases      []string     // lease header of each plan
+	planTakeovers   []bool       // ?takeover=1 on each plan
 }
 
 func (f *fakeDeltaServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -40,9 +44,15 @@ func (f *fakeDeltaServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/api/deploy/plan":
 		f.plans++
+		f.planLeases = append(f.planLeases, r.Header.Get(quick.DeployLeaseHeader))
+		f.planTakeovers = append(f.planTakeovers, r.URL.Query().Get("takeover") == "1")
 		var m quick.DeployManifest
 		json.NewDecoder(gz).Decode(&m)
-		res := quick.DeployPlanResponse{Missing: []string{}}
+		if f.planConflicts[f.plans] {
+			http.Error(w, "the site changed while planning: plan again", http.StatusConflict)
+			return
+		}
+		res := quick.DeployPlanResponse{Missing: []string{}, Lease: "L1"}
 		for _, fl := range m.Files {
 			for _, c := range fl.Chunks {
 				if !f.have[c.Hash] {
@@ -129,6 +139,41 @@ func TestDeltaDeployRetriesAfterUploadConflict(t *testing.T) {
 	}
 	if f.plans != 2 || f.commits != 1 {
 		t.Fatalf("plans %d commits %d, want 2 and 1", f.plans, f.commits)
+	}
+}
+
+// A 409 on plan (the site changed while planning) means plan again, within
+// the same bounded attempts: a first plan opened nothing and simply retries;
+// a re-plan sends the deploy's lease back, never a takeover.
+func TestDeltaDeployRetriesAfterPlanConflict(t *testing.T) {
+	dir, p := deltaFixture(t, 3)
+	for _, c := range []struct {
+		name       string
+		f          *fakeDeltaServer
+		wantLeases []string
+	}{
+		{"first plan", &fakeDeltaServer{have: map[string]bool{}, planConflicts: map[int]bool{1: true}}, []string{"", ""}},
+		{"re-plan", &fakeDeltaServer{have: map[string]bool{}, commitConflicts: 1, planConflicts: map[int]bool{2: true}}, []string{"", "L1", "L1"}},
+	} {
+		srv := httptest.NewServer(c.f)
+		res, _, err := deltaDeploy(&cliConfig{Server: srv.URL}, "demo", "tok", dir, p, true)
+		srv.Close()
+		if err != nil || res.URL == "" {
+			t.Fatalf("%s: err %v res %+v", c.name, err, res)
+		}
+		if !slices.Equal(c.f.planLeases, c.wantLeases) {
+			t.Errorf("%s: plan leases %q, want %q", c.name, c.f.planLeases, c.wantLeases)
+		}
+		for i, tk := range c.f.planTakeovers {
+			if tk != (i == 0 || c.wantLeases[i] == "") {
+				t.Errorf("%s: plan %d takeover=%v", c.name, i+1, tk)
+			}
+		}
+	}
+	// Still bounded.
+	f := &fakeDeltaServer{have: map[string]bool{}, planConflicts: map[int]bool{1: true, 2: true, 3: true, 4: true}}
+	if _, _, err := runFake(t, f, dir, p); err == nil || !strings.Contains(err.Error(), "409") || f.plans != commitAttempts {
+		t.Fatalf("endless plan conflicts: err %v after %d plans", err, f.plans)
 	}
 }
 
