@@ -367,7 +367,10 @@ func publishFolder(cfg *cliConfig, name, tok, dir string, pl *plan, takeover boo
 // delta attempt's.
 func tarDeploy(cfg *cliConfig, name, tok, dir string, pl *plan, takeover bool, lease string) (quick.DeployResponse, error) {
 	var res quick.DeployResponse
-	payload, err := tarGzFromPlan(dir, pl)
+	payload, err := tarGzFromPlan(dir, pl) // stops on an interrupt
+	if err == nil {
+		err = intr.stopped() // nothing sent yet: nothing published
+	}
 	if err != nil {
 		return res, err
 	}
@@ -404,6 +407,20 @@ func tarGz(dir string) (*bytes.Buffer, error) {
 	return tarGzFromPlan(dir, p)
 }
 
+// openForTar opens a file to pack (test seam: slow files).
+var openForTar = func(path string) (io.ReadCloser, error) { return os.Open(path) }
+
+// stoppable stops reading (errInterrupted) once the deploy is interrupted:
+// packaging a big folder doesn't go on after Ctrl-C.
+type stoppable struct{ r io.Reader }
+
+func (s stoppable) Read(p []byte) (int, error) {
+	if err := intr.stopped(); err != nil {
+		return 0, err
+	}
+	return s.r.Read(p)
+}
+
 func tarGzFromPlan(dir string, p *plan) (*bytes.Buffer, error) {
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
@@ -423,11 +440,11 @@ func tarGzFromPlan(dir string, p *plan) (*bytes.Buffer, error) {
 		if err := tw.WriteHeader(hdr); err != nil {
 			return nil, err
 		}
-		f, err := os.Open(path)
+		f, err := openForTar(path)
 		if err != nil {
 			return nil, err
 		}
-		if _, err := io.Copy(tw, f); err != nil {
+		if _, err := io.Copy(tw, stoppable{f}); err != nil {
 			f.Close()
 			return nil, err
 		}

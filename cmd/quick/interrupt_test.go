@@ -208,6 +208,46 @@ func TestInterruptDuringPublishAnswer(t *testing.T) {
 	}
 }
 
+type slowFile struct{ io.ReadCloser }
+
+func (s slowFile) Read(p []byte) (int, error) {
+	time.Sleep(20 * time.Millisecond)
+	return s.ReadCloser.Read(p[:min(len(p), 1)])
+}
+
+// Ctrl-C while the whole-folder tar is still being built: packaging stops,
+// nothing was sent, so nothing was published.
+func TestInterruptWhilePackagingTheFolder(t *testing.T) {
+	g := newInterruptRig(t)
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/big.bin", make([]byte, 1000), 0o644); err != nil { // ~20 s at this pace
+		t.Fatal(err)
+	}
+	p, err := buildPlan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func(f func(string) (io.ReadCloser, error)) { openForTar = f }(openForTar)
+	openForTar = func(path string) (io.ReadCloser, error) {
+		f, err := os.Open(path)
+		return slowFile{f}, err
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := tarDeploy(&cliConfig{Server: g.srv.URL}, "demo", "tok", dir, p, false, "")
+		done <- err
+	}()
+	time.Sleep(100 * time.Millisecond)
+	g.sigs <- os.Interrupt
+	err = waitErr(t, done, time.Second)
+	if !errors.Is(err, errInterrupted) || errors.Is(err, errPublishStarted) {
+		t.Fatalf("err = %v, want interrupted before publishing", err)
+	}
+	if g.log() != "" {
+		t.Fatalf("requests sent: %s", g.log())
+	}
+}
+
 // A second Ctrl-C while the release is slow exits at once.
 func TestSecondInterruptExitsAtOnce(t *testing.T) {
 	g := newInterruptRig(t, "/api/deploy/chunks")
