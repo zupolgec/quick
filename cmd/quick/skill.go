@@ -198,7 +198,7 @@ Use ` + "`quick status`" + ` or ` + "`quick deploy ... --dry-run`" + ` to see in
 - Every site can import the browser library ` + "`/__quick/quick.js`" + ` (ESM, types at
   ` + "`/__quick/quick.d.ts`" + `). ` + "`await quick.id.me()`" + ` returns the signed-in user
   (` + "`{email}`" + `) on SSO sites, ` + "`null`" + ` on public or access-code sites. The
-  ` + "`/__quick/`" + ` path prefix is reserved for quick: do not put site files there.
+  ` + "`/__quick/`" + ` path prefix is reserved for quick: a deploy containing a ` + "`__quick/`" + ` folder at the root is refused.
 
 ## Notes
 

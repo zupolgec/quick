@@ -51,6 +51,7 @@ import (
 	"time"
 
 	"github.com/zupolgec/quick/internal/chunk"
+	"github.com/zupolgec/quick/internal/quick"
 	"github.com/zupolgec/quick/internal/storage"
 )
 
@@ -209,6 +210,9 @@ func indexingTar(w io.Writer, src *tar.Reader) ([]indexFile, error) {
 				return nil, err
 			}
 		case tar.TypeReg:
+			if rel, err := storage.CleanRel(hdr.Name); err == nil && quick.IsReservedPath(rel) {
+				return nil, errReserved{rel}
+			}
 			if err := tw.WriteHeader(&tar.Header{Name: hdr.Name, Mode: hdr.Mode & 0o7777, Size: hdr.Size, Typeflag: tar.TypeReg, ModTime: now}); err != nil {
 				return nil, err
 			}
@@ -233,6 +237,11 @@ func indexingTar(w io.Writer, src *tar.Reader) ([]indexFile, error) {
 	// can't be written because PutSite already stopped reading.
 	return files, tw.Close()
 }
+
+// errReserved stops a tar deploy carrying files under the reserved folder.
+type errReserved struct{ rel string }
+
+func (e errReserved) Error() string { return quick.ReservedPathError(e.rel) }
 
 // indexOfManifest is the index of what a delta commit publishes.
 func indexOfManifest(files []deltaFile) []indexFile {

@@ -106,3 +106,25 @@ func TestQuickignoreOverridesDefaults(t *testing.T) {
 		}
 	}
 }
+
+// A __quick/ folder in the site is reported by the plan, so the deploy can
+// stop before uploading (the server would refuse it anyway).
+func TestPlanFlagsReservedQuickFolder(t *testing.T) {
+	dir := t.TempDir()
+	for _, f := range []string{"index.html", "__quick/quick.js", "docs/__quick/ok.txt"} {
+		p := filepath.Join(dir, filepath.FromSlash(f))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pl, err := buildPlan(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pl.reserved) != 1 || pl.reserved[0] != "__quick/quick.js" {
+		t.Fatalf("reserved %v, want only __quick/quick.js", pl.reserved)
+	}
+}

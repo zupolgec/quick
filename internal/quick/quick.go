@@ -238,3 +238,18 @@ type DomainsResponse struct {
 	Site    string       `json:"site"`
 	Domains []DomainInfo `json:"domains"`
 }
+
+// ReservedDir is the path prefix quick serves on every site (code page,
+// quick.js, client API): a site can't publish files under it.
+const ReservedDir = "__quick"
+
+// IsReservedPath reports whether a site-relative path (slash-separated, no
+// leading slash) falls under ReservedDir.
+func IsReservedPath(rel string) bool {
+	return rel == ReservedDir || strings.HasPrefix(rel, ReservedDir+"/")
+}
+
+// ReservedPathError is the message for a deploy carrying reserved files.
+func ReservedPathError(rel string) string {
+	return "the " + ReservedDir + "/ folder is reserved by quick: rename or remove it (found " + rel + ")"
+}

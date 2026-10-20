@@ -97,6 +97,9 @@ fallback" `.unityweb`). Gli altri `.gz` (archivi) restano download normali.
 </script>
 ```
 
+Il percorso `/__quick/` è riservato a quick: un deploy che contiene una cartella
+`__quick/` nella radice del sito viene rifiutato.
+
 **`_redirects`** (stile Netlify): un file `_redirects` nella radice del sito
 definisce redirect, rewrite e proxy per path. Le regole si applicano solo quando
 nessun file corrisponde alla richiesta (i file vincono sempre) e prima di

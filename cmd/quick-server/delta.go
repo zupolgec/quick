@@ -109,6 +109,9 @@ func parseManifest(m quick.DeployManifest) ([]deltaFile, error) {
 		if err != nil {
 			return nil, err
 		}
+		if quick.IsReservedPath(rel) {
+			return nil, errors.New(quick.ReservedPathError(rel))
+		}
 		if rel == "" {
 			return nil, fmt.Errorf("invalid path %q", f.Path)
 		}

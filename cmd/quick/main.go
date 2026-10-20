@@ -242,6 +242,9 @@ func deploy(args []string) {
 
 	pl, err := buildPlan(dir)
 	fatal(err)
+	if len(pl.reserved) > 0 {
+		fatal(errors.New(quick.ReservedPathError(pl.reserved[0])))
+	}
 
 	if *dryRun {
 		printPlan(*name, pl)

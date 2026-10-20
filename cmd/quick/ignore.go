@@ -17,6 +17,8 @@ import (
 	"strings"
 
 	gitignore "github.com/sabhiram/go-gitignore"
+
+	"github.com/zupolgec/quick/internal/quick"
 )
 
 const quickignoreName = ".quickignore"
@@ -53,6 +55,7 @@ type plan struct {
 	excluded       int
 	totalSize      int64
 	hasQuickignore bool
+	reserved       []string // files under the reserved __quick/ folder
 }
 
 // buildPlan walks the folder and applies the three exclusion tiers.
@@ -104,6 +107,9 @@ func buildPlan(dir string) (*plan, error) {
 		}
 
 		if fi.Mode().IsRegular() {
+			if quick.IsReservedPath(rel) {
+				p.reserved = append(p.reserved, rel)
+			}
 			p.files = append(p.files, planFile{rel: rel, size: fi.Size()})
 			p.totalSize += fi.Size()
 		}
