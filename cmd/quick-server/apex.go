@@ -113,7 +113,7 @@ func (s *server) renderSitePageWith(w http.ResponseWriter, r *http.Request, name
 		return
 	}
 	// A people site doesn't exist for whoever isn't on it.
-	if !canView(p, email) {
+	if !s.mayView(p, email) {
 		renderNotFound(w, r, name+"."+s.baseDomain, false)
 		return
 	}
@@ -139,9 +139,10 @@ func (s *server) renderSitePageWith(w http.ResponseWriter, r *http.Request, name
 		}
 	}
 	csrf := s.meta.signCSRF(email, time.Now().Add(2*time.Hour).Unix())
-	sizeAsk := t.SizeAskSys
+	sizeAsk, adminsNote := t.SizeAskSys, ""
 	if a := s.adminList(); len(a) > 0 {
 		sizeAsk = fmt.Sprintf(t.SizeAsk, strings.Join(a, ", "))
+		adminsNote = fmt.Sprintf(t.AccessAdmins, strings.Join(a, ", "))
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Add("Vary", "Accept-Language")
@@ -151,11 +152,11 @@ func (s *server) renderSitePageWith(w http.ResponseWriter, r *http.Request, name
 		"Base": s.baseDomain, "Access": policyBadge(p, t),
 		"Locked": p.Locked, "Updated": updatedLabel(p), "Exists": exists,
 		"Tokens": tokenInfos(p.Tokens), "Reveal": reveal, "CSRF": csrf,
-		"Owner": p.CreatedBy, "IsOwner": isOwner(p, email), "Levels": levels,
+		"Owner": p.CreatedBy, "IsOwner": s.actsAsOwner(p, email), "Levels": levels,
 		"CurrentLevel": currentLabel, "People": p.Access == quick.AccessPeople,
 		"Viewers": p.Viewers, "HasCode": p.Access == quick.AccessCode, "Error": errText,
 		"Domain": s.companyDomain(), "Lang": string(l), "T": t,
-		"Limit": quick.FormatSize(s.limitOf(p)), "Admin": s.isAdmin(email), "SizeError": sizeErr, "SizeAsk": sizeAsk,
+		"Limit": quick.FormatSize(s.limitOf(p)), "Admin": s.isAdmin(email), "SizeError": sizeErr, "SizeAsk": sizeAsk, "AdminsNote": adminsNote,
 		"SizeHint": fmt.Sprintf(t.SizeHint, quick.FormatSize(s.ceiling()), quick.FormatSize(s.defaultLimit())),
 	})
 }
@@ -205,7 +206,7 @@ func (s *server) handleSites(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue // unreadable: it could be a people site, don't reveal it
 		}
-		if !canView(p, email) {
+		if !s.mayView(p, email) {
 			continue // even the name of a people site is theirs only
 		}
 		out = append(out, s.siteInfo(n, p))
@@ -244,7 +245,7 @@ func (s *server) renderDashboard(w http.ResponseWriter, l lang, email string) {
 	rows := make([]dashRow, 0, len(names))
 	for _, n := range names {
 		p, err := s.meta.load(n)
-		if err != nil || !canView(p, email) {
+		if err != nil || !s.mayView(p, email) {
 			continue // a people site (or one that might be) is listed only to its people
 		}
 		rows = append(rows, dashRow{
@@ -505,6 +506,7 @@ form.access .btn{justify-self:start;margin-top:.6rem}
       <button class="btn" type="submit">{{.T.AccessSave}}</button>
     </form>
     {{else}}<p class="hint">{{.T.AccessCurrent}} <b>{{.CurrentLevel}}</b>. {{.T.AccessOwnerOnly}}</p>{{end}}
+    {{if .AdminsNote}}<p class="hint small">{{.AdminsNote}}</p>{{end}}
 
     {{if .People}}
     <h3>{{.T.PeopleTitle}}</h3>

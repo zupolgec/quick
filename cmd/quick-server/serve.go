@@ -105,7 +105,7 @@ func (s *server) siteAccess(r *http.Request, sub string) (p policy, email string
 		return p, "", false, err == nil && s.meta.validAccessCookie(sub, c.Value), nil
 	default:
 		email, signedIn = s.checkSSO(r)
-		return p, email, signedIn, signedIn && canView(p, email), nil
+		return p, email, signedIn, signedIn && s.mayView(p, email), nil
 	}
 }
 

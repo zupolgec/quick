@@ -231,6 +231,11 @@ only-me`). Il **lock** registra te (dalla tua identità Google) come
 owner: gli altri non possono più sovrascrivere né cambiare policy finché non fai
 `unlock`.
 
+Gli **amministratori** (`QUICK_ADMINS`) vedono, aprono e gestiscono tutti i siti, anche
+quelli per persone scelte e "solo io", e su qualsiasi sito possono fare tutto quello che
+può il proprietario (visibilità, lock, eliminazione, token, domini, limite di dimensione).
+La dashboard li indica nella pagina di ogni sito.
+
 Al deploy la CLI mostra **chi sei** (`Autenticato come …`) e, se l'ultima
 pubblicazione di quel sito è di un'altra persona, chiede di **ridigitare il nome
 del sito** prima di sovrascriverne il lavoro.

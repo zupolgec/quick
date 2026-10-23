@@ -221,6 +221,9 @@ Use ` + "`quick status`" + ` or ` + "`quick deploy ... --dry-run`" + ` to see in
   space: also a matter for an administrator.
 - New subdomains are immediate; visibility changes are instant.
 - A **locked** site can be overwritten or deleted only by its owner.
+- **Administrators** (set on the server) see and manage every site, chosen-people and
+  only-me ones included, and can do whatever the owner can. "Only me" therefore means
+  "me and the administrators": say so if the user relies on it for privacy.
 - **Chosen people** (` + "`quick access <site> add|remove|only-me`" + `): visitors sign in with SSO and must be the
   owner (the site's creator) or on its list; anyone else gets a "restricted" page that names the owner,
   never the list. Emails must be company accounts (max 100 per site). Only the owner can limit a site

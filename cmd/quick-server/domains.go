@@ -383,7 +383,7 @@ func (s *server) listDomains(w http.ResponseWriter, r *http.Request, name, email
 			return
 		}
 	}
-	if !canView(p, email) {
+	if !s.mayView(p, email) {
 		http.Error(w, "site not found", http.StatusNotFound)
 		return
 	}
@@ -413,7 +413,7 @@ func (s *server) addDomain(w http.ResponseWriter, r *http.Request, name, raw, em
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	if !canView(cur, email) {
+	if !s.mayView(cur, email) {
 		http.Error(w, "site not found", http.StatusNotFound)
 		return
 	}
@@ -475,7 +475,7 @@ func (s *server) addDomain(w http.ResponseWriter, r *http.Request, name, raw, em
 // domainTakenMessage refuses a domain another site claims, naming that site
 // only to those who can open it (a people site's domains are its people's).
 func (s *server) domainTakenMessage(site, email string) string {
-	if p, err := s.meta.load(site); err == nil && canView(p, email) {
+	if p, err := s.meta.load(site); err == nil && s.mayView(p, email) {
 		return "domain already used by site " + site
 	}
 	return "domain not available"
@@ -520,7 +520,7 @@ func (s *server) removeDomain(w http.ResponseWriter, name, raw, email string) {
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	if !canView(cur, email) {
+	if !s.mayView(cur, email) {
 		http.Error(w, "site not found", http.StatusNotFound)
 		return
 	}

@@ -26,6 +26,15 @@ func sameUser(a, b string) bool {
 // isOwner reports whether email is the site's creator.
 func isOwner(p policy, email string) bool { return sameUser(p.CreatedBy, email) }
 
+// actsAsOwner: the owner, or an administrator (QUICK_ADMINS), who can do on
+// any site whatever its owner can.
+func (s *server) actsAsOwner(p policy, email string) bool {
+	return isOwner(p, email) || s.isAdmin(email)
+}
+
+// mayView is canView plus administrators, who see every site.
+func (s *server) mayView(p policy, email string) bool { return canView(p, email) || s.isAdmin(email) }
+
 // canView reports whether the signed-in email may open the site's contents.
 // Only "people" sites restrict signed-in users; everything else is up to the
 // usual gate (SSO, code, public).
@@ -67,7 +76,7 @@ func (s *server) siteVisibleTo(w http.ResponseWriter, name, email string) bool {
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return false
 	}
-	if !canView(p, email) {
+	if !s.mayView(p, email) {
 		http.Error(w, "site not found", http.StatusNotFound)
 		return false
 	}

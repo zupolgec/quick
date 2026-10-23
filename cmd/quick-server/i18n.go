@@ -113,6 +113,7 @@ type uiText struct {
 
 	SizeTitle, SizeIntro, SizeAsk, SizeLabel, SizeHint, SizeSave string
 	SizeInvalid, SizeTooHigh, SizeAskSys                         string
+	AccessAdmins                                                 string
 
 	SiteBack, SiteNoFiles, SiteTokens, SiteTokensHint, SiteTokensEmpty  string
 	SiteTitle                                                           string
@@ -196,6 +197,7 @@ var uiTexts = map[lang]uiText{
 		AccessOwner:     "Owner:",
 		AccessCurrent:   "Right now:",
 		AccessOwnerOnly: "Only the owner can change it from here.",
+		AccessAdmins:    "Administrators (%s) can see and manage every site, including those limited to chosen people.",
 		SizeTitle:       "Size limit",
 		SizeIntro:       "Every version of this site can take up to",
 		SizeAsk:         "To publish something bigger, ask an administrator: %s.",
@@ -325,6 +327,7 @@ var uiTexts = map[lang]uiText{
 		AccessOwner:     "Proprietario:",
 		AccessCurrent:   "Al momento:",
 		AccessOwnerOnly: "Solo il proprietario può cambiarlo da qui.",
+		AccessAdmins:    "Gli amministratori (%s) possono vedere e gestire tutti i siti, anche quelli limitati a persone scelte.",
 		SizeTitle:       "Dimensione massima",
 		SizeIntro:       "Ogni versione di questo sito può occupare fino a",
 		SizeAsk:         "Per pubblicare qualcosa di più grande chiedi a un amministratore: %s.",

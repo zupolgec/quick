@@ -57,10 +57,10 @@ func nowStamp() string { return time.Now().UTC().Format(time.RFC3339) }
 // change: whoever may deploy here may deploy a people site, even one they
 // can't open.
 func (s *server) canWrite(p policy, email, action string) (bool, string) {
-	if p.Locked && p.Owner != "" && !sameUser(p.Owner, email) {
+	if p.Locked && p.Owner != "" && !sameUser(p.Owner, email) && !s.isAdmin(email) {
 		return false, "site locked by " + p.Owner
 	}
-	if action == actDelete && p.Access == quick.AccessPeople && !isOwner(p, email) {
+	if action == actDelete && p.Access == quick.AccessPeople && !s.actsAsOwner(p, email) {
 		return false, "only the owner (" + p.CreatedBy + ") can delete this site"
 	}
 	creatorOnly := false
@@ -70,7 +70,7 @@ func (s *server) canWrite(p policy, email, action string) (bool, string) {
 	case "shared":
 		creatorOnly = action != actDeploy
 	}
-	if creatorOnly && p.CreatedBy != "" && !isOwner(p, email) {
+	if creatorOnly && p.CreatedBy != "" && !s.actsAsOwner(p, email) {
 		return false, "site owned by " + p.CreatedBy + " (" + s.ownership + " mode)"
 	}
 	return true, ""
@@ -578,7 +578,7 @@ func (s *server) applyPolicy(cur *policy, email string, req quick.PolicyRequest)
 			return &policyErr{status: http.StatusConflict, kind: errNoOwner,
 				msg: "this site has no recorded owner: it can't be limited to chosen people"}
 		}
-		if !isOwner(*cur, email) {
+		if !s.actsAsOwner(*cur, email) {
 			return &policyErr{status: http.StatusForbidden, kind: errNotOwner, arg: cur.CreatedBy,
 				msg: "only the owner (" + cur.CreatedBy + ") can change who can see this site"}
 		}
@@ -588,7 +588,7 @@ func (s *server) applyPolicy(cur *policy, email string, req quick.PolicyRequest)
 	}
 	// Only the creator can change the lock: stops someone from "stealing" another
 	// person's site by locking it under their own name (matters in free mode).
-	if req.Locked != nil && cur.CreatedBy != "" && !isOwner(*cur, email) {
+	if req.Locked != nil && cur.CreatedBy != "" && !s.actsAsOwner(*cur, email) {
 		return &policyErr{status: http.StatusForbidden, msg: "only the creator (" + cur.CreatedBy + ") can lock the site"}
 	}
 	if changesAccess {
@@ -624,7 +624,7 @@ func (s *server) writePolicy(w http.ResponseWriter, name string, p policy, email
 		access = "sso"
 	}
 	var viewers []string
-	visible := canView(p, email)
+	visible := s.mayView(p, email)
 	if p.Access == quick.AccessPeople && visible {
 		viewers = p.Viewers
 	}

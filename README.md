@@ -226,6 +226,10 @@ optional (`quick access only-me`). The **lock**
 records you (from your Google identity) as owner: others can no longer overwrite it
 or change its policy until you `unlock`.
 
+**Administrators** (`QUICK_ADMINS`) see, open and manage every site, chosen-people and
+"only me" ones included, and can do on any site whatever its owner can (visibility,
+lock, delete, tokens, domains, size limit). The dashboard names them on each site's page.
+
 On deploy the CLI shows **who you are** (`Authenticated as …`) and, if the last
 publish of that site was by someone else, asks you to **retype the site name** before
 overwriting their work.
