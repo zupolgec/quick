@@ -191,7 +191,7 @@ func indexOf(path string, r io.Reader) (indexFile, error) {
 // the index of the regular files as PutSite publishes them: cleaned paths, the
 // last entry for a path wins. Unsafe paths are passed through untouched for
 // PutSite to reject, as before.
-func indexingTar(w io.Writer, src *tar.Reader, limit int64) ([]indexFile, error) {
+func indexingTar(w io.Writer, src *tar.Reader, limit int64, ask string) ([]indexFile, error) {
 	tw := tar.NewWriter(w)
 	now := time.Now()
 	pos := map[string]int{}
@@ -215,7 +215,7 @@ func indexingTar(w io.Writer, src *tar.Reader, limit int64) ([]indexFile, error)
 				return nil, errReserved{rel}
 			}
 			if total += hdr.Size; total > limit {
-				return nil, errTooBig{limit: limit}
+				return nil, errTooBig{limit: limit, ask: ask}
 			}
 			if err := tw.WriteHeader(&tar.Header{Name: hdr.Name, Mode: hdr.Mode & 0o7777, Size: hdr.Size, Typeflag: tar.TypeReg, ModTime: now}); err != nil {
 				return nil, err

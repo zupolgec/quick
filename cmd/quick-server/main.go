@@ -334,7 +334,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer close(done)
 		var err error
-		files, err = indexingTar(pw, tar.NewReader(gz), limit)
+		files, err = indexingTar(pw, tar.NewReader(gz), limit, s.askAdmin())
 		pw.CloseWithError(err)
 	}()
 	err = s.store.PutSite(name, tar.NewReader(pr))

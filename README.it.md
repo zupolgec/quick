@@ -295,7 +295,8 @@ quick limit foo 1.5GB    # solo amministratori; `default` torna a 100 MB
 ```
 
 Un deploy oltre il limite viene rifiutato prima di pubblicare qualsiasi cosa, con un
-messaggio che invita a contattare un amministratore. Con lo storage locale un deploy
+messaggio che dice a quali amministratori chiedere (o all'amministratore di sistema, se
+non ne sono configurati). Con lo storage locale un deploy
 viene rifiutato anche quando lascerebbe sul disco meno di `QUICK_MIN_FREE` liberi
 (5 GB di default).
 

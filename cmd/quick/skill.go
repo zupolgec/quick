@@ -215,7 +215,8 @@ Use ` + "`quick status`" + ` or ` + "`quick deploy ... --dry-run`" + ` to see in
 
 - Every site has a size limit per version (100 MB unless the server says
   otherwise; ` + "`quick limit`" + ` shows it). A deploy over it fails with 413 and nothing
-  changes: tell the user an administrator has to raise the site's limit, don't try
+  changes: tell the user an administrator has to raise the site's limit (the
+  message names them), don't try
   to split the site or work around it. A 507 means the server is short on disk
   space: also a matter for an administrator.
 - New subdomains are immediate; visibility changes are instant.

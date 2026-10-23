@@ -14,12 +14,13 @@ type LimitRequest struct {
 
 // LimitResponse is the size limit of a site (GET and POST .../limit).
 type LimitResponse struct {
-	Site      string `json:"site"`
-	SizeLimit int64  `json:"size_limit"` // bytes in effect
-	Custom    bool   `json:"custom"`     // set by an administrator (else the default)
-	Default   int64  `json:"default"`    // server default
-	Max       int64  `json:"max"`        // highest limit an administrator can set
-	Admin     bool   `json:"admin"`      // the caller can change it
+	Site      string   `json:"site"`
+	SizeLimit int64    `json:"size_limit"`       // bytes in effect
+	Custom    bool     `json:"custom"`           // set by an administrator (else the default)
+	Default   int64    `json:"default"`          // server default
+	Max       int64    `json:"max"`              // highest limit an administrator can set
+	Admin     bool     `json:"admin"`            // the caller can change it
+	Admins    []string `json:"admins,omitempty"` // who can (none configured: the system administrator)
 }
 
 var sizeUnits = map[string]int64{"": 1, "b": 1, "k": 1 << 10, "kb": 1 << 10, "m": 1 << 20, "mb": 1 << 20, "g": 1 << 30, "gb": 1 << 30}

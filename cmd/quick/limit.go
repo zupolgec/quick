@@ -62,8 +62,10 @@ func limitCmd(args []string) {
 	fmt.Printf("%s: size limit %s (%s)\n", cBold(name), quick.FormatSize(res.SizeLimit), which)
 	if res.Admin {
 		fmt.Printf("  you can change it up to %s: quick limit %s <size>|default\n", quick.FormatSize(res.Max), name)
+	} else if len(res.Admins) > 0 {
+		fmt.Printf("  to raise it, ask an administrator: %s\n", strings.Join(res.Admins, ", "))
 	} else {
-		fmt.Println("  to raise it, ask an administrator")
+		fmt.Println("  to raise it, ask your system administrator")
 	}
 }
 

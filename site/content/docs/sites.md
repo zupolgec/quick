@@ -54,7 +54,7 @@ Builds compressed as a whole change everywhere on every build, so they gain litt
 
 ## Size limit
 
-A site can take up to 100 MB per version, unless the server sets another default. Bigger sites, such as game builds with video, need an administrator to raise that site's limit (`quick limit <site> 1.5GB`, or the site's page in the dashboard). `quick limit <site>` shows the current one. A deploy over the limit is refused before anything changes on the site.
+A site can take up to 100 MB per version, unless the server sets another default. Bigger sites, such as game builds with video, need an administrator to raise that site's limit (`quick limit <site> 1.5GB`, or the site's page in the dashboard). `quick limit <site>` shows the current one and who the administrators are. A deploy over the limit is refused before anything changes on the site, and the message says who to ask.
 
 ## Incremental deploys
 

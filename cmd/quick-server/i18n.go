@@ -112,7 +112,7 @@ type uiText struct {
 	RestrictedSignedIn, RestrictedAsk, RestrictedSwitch                 string
 
 	SizeTitle, SizeIntro, SizeAsk, SizeLabel, SizeHint, SizeSave string
-	SizeInvalid, SizeTooHigh                                     string
+	SizeInvalid, SizeTooHigh, SizeAskSys                         string
 
 	SiteBack, SiteNoFiles, SiteTokens, SiteTokensHint, SiteTokensEmpty  string
 	SiteTitle                                                           string
@@ -198,7 +198,8 @@ var uiTexts = map[lang]uiText{
 		AccessOwnerOnly: "Only the owner can change it from here.",
 		SizeTitle:       "Size limit",
 		SizeIntro:       "Every version of this site can take up to",
-		SizeAsk:         "To publish something bigger, ask an administrator.",
+		SizeAsk:         "To publish something bigger, ask an administrator: %s.",
+		SizeAskSys:      "To publish something bigger, ask your system administrator.",
 		SizeLabel:       "New limit",
 		SizeHint:        "Up to %s, e.g. 500MB or 1.5GB. Leave empty to go back to the default (%s).",
 		SizeSave:        "Change limit",
@@ -326,7 +327,8 @@ var uiTexts = map[lang]uiText{
 		AccessOwnerOnly: "Solo il proprietario può cambiarlo da qui.",
 		SizeTitle:       "Dimensione massima",
 		SizeIntro:       "Ogni versione di questo sito può occupare fino a",
-		SizeAsk:         "Per pubblicare qualcosa di più grande chiedi a un amministratore.",
+		SizeAsk:         "Per pubblicare qualcosa di più grande chiedi a un amministratore: %s.",
+		SizeAskSys:      "Per pubblicare qualcosa di più grande chiedi a chi gestisce il server.",
 		SizeLabel:       "Nuovo limite",
 		SizeHint:        "Fino a %s, per esempio 500MB o 1.5GB. Lascia vuoto per tornare al valore predefinito (%s).",
 		SizeSave:        "Cambia limite",

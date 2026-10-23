@@ -138,7 +138,7 @@ func TestDashboardSiteLimit(t *testing.T) {
 	e.setPolicy(t, "app", policy{CreatedBy: ann})
 
 	page, _ := e.sitePage(t, ann, "app")
-	if !strings.Contains(page, "Dimensione massima") || !strings.Contains(page, "100 MB") || !strings.Contains(page, "chiedi a un amministratore") {
+	if !strings.Contains(page, "Dimensione massima") || !strings.Contains(page, "100 MB") || !strings.Contains(page, "chiedi a un amministratore: bob@example.com") {
 		t.Errorf("owner page misses the limit:\n%s", page)
 	}
 	if strings.Contains(page, `action="/api/site/app/limit"`) {
@@ -175,5 +175,27 @@ func TestDashboardSiteLimit(t *testing.T) {
 	}
 	if p := e.policyOf(t, "app"); p.SizeLimit != 0 {
 		t.Fatalf("reset stored %d", p.SizeLimit)
+	}
+}
+
+// Refusals name who to ask: the administrators, or the system administrator
+// when none is configured.
+func TestLimitRefusalNamesAdmins(t *testing.T) {
+	m, _ := manifestOf(t, map[string][]byte{"big.bin": randData(1, 2<<20)})
+	plan := func(s *server) string {
+		c := &deltaClient{t: t, s: s, site: "demo"}
+		b, _ := json.Marshal(m)
+		return c.do(http.MethodPost, "/api/deploy/plan", b, nil).Body.String()
+	}
+	s := newLimitTestServer(t, false)
+	if body := plan(s); !strings.Contains(body, "ask your system administrator") {
+		t.Errorf("no admins: %s", body)
+	}
+	s.admins = map[string]bool{"zoe@example.com": true, "al@example.com": true}
+	if body := plan(s); !strings.Contains(body, "ask an administrator (al@example.com, zoe@example.com)") {
+		t.Errorf("with admins: %s", body)
+	}
+	if got := getLimit(t, s, "demo"); strings.Join(got.Admins, ",") != "al@example.com,zoe@example.com" {
+		t.Errorf("limit response admins: %v", got.Admins)
 	}
 }

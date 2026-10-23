@@ -289,7 +289,7 @@ quick limit foo 1.5GB    # administrators only; `default` goes back to 100 MB
 ```
 
 A deploy over the limit is refused before anything is published, with a message
-asking to contact an administrator. On local storage a deploy is also refused when it
+naming the administrators to ask (or the system administrator, if none is set). On local storage a deploy is also refused when it
 would leave less than `QUICK_MIN_FREE` (5 GB by default) free on the disk.
 
 ## Deleting a site

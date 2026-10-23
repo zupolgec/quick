@@ -139,6 +139,10 @@ func (s *server) renderSitePageWith(w http.ResponseWriter, r *http.Request, name
 		}
 	}
 	csrf := s.meta.signCSRF(email, time.Now().Add(2*time.Hour).Unix())
+	sizeAsk := t.SizeAskSys
+	if a := s.adminList(); len(a) > 0 {
+		sizeAsk = fmt.Sprintf(t.SizeAsk, strings.Join(a, ", "))
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Add("Vary", "Accept-Language")
 	w.WriteHeader(status)
@@ -151,7 +155,7 @@ func (s *server) renderSitePageWith(w http.ResponseWriter, r *http.Request, name
 		"CurrentLevel": currentLabel, "People": p.Access == quick.AccessPeople,
 		"Viewers": p.Viewers, "HasCode": p.Access == quick.AccessCode, "Error": errText,
 		"Domain": s.companyDomain(), "Lang": string(l), "T": t,
-		"Limit": quick.FormatSize(s.limitOf(p)), "Admin": s.isAdmin(email), "SizeError": sizeErr,
+		"Limit": quick.FormatSize(s.limitOf(p)), "Admin": s.isAdmin(email), "SizeError": sizeErr, "SizeAsk": sizeAsk,
 		"SizeHint": fmt.Sprintf(t.SizeHint, quick.FormatSize(s.ceiling()), quick.FormatSize(s.defaultLimit())),
 	})
 }
@@ -526,7 +530,7 @@ form.access .btn{justify-self:start;margin-top:.6rem}
 
   <section class="panel" id="size">
     <h2>{{.T.SizeTitle}}</h2>
-    <p class="hint">{{.T.SizeIntro}} <b>{{.Limit}}</b>.{{if not .Admin}} {{.T.SizeAsk}}{{end}}</p>
+    <p class="hint">{{.T.SizeIntro}} <b>{{.Limit}}</b>.{{if not .Admin}} {{.SizeAsk}}{{end}}</p>
     {{if .Admin}}
     {{if .SizeError}}<div class="err" role="alert">{{.SizeError}}</div>{{end}}
     <form class="create" method="post" action="/api/site/{{.Name}}/limit">

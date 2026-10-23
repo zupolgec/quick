@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/zupolgec/quick/internal/quick"
@@ -65,6 +66,25 @@ func (s *server) configureLimits() error {
 
 func (s *server) isAdmin(email string) bool { return email != "" && s.admins[strings.ToLower(email)] }
 
+// adminList is the administrators' emails, sorted.
+func (s *server) adminList() []string {
+	out := make([]string, 0, len(s.admins))
+	for e := range s.admins {
+		out = append(out, e)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// askAdmin names who to ask in a refusal: the administrators, or the system
+// administrator when none is configured.
+func (s *server) askAdmin() string {
+	if a := s.adminList(); len(a) > 0 {
+		return "ask an administrator (" + strings.Join(a, ", ") + ")"
+	}
+	return "ask your system administrator"
+}
+
 // defaultLimit and ceiling fall back to the storage cap (servers built in
 // tests without configureLimits).
 func (s *server) defaultLimit() int64 { return def64(s.siteLimit, storage.MaxExtractBytes) }
@@ -85,22 +105,25 @@ func (s *server) limitOf(p policy) int64 {
 	return s.defaultLimit()
 }
 
-// errTooBig: a deploy over its site's limit.
-type errTooBig struct{ size, limit int64 }
+// errTooBig: a deploy over its site's limit. ask names who can raise it.
+type errTooBig struct {
+	size, limit int64
+	ask         string
+}
 
 func (e errTooBig) Error() string {
 	if e.size > 0 {
-		return fmt.Sprintf("this deploy is %s, over the site's %s limit: ask an administrator to raise it",
-			quick.FormatSize(e.size), quick.FormatSize(e.limit))
+		return fmt.Sprintf("this deploy is %s, over the site's %s limit: %s to raise it",
+			quick.FormatSize(e.size), quick.FormatSize(e.limit), e.ask)
 	}
-	return fmt.Sprintf("this deploy is over the site's %s limit: ask an administrator to raise it", quick.FormatSize(e.limit))
+	return fmt.Sprintf("this deploy is over the site's %s limit: %s to raise it", quick.FormatSize(e.limit), e.ask)
 }
 
 // checkDeploySize answers 413 if size is over the site's limit, 507 if
 // publishing it would leave the disk below the reserve. ok=false: answered.
 func (s *server) checkDeploySize(w http.ResponseWriter, p policy, size int64) bool {
 	if limit := s.limitOf(p); size > limit {
-		http.Error(w, errTooBig{size, limit}.Error(), http.StatusRequestEntityTooLarge)
+		http.Error(w, errTooBig{size, limit, s.askAdmin()}.Error(), http.StatusRequestEntityTooLarge)
 		return false
 	}
 	return s.checkSpace(w, size)
@@ -119,7 +142,7 @@ func (s *server) checkSpace(w http.ResponseWriter, need int64) bool {
 	}
 	if free-need < s.minFree {
 		log.Printf("deploy refused: %s needed, %s free, %s reserve", quick.FormatSize(need), quick.FormatSize(free), quick.FormatSize(s.minFree))
-		http.Error(w, "the server is running out of disk space and can't take this deploy: ask an administrator", http.StatusInsufficientStorage)
+		http.Error(w, "the server is running out of disk space and can't take this deploy: "+s.askAdmin(), http.StatusInsufficientStorage)
 		return false
 	}
 	return true
@@ -159,7 +182,7 @@ func (s *server) handleLimit(w http.ResponseWriter, r *http.Request, name string
 	}
 	if r.Method == http.MethodPost {
 		if !s.isAdmin(email) {
-			http.Error(w, "only an administrator can change a site's size limit", http.StatusForbidden)
+			http.Error(w, "only an administrator can change a site's size limit: "+s.askAdmin(), http.StatusForbidden)
 			return
 		}
 		var req quick.LimitRequest
@@ -207,6 +230,6 @@ func (s *server) handleLimit(w http.ResponseWriter, r *http.Request, name string
 	}
 	_ = json.NewEncoder(w).Encode(quick.LimitResponse{
 		Site: name, SizeLimit: s.limitOf(cur), Custom: cur.SizeLimit > 0,
-		Default: s.defaultLimit(), Max: s.ceiling(), Admin: s.isAdmin(email),
+		Default: s.defaultLimit(), Max: s.ceiling(), Admin: s.isAdmin(email), Admins: s.adminList(),
 	})
 }
