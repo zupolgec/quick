@@ -446,6 +446,7 @@ form.create{display:flex;flex-wrap:wrap;align-items:end;gap:.65rem;margin-top:.5
 .field.name{flex:1 1 220px}
 label{font-size:.88rem;color:var(--muted)}
 input,select{width:100%;height:2.75rem;border:0;border-radius:0;background:var(--sunk);color:var(--fg);font:inherit;font-size:1rem;padding:0 .8rem}
+select{appearance:none;-webkit-appearance:none;padding-right:2.4rem;cursor:pointer;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .8rem center;background-size:1rem}
 .btn,.btn-secondary{height:2.75rem;border:0;border-radius:0;font-family:var(--font-head);font-size:.95rem;font-weight:500;padding:0 1rem;cursor:pointer;transition:background-color .18s,color .18s,transform .14s}
 .btn-secondary{background:var(--card);color:var(--ink)}
 .token .btn-secondary{background:var(--card)}
@@ -557,10 +558,8 @@ form.access .btn{justify-self:start;margin-top:.6rem}
         <button class="btn-secondary" type="submit">{{$.T.TokenRevoke}}</button>
       </form>
     </div>{{end}}{{else}}<p class="empty">{{.T.SiteTokensEmpty}}</p>{{end}}
-  </section>
 
-  <section class="panel">
-    <h2>{{.T.TokenCreate}}</h2>
+    <h3>{{.T.TokenCreate}}</h3>
     <form class="create" method="post" action="/api/site/{{.Name}}/tokens">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <div class="field name"><label for="token-name">{{.T.TokenName}}</label><input id="token-name" name="name" placeholder="github-actions" maxlength="40"></div>
