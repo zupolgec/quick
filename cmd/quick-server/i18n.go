@@ -1,6 +1,7 @@
 package main
 
 import (
+	"html/template"
 	"net/http"
 	"sort"
 	"strconv"
@@ -88,13 +89,12 @@ type uiText struct {
 
 	SSOTitle, SSOHeading, SSOIntro, SSOButton string
 
-	DashTitle, DashYourSites, DashAllSites      string
-	DashEmptyMine, DashEmptyAll, DashLocked     string
-	DashHelpPublish, DashHelpDocs               string
-	DashSearch, DashNoMatch, NavDocs, GuideMore string
-	BadgePublic, BadgeCode, BadgeSSO            string
-	BadgePeople, BadgeOnlyMe                    string
-	DashManage                                  string
+	DashTitle, DashYourSites, DashAllSites                       string
+	DashEmptyMine, DashEmptyAll                                  string
+	DashHelpPublish, DashHelpDocs                                string
+	DashSearch, DashNoMatch, NavDocs, GuideMore                  string
+	TipTeam, TipPublic, TipCode, TipPeople, TipOnlyMe, TipLocked string
+	DashManage                                                   string
 
 	AccessTitle, AccessOwner, AccessCurrent, AccessOwnerOnly, AccessSave string
 	AccessCodeLabel, AccessCodeKeep                                      string
@@ -158,14 +158,12 @@ var uiTexts = map[lang]uiText{
 		DashAllSites:    "All sites",
 		DashEmptyMine:   "You haven't published any sites yet. Use",
 		DashEmptyAll:    "No sites published.",
-		DashLocked:      "locked",
 		DashHelpPublish: "Publish a folder:",
 		DashHelpDocs:    "Install the CLI and read the guides at",
 		DashSearch:      "Search by name",
 		DashNoMatch:     "No site matches.",
 		NavDocs:         "Docs",
 		GuideMore:       "All commands and guides",
-		BadgePublic:     "public",
 		DashManage:      "Manage",
 
 		SiteBack:        "Back to dashboard",
@@ -188,10 +186,12 @@ var uiTexts = map[lang]uiText{
 		TokenExpiry:     "Expires",
 		TokenDays:       "days",
 		TokenNoExpiry:   "Never",
-		BadgeCode:       "code",
-		BadgeSSO:        "SSO",
-		BadgePeople:     "chosen people",
-		BadgeOnlyMe:     "only me",
+		TipTeam:         "Everyone at the company: anyone signed in with a company account.",
+		TipPublic:       "Public: anyone with the link, no sign-in.",
+		TipCode:         "With a code: anyone who has the access code.",
+		TipPeople:       "Chosen people: the owner and the people on the list.",
+		TipOnlyMe:       "Only the owner.",
+		TipLocked:       "Locked: only whoever locked it can overwrite it.",
 
 		AccessTitle:     "Who can see this site",
 		AccessOwner:     "Owner:",
@@ -288,14 +288,12 @@ var uiTexts = map[lang]uiText{
 		DashAllSites:    "Tutti i siti",
 		DashEmptyMine:   "Non hai ancora pubblicato nessun sito. Usa",
 		DashEmptyAll:    "Nessun sito pubblicato.",
-		DashLocked:      "bloccato",
 		DashHelpPublish: "Pubblica una cartella:",
 		DashHelpDocs:    "Installazione della CLI e guide su",
 		DashSearch:      "Cerca per nome",
 		DashNoMatch:     "Nessun sito corrisponde.",
 		NavDocs:         "Documentazione",
 		GuideMore:       "Tutti i comandi e le guide",
-		BadgePublic:     "pubblico",
 		DashManage:      "Gestisci",
 
 		SiteBack:        "Torna alla dashboard",
@@ -318,10 +316,12 @@ var uiTexts = map[lang]uiText{
 		TokenExpiry:     "Scadenza",
 		TokenDays:       "giorni",
 		TokenNoExpiry:   "Mai",
-		BadgeCode:       "codice",
-		BadgeSSO:        "SSO",
-		BadgePeople:     "persone scelte",
-		BadgeOnlyMe:     "solo io",
+		TipTeam:         "Tutta l'azienda: chiunque acceda con un account aziendale.",
+		TipPublic:       "Pubblico: chiunque abbia il link, senza accesso.",
+		TipCode:         "Con codice: chiunque abbia il codice di accesso.",
+		TipPeople:       "Persone scelte: il proprietario e le persone in elenco.",
+		TipOnlyMe:       "Solo il proprietario.",
+		TipLocked:       "Bloccato: solo chi l'ha bloccato può sovrascriverlo.",
 
 		AccessTitle:     "Chi può vedere il sito",
 		AccessOwner:     "Proprietario:",
@@ -399,18 +399,40 @@ func textsFor(l lang) uiText {
 	return uiTexts[langEN]
 }
 
-// policyBadge maps a site's visibility to its localized dashboard badge.
-func policyBadge(p policy, t uiText) string {
+// badge is an icon with its explanation (tooltip and screen readers).
+type badge struct {
+	Icon template.HTML // SVG inner markup, constant
+	Tip  string
+}
+
+// Icons (24px grid, stroked) for the site's access level and lock.
+const (
+	iconTeam   = `<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4M10 10h4M10 14h4M10 18h4"/>`
+	iconPublic = `<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>`
+	iconCode   = `<path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/>`
+	iconPeople = `<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>`
+	iconOnlyMe = `<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>`
+	iconLocked = `<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>`
+)
+
+// badgesFor is the site's access level, then its lock, as icons.
+func badgesFor(p policy, t uiText) []badge {
+	var b badge
 	switch accessKey(p) {
 	case "public":
-		return t.BadgePublic
+		b = badge{iconPublic, t.TipPublic}
 	case "code":
-		return t.BadgeCode
+		b = badge{iconCode, t.TipCode}
 	case "only-me":
-		return t.BadgeOnlyMe
+		b = badge{iconOnlyMe, t.TipOnlyMe}
 	case "people":
-		return t.BadgePeople
+		b = badge{iconPeople, t.TipPeople}
 	default:
-		return t.BadgeSSO
+		b = badge{iconTeam, t.TipTeam}
 	}
+	out := []badge{b}
+	if p.Locked {
+		out = append(out, badge{iconLocked, t.TipLocked})
+	}
+	return out
 }

@@ -84,3 +84,23 @@ func TestSitePageNamesAdmins(t *testing.T) {
 		t.Errorf("owner page doesn't name the admins:\n%s", page)
 	}
 }
+
+// The dashboard shows access and lock as icons whose text explains them.
+func TestDashboardBadgeIcons(t *testing.T) {
+	e := newPeopleEnv(t)
+	e.setPolicy(t, "app", policy{CreatedBy: ann, Access: quick.AccessCode, Locked: true, Owner: ann})
+	w := e.visit("quick.test", ann, "/dashboard?lang=it", nil)
+	page := w.Body.String()
+	for _, want := range []string{
+		`aria-label="Con codice: chiunque abbia il codice di accesso."`,
+		`aria-label="Bloccato: solo chi l&#39;ha bloccato può sovrascriverlo."`,
+		`<svg`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("dashboard misses %q", want)
+		}
+	}
+	if strings.Contains(page, `<span class="tag">codice</span>`) {
+		t.Error("dashboard still shows the text badge")
+	}
+}

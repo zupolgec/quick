@@ -149,7 +149,7 @@ func (s *server) renderSitePageWith(w http.ResponseWriter, r *http.Request, name
 	w.WriteHeader(status)
 	_ = dashboardSitePage.Execute(w, map[string]any{
 		"Email": email, "Name": name, "URL": "https://" + name + "." + s.baseDomain,
-		"Base": s.baseDomain, "Access": policyBadge(p, t),
+		"Base": s.baseDomain, "Badges": badgesFor(p, t),
 		"Locked": p.Locked, "Updated": updatedLabel(p), "Exists": exists,
 		"Tokens": tokenInfos(p.Tokens), "Reveal": reveal, "CSRF": csrf,
 		"Owner": p.CreatedBy, "IsOwner": s.actsAsOwner(p, email), "Levels": levels,
@@ -232,10 +232,9 @@ type dashRow struct {
 	Name    string
 	URL     string
 	Manage  string
-	Badge   string // localized access label
-	Locked  bool
-	Updated string // "who · when", preformatted
-	at      string // raw RFC3339, for sorting
+	Badges  []badge // access level and lock
+	Updated string  // "who · when", preformatted
+	at      string  // raw RFC3339, for sorting
 	Mine    bool
 }
 
@@ -252,8 +251,7 @@ func (s *server) renderDashboard(w http.ResponseWriter, l lang, email string) {
 			Name:    n,
 			URL:     "https://" + n + "." + s.baseDomain,
 			Manage:  "/dashboard/site/" + n,
-			Badge:   policyBadge(p, t),
-			Locked:  p.Locked,
+			Badges:  badgesFor(p, t),
 			Updated: updatedLabel(p),
 			at:      p.UpdatedAt,
 			Mine:    isOwner(p, email),
@@ -377,6 +375,7 @@ header+h2{margin-top:0}
 .manage{display:inline-flex;align-items:center;justify-content:center;min-height:2.5rem;padding:0 1rem;font-size:.92rem;font-weight:500;color:var(--ink);background:var(--sunk);white-space:nowrap;text-decoration:none;transition:background-color .18s,color .18s}
 .manage:hover{background:var(--brand);color:#fff;text-decoration:none}
 .tag{display:inline-flex;align-items:center;font-size:.8rem;line-height:1;padding:.3rem .5rem;background:var(--sunk);color:var(--muted)}
+` + badgeCSS + `
 .empty{color:var(--muted);font-size:1rem}
 .help{margin-top:3rem;color:var(--muted);font-size:.95rem}
 code{background:var(--sunk);padding:.12rem .4rem;font-size:.88em;font-family:var(--font-code)}
@@ -395,7 +394,7 @@ code{background:var(--sunk);padding:.12rem .4rem;font-size:.88em;font-family:var
   <div class="list">
   {{if .Mine}}{{range .Mine}}
   <div class="site" data-name="{{.Name}}">
-    <div class="site-main"><div class="titleline"><span class="name"><a href="{{.URL}}">{{.Name}}</a></span><span class="tag">{{.Badge}}</span>{{if .Locked}}<span class="tag">{{$.T.DashLocked}}</span>{{end}}</div><div class="meta">{{.Updated}}</div></div>
+    <div class="site-main"><div class="titleline"><span class="name"><a href="{{.URL}}">{{.Name}}</a></span>` + badgeIcons + `</div><div class="meta">{{.Updated}}</div></div>
     <a class="manage" href="{{.Manage}}">{{$.T.DashManage}}</a>
   </div>{{end}}<p class="empty nomatch">{{.T.DashNoMatch}}</p>{{else}}<p class="empty">{{.T.DashEmptyMine}} <code>quick deploy</code>.</p>{{end}}
   </div>
@@ -404,7 +403,7 @@ code{background:var(--sunk);padding:.12rem .4rem;font-size:.88em;font-family:var
   <div class="list">
   {{if .All}}{{range .All}}
   <div class="site" data-name="{{.Name}}">
-    <div class="site-main"><div class="titleline"><span class="name"><a href="{{.URL}}">{{.Name}}</a></span><span class="tag">{{.Badge}}</span>{{if .Locked}}<span class="tag">{{$.T.DashLocked}}</span>{{end}}</div><div class="meta">{{.Updated}}</div></div>
+    <div class="site-main"><div class="titleline"><span class="name"><a href="{{.URL}}">{{.Name}}</a></span>` + badgeIcons + `</div><div class="meta">{{.Updated}}</div></div>
     <a class="manage" href="{{.Manage}}">{{$.T.DashManage}}</a>
   </div>{{end}}<p class="empty nomatch">{{.T.DashNoMatch}}</p>{{else}}<p class="empty">{{.T.DashEmptyAll}}</p>{{end}}
   </div>
@@ -418,6 +417,17 @@ code{background:var(--sunk);padding:.12rem .4rem;font-size:.88em;font-family:var
 (function(){var q=document.getElementById("search");if(!q)return;q.addEventListener("input",function(){var v=q.value.trim().toLowerCase();document.querySelectorAll(".list").forEach(function(l){var n=0;l.querySelectorAll(".site").forEach(function(s){var ok=s.dataset.name.indexOf(v)>=0;s.hidden=!ok;if(ok)n++});var m=l.querySelector(".nomatch");if(m)m.style.display=n?"none":"block"})})})();
 </script>
 </body></html>`))
+
+// badgeIcons renders .Badges: icons whose explanation shows on hover or
+// focus (tabindex, so touch and keyboard reach it) and is the accessible name.
+const badgeIcons = `{{range .Badges}}<span class="ico" tabindex="0" role="img" aria-label="{{.Tip}}" data-tip="{{.Tip}}"><svg viewBox="0 0 24 24" aria-hidden="true">{{.Icon}}</svg></span>{{end}}`
+
+const badgeCSS = `.ico{position:relative;display:inline-grid;place-items:center;width:1.75rem;height:1.75rem;background:var(--sunk);color:var(--muted);cursor:help;outline:none;transition:color .15s}
+.ico svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ico:hover,.ico:focus-visible{color:var(--ink)}
+.ico:focus-visible{box-shadow:0 0 0 2px var(--brand)}
+.ico::after{content:attr(data-tip);position:absolute;top:calc(100% + 6px);left:0;width:max-content;max-width:15rem;padding:.45rem .6rem;background:var(--ink);color:var(--card);font-family:var(--font-body);font-size:.82rem;font-weight:400;line-height:1.35;text-align:left;white-space:normal;opacity:0;pointer-events:none;transition:opacity .15s;z-index:5}
+.ico:hover::after,.ico:focus::after{opacity:1}`
 
 var dashboardSitePage = template.Must(template.New("dash-site").Parse(`<!doctype html>
 <html lang="{{.Lang}}"><head><meta charset="utf-8">
@@ -434,6 +444,10 @@ h1{font-size:2.5rem;line-height:1;letter-spacing:-.035em;margin:0;color:var(--in
 .url a{overflow-wrap:anywhere}
 .tags{display:flex;gap:.4rem;flex-wrap:wrap;justify-content:flex-end}
 .tag{font-size:.8rem;line-height:1;padding:.3rem .5rem;background:var(--card);color:var(--muted)}
+` + badgeCSS + `
+.tags .ico{background:var(--card)}
+.tags .ico::after{left:auto;right:0}
+@media(max-width:680px){.tags .ico::after{left:0;right:auto}}
 .panel{background:var(--card);padding:1.5rem 1.5rem 1.6rem;margin-top:4px}
 .panel h2{font-size:1.35rem;margin:0 0 .4rem;color:var(--ink)}
 .hint{color:var(--muted);font-size:.95rem;margin:0 0 1.1rem;max-width:64ch}
@@ -484,7 +498,7 @@ form.access .btn{justify-self:start;margin-top:.6rem}
   <a class="back" href="/dashboard">{{.T.SiteBack}}</a>
   <div class="top">
     <div><h1>{{.Name}}</h1><div class="url"><a href="{{.URL}}">{{.URL}}</a></div></div>
-    <div class="tags"><span class="tag">{{.Access}}</span>{{if .Locked}}<span class="tag">{{.T.DashLocked}}</span>{{end}}{{if not .Exists}}<span class="tag">{{.T.SiteNoFiles}}</span>{{end}}</div>
+    <div class="tags">` + badgeIcons + `{{if not .Exists}}<span class="tag">{{.T.SiteNoFiles}}</span>{{end}}</div>
   </div>
 
   {{if .Reveal}}<div class="reveal">
