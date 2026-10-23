@@ -89,12 +89,14 @@ type uiText struct {
 
 	SSOTitle, SSOHeading, SSOIntro, SSOButton string
 
-	DashTitle, DashYourSites, DashAllSites                       string
-	DashEmptyMine, DashEmptyAll                                  string
-	DashHelpPublish, DashHelpDocs                                string
-	DashSearch, DashNoMatch, NavDocs, GuideMore                  string
-	TipTeam, TipPublic, TipCode, TipPeople, TipOnlyMe, TipLocked string
-	DashManage                                                   string
+	DashTitle                                                                      string
+	DashFilterAll, DashFilterMine, DashFilterTeam, DashFilterPublic                string
+	DashFilterCode, DashFilterRestricted, DashFilterLocked, DashYours, DashUpdated string
+	DashEmptyMine, DashEmptyAll                                                    string
+	DashHelpPublish, DashHelpDocs                                                  string
+	DashSearch, DashNoMatch, NavDocs, GuideMore                                    string
+	TipTeam, TipPublic, TipCode, TipPeople, TipOnlyMe, TipLocked                   string
+	DashManage                                                                     string
 
 	AccessTitle, AccessOwner, AccessCurrent, AccessOwnerOnly, AccessSave string
 	AccessCodeLabel, AccessCodeKeep                                      string
@@ -153,18 +155,25 @@ var uiTexts = map[lang]uiText{
 		SSOIntro:   "Sign in with your company account to continue to",
 		SSOButton:  "Sign in with Google",
 
-		DashTitle:       "quick — your sites",
-		DashYourSites:   "Your sites",
-		DashAllSites:    "All sites",
-		DashEmptyMine:   "You haven't published any sites yet. Use",
-		DashEmptyAll:    "No sites published.",
-		DashHelpPublish: "Publish a folder:",
-		DashHelpDocs:    "Install the CLI and read the guides at",
-		DashSearch:      "Search by name",
-		DashNoMatch:     "No site matches.",
-		NavDocs:         "Docs",
-		GuideMore:       "All commands and guides",
-		DashManage:      "Manage",
+		DashTitle:            "quick — your sites",
+		DashFilterAll:        "All",
+		DashFilterMine:       "Mine",
+		DashFilterTeam:       "Company",
+		DashFilterPublic:     "Public",
+		DashFilterCode:       "With a code",
+		DashFilterRestricted: "Restricted",
+		DashFilterLocked:     "Locked",
+		DashYours:            "Yours",
+		DashUpdated:          "updated",
+		DashEmptyMine:        "You haven't published any sites yet. Use",
+		DashEmptyAll:         "No sites published.",
+		DashHelpPublish:      "Publish a folder:",
+		DashHelpDocs:         "Install the CLI and read the guides at",
+		DashSearch:           "Search by name",
+		DashNoMatch:          "No site matches.",
+		NavDocs:              "Docs",
+		GuideMore:            "All commands and guides",
+		DashManage:           "Manage",
 
 		SiteBack:        "Back to dashboard",
 		SiteTitle:       "Manage site",
@@ -283,18 +292,25 @@ var uiTexts = map[lang]uiText{
 		SSOIntro:   "Accedi con l'account aziendale per continuare su",
 		SSOButton:  "Accedi con Google",
 
-		DashTitle:       "quick · i tuoi siti",
-		DashYourSites:   "I tuoi siti",
-		DashAllSites:    "Tutti i siti",
-		DashEmptyMine:   "Non hai ancora pubblicato nessun sito. Usa",
-		DashEmptyAll:    "Nessun sito pubblicato.",
-		DashHelpPublish: "Pubblica una cartella:",
-		DashHelpDocs:    "Installazione della CLI e guide su",
-		DashSearch:      "Cerca per nome",
-		DashNoMatch:     "Nessun sito corrisponde.",
-		NavDocs:         "Documentazione",
-		GuideMore:       "Tutti i comandi e le guide",
-		DashManage:      "Gestisci",
+		DashTitle:            "quick · i tuoi siti",
+		DashFilterAll:        "Tutti",
+		DashFilterMine:       "Miei",
+		DashFilterTeam:       "Azienda",
+		DashFilterPublic:     "Pubblici",
+		DashFilterCode:       "Con codice",
+		DashFilterRestricted: "Riservati",
+		DashFilterLocked:     "Bloccati",
+		DashYours:            "Tuo",
+		DashUpdated:          "aggiornato",
+		DashEmptyMine:        "Non hai ancora pubblicato nessun sito. Usa",
+		DashEmptyAll:         "Nessun sito pubblicato.",
+		DashHelpPublish:      "Pubblica una cartella:",
+		DashHelpDocs:         "Installazione della CLI e guide su",
+		DashSearch:           "Cerca per nome",
+		DashNoMatch:          "Nessun sito corrisponde.",
+		NavDocs:              "Documentazione",
+		GuideMore:            "Tutti i comandi e le guide",
+		DashManage:           "Gestisci",
 
 		SiteBack:        "Torna alla dashboard",
 		SiteTitle:       "Gestisci il sito",

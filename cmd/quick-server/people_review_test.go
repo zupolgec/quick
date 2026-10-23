@@ -115,9 +115,8 @@ func TestDashboardMineIgnoresCase(t *testing.T) {
 	e.setPolicy(t, "app", policy{CreatedBy: "Ann@Example.com"})
 	e.setPolicy(t, "open", policy{CreatedBy: bob})
 	b := e.visit("quick.test", ann, "/dashboard", nil).Body.String()
-	mine := b[:strings.Index(b, "All sites")]
-	if !strings.Contains(mine, "app.quick.test") || strings.Contains(mine, "open.quick.test") {
-		t.Errorf("your sites:\n%s", mine)
+	if !strings.Contains(b, `data-name="app" data-access="team" data-mine="1"`) || strings.Contains(b, `data-name="open" data-access="team" data-mine="1"`) {
+		t.Errorf("mine marks:\n%s", b)
 	}
 }
 

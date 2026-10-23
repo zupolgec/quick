@@ -229,13 +229,21 @@ func (s *server) siteInfo(name string, p policy) quick.SiteInfo {
 }
 
 type dashRow struct {
-	Name    string
-	URL     string
-	Manage  string
-	Badges  []badge // access level and lock
-	Updated string  // "who · when", preformatted
-	at      string  // raw RFC3339, for sorting
-	Mine    bool
+	Name   string
+	URL    string
+	Manage string
+	Badges []badge // access level and lock
+	Meta   string  // "owner · updated date", preformatted
+	Access string  // accessKey, for the filters
+	Locked bool
+	at     string // raw RFC3339, for sorting
+	Mine   bool
+}
+
+// dashFilter is a quick filter above the site list.
+type dashFilter struct {
+	Key, Label string
+	Count      int
 }
 
 func (s *server) renderDashboard(w http.ResponseWriter, l lang, email string) {
@@ -248,13 +256,15 @@ func (s *server) renderDashboard(w http.ResponseWriter, l lang, email string) {
 			continue // a people site (or one that might be) is listed only to its people
 		}
 		rows = append(rows, dashRow{
-			Name:    n,
-			URL:     "https://" + n + "." + s.baseDomain,
-			Manage:  "/dashboard/site/" + n,
-			Badges:  badgesFor(p, t),
-			Updated: updatedLabel(p),
-			at:      p.UpdatedAt,
-			Mine:    isOwner(p, email),
+			Name:   n,
+			URL:    "https://" + n + "." + s.baseDomain,
+			Manage: "/dashboard/site/" + n,
+			Badges: badgesFor(p, t),
+			Meta:   dashMeta(p, email, t),
+			Access: accessKey(p),
+			Locked: p.Locked,
+			at:     p.UpdatedAt,
+			Mine:   isOwner(p, email),
 		})
 	}
 	// Most recent first; rows without a timestamp sink to the bottom, by name.
@@ -265,19 +275,71 @@ func (s *server) renderDashboard(w http.ResponseWriter, l lang, email string) {
 		return rows[i].Name < rows[j].Name
 	})
 
-	var mine, all []dashRow
-	for _, r := range rows {
-		if r.Mine {
-			mine = append(mine, r)
-		}
-		all = append(all, r)
-	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Add("Vary", "Accept-Language")
 	_ = dashboardPage.Execute(w, map[string]any{
-		"Email": email, "Mine": mine, "All": all, "Base": s.baseDomain,
+		"Email": email, "Sites": rows, "Filters": dashFilters(rows, t), "Base": s.baseDomain,
 		"Lang": string(l), "T": t,
 	})
+}
+
+// dashFilters: all and mine always, the others only when they match a site.
+// The keys are what the page's script matches against the rows.
+func dashFilters(rows []dashRow, t uiText) []dashFilter {
+	fs := []dashFilter{
+		{"all", t.DashFilterAll, 0}, {"mine", t.DashFilterMine, 0},
+		{"team", t.DashFilterTeam, 0}, {"public", t.DashFilterPublic, 0},
+		{"code", t.DashFilterCode, 0}, {"restricted", t.DashFilterRestricted, 0},
+		{"locked", t.DashFilterLocked, 0},
+	}
+	for _, r := range rows {
+		for i := range fs {
+			if r.matches(fs[i].Key) {
+				fs[i].Count++
+			}
+		}
+	}
+	out := fs[:2]
+	for _, f := range fs[2:] {
+		if f.Count > 0 {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+func (r dashRow) matches(key string) bool {
+	switch key {
+	case "all":
+		return true
+	case "mine":
+		return r.Mine
+	case "restricted":
+		return r.Access == "people" || r.Access == "only-me"
+	case "locked":
+		return r.Locked
+	}
+	return r.Access == key
+}
+
+// dashMeta: whose the site is ("Yours" for the viewer's own) and when it
+// last changed.
+func dashMeta(p policy, email string, t uiText) string {
+	owner := p.CreatedBy
+	if isOwner(p, email) {
+		owner = t.DashYours
+	}
+	when := ""
+	if ts, err := time.Parse(time.RFC3339, p.UpdatedAt); err == nil {
+		when = t.DashUpdated + " " + ts.Format("2006-01-02")
+	}
+	switch {
+	case owner != "" && when != "":
+		return owner + " · " + when
+	case owner != "" || when != "":
+		return owner + when
+	}
+	return "—"
 }
 
 func updatedLabel(p policy) string {
@@ -364,15 +426,13 @@ var dashboardPage = template.Must(template.New("dash").Parse(`<!doctype html>
 .wrap{max-width:` + pageWidth + `;margin:0 auto;padding:2.5rem 1.25rem 4rem}
 header{display:flex;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:2.5rem}
 .who{min-width:0;color:var(--muted);font-size:.95rem;overflow-wrap:anywhere;text-align:right}
-h2{font-size:1.5rem;color:var(--ink);margin:2.75rem 0 .9rem}
-header+h2{margin-top:0}
-.site{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:1rem;padding:1rem 1.15rem;background:var(--card);margin-bottom:4px}
+.site{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:1rem;padding:.7rem 1rem .75rem 1.15rem;background:var(--card);margin-bottom:4px}
 .site-main{min-width:0}
 .titleline{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;min-width:0}
 .site .name{font-size:1.15rem;font-weight:500;font-family:var(--font-head)}
 .site .name a{color:var(--ink);overflow-wrap:anywhere}
-.site .meta{min-width:0;color:var(--muted);font-size:.88rem;overflow-wrap:anywhere;margin-top:.2rem}
-.manage{display:inline-flex;align-items:center;justify-content:center;min-height:2.5rem;padding:0 1rem;font-size:.92rem;font-weight:500;color:var(--ink);background:var(--sunk);white-space:nowrap;text-decoration:none;transition:background-color .18s,color .18s}
+.site .meta{min-width:0;color:var(--muted);font-size:.86rem;overflow-wrap:anywhere;margin-top:.1rem}
+.manage{display:inline-flex;align-items:center;justify-content:center;min-height:2.25rem;padding:0 1rem;font-size:.92rem;font-weight:500;color:var(--ink);background:var(--sunk);white-space:nowrap;text-decoration:none;transition:background-color .18s,color .18s}
 .manage:hover{background:var(--brand);color:#fff;text-decoration:none}
 .tag{display:inline-flex;align-items:center;font-size:.8rem;line-height:1;padding:.3rem .5rem;background:var(--sunk);color:var(--muted)}
 ` + badgeCSS + `
@@ -380,33 +440,36 @@ header+h2{margin-top:0}
 .help{margin-top:3rem;color:var(--muted);font-size:.95rem}
 code{background:var(--sunk);padding:.12rem .4rem;font-size:.88em;font-family:var(--font-code)}
 .help code{background:var(--card)}
+.toolbar{display:grid;gap:.6rem;margin-bottom:1.25rem}
 .search{width:100%;height:2.75rem;border:0;border-radius:0;background:var(--card);color:var(--fg);font:inherit;font-size:1rem;padding:0 .9rem;margin:0}
-.site[hidden],.nomatch{display:none}
+.filters{display:flex;gap:4px;flex-wrap:wrap}
+.filter{display:inline-flex;align-items:center;gap:.4rem;height:2.25rem;padding:0 .8rem;border:0;border-radius:0;background:var(--card);color:var(--muted);font-family:var(--font-head);font-size:.9rem;font-weight:500;cursor:pointer;transition:background-color .15s,color .15s}
+.filter:hover{color:var(--ink)}
+.filter[aria-pressed=true]{background:var(--brand);color:#fff}
+.filter .count{font-size:.8rem;font-weight:400;opacity:.75;font-variant-numeric:tabular-nums}
+.filter:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.site[hidden],.nomatch,.nomine{display:none}
 .help a{white-space:nowrap}
-@media(max-width:640px){.wrap{padding:1.5rem 1rem 3rem}header{display:grid;grid-template-columns:minmax(0,1fr) auto}.who{text-align:left;grid-column:1/-1;margin-top:.75rem}.site{padding:.9rem}.help code{overflow-wrap:anywhere}}
+@media(max-width:640px){.filters{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -1rem;padding:0 1rem}.filter{flex:none}.wrap{padding:1.5rem 1rem 3rem}header{display:grid;grid-template-columns:minmax(0,1fr) auto}.who{text-align:left;grid-column:1/-1;margin-top:.75rem}.site{padding:.9rem}.help code{overflow-wrap:anywhere}}
 </style></head><body>
 <div class="wrap">
   <header>` + brandLink + `<div class="who">{{.Email}}</div></header>
 
-  {{if .All}}<input class="search" id="search" type="search" placeholder="{{.T.DashSearch}}" aria-label="{{.T.DashSearch}}" autocomplete="off">{{end}}
-
-  <h2>{{.T.DashYourSites}}</h2>
-  <div class="list">
-  {{if .Mine}}{{range .Mine}}
-  <div class="site" data-name="{{.Name}}">
-    <div class="site-main"><div class="titleline"><span class="name"><a href="{{.URL}}">{{.Name}}</a></span>` + badgeIcons + `</div><div class="meta">{{.Updated}}</div></div>
-    <a class="manage" href="{{.Manage}}">{{$.T.DashManage}}</a>
-  </div>{{end}}<p class="empty nomatch">{{.T.DashNoMatch}}</p>{{else}}<p class="empty">{{.T.DashEmptyMine}} <code>quick deploy</code>.</p>{{end}}
+  {{if .Sites}}<div class="toolbar">
+    <input class="search" id="search" type="search" placeholder="{{.T.DashSearch}}" aria-label="{{.T.DashSearch}}" autocomplete="off">
+    <div class="filters" role="group" aria-label="{{.T.DashFilterAll}}">{{range $i, $f := .Filters}}<button type="button" class="filter" data-filter="{{.Key}}" aria-pressed="{{if eq $i 0}}true{{else}}false{{end}}">{{.Label}} <span class="count">{{.Count}}</span></button>{{end}}</div>
   </div>
 
-  <h2>{{.T.DashAllSites}}</h2>
   <div class="list">
-  {{if .All}}{{range .All}}
-  <div class="site" data-name="{{.Name}}">
-    <div class="site-main"><div class="titleline"><span class="name"><a href="{{.URL}}">{{.Name}}</a></span>` + badgeIcons + `</div><div class="meta">{{.Updated}}</div></div>
+  {{range .Sites}}
+  <div class="site" data-name="{{.Name}}" data-access="{{.Access}}"{{if .Mine}} data-mine="1"{{end}}{{if .Locked}} data-locked="1"{{end}}>
+    <div class="site-main"><div class="titleline"><span class="name"><a href="{{.URL}}">{{.Name}}</a></span>` + badgeIcons + `</div><div class="meta">{{.Meta}}</div></div>
     <a class="manage" href="{{.Manage}}">{{$.T.DashManage}}</a>
-  </div>{{end}}<p class="empty nomatch">{{.T.DashNoMatch}}</p>{{else}}<p class="empty">{{.T.DashEmptyAll}}</p>{{end}}
+  </div>{{end}}
+  <p class="empty nomatch">{{.T.DashNoMatch}}</p>
+  <p class="empty nomine">{{.T.DashEmptyMine}} <code>quick deploy</code>.</p>
   </div>
+  {{else}}<p class="empty">{{.T.DashEmptyAll}} {{.T.DashEmptyMine}} <code>quick deploy</code>.</p>{{end}}
 
   <div class="help">
     {{.T.DashHelpPublish}} <code>quick deploy &lt;name&gt; ./folder</code> → <code>&lt;name&gt;.{{.Base}}</code>.
@@ -414,7 +477,20 @@ code{background:var(--sunk);padding:.12rem .4rem;font-size:.88em;font-family:var
   </div>
 </div>
 <script>
-(function(){var q=document.getElementById("search");if(!q)return;q.addEventListener("input",function(){var v=q.value.trim().toLowerCase();document.querySelectorAll(".list").forEach(function(l){var n=0;l.querySelectorAll(".site").forEach(function(s){var ok=s.dataset.name.indexOf(v)>=0;s.hidden=!ok;if(ok)n++});var m=l.querySelector(".nomatch");if(m)m.style.display=n?"none":"block"})})})();
+(function(){
+  var q=document.getElementById("search");if(!q)return;
+  var rows=[].slice.call(document.querySelectorAll(".site")),btns=[].slice.call(document.querySelectorAll(".filter"));
+  var cur="all";try{cur=localStorage.getItem("quick-filter")||"all"}catch(e){}
+  if(!btns.some(function(b){return b.dataset.filter===cur}))cur="all";
+  function match(s,f){var d=s.dataset;switch(f){case"all":return true;case"mine":return d.mine==="1";case"locked":return d.locked==="1";case"restricted":return d.access==="people"||d.access==="only-me";default:return d.access===f}}
+  function apply(){var v=q.value.trim().toLowerCase(),n=0;
+    rows.forEach(function(s){var ok=match(s,cur)&&s.dataset.name.indexOf(v)>=0;s.hidden=!ok;if(ok)n++});
+    btns.forEach(function(b){b.setAttribute("aria-pressed",b.dataset.filter===cur?"true":"false")});
+    var none=n===0,mineEmpty=none&&cur==="mine"&&!v;
+    document.querySelector(".nomatch").style.display=none&&!mineEmpty?"block":"none";
+    document.querySelector(".nomine").style.display=mineEmpty?"block":"none"}
+  btns.forEach(function(b){b.addEventListener("click",function(){cur=b.dataset.filter;try{localStorage.setItem("quick-filter",cur)}catch(e){}apply()})});
+  q.addEventListener("input",apply);apply()})();
 </script>
 </body></html>`))
 

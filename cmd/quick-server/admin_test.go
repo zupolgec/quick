@@ -104,3 +104,31 @@ func TestDashboardBadgeIcons(t *testing.T) {
 		t.Error("dashboard still shows the text badge")
 	}
 }
+
+// One list, each site once, with quick filters and their counts.
+func TestDashboardSingleListWithFilters(t *testing.T) {
+	e := newPeopleEnv(t)
+	e.setPolicy(t, "app", policy{CreatedBy: ann, Access: quick.AccessCode, UpdatedAt: "2026-10-20T10:00:00Z"})
+	// "open" (from newPeopleEnv) belongs to ann too; add someone else's public site.
+	putSite(t, e.s.store, "pub", map[string]string{"index.html": "x"})
+	e.setPolicy(t, "pub", policy{CreatedBy: bob, Access: quick.AccessPublic, Locked: true, Owner: bob})
+	page := e.visit("quick.test", ann, "/dashboard?lang=it", nil).Body.String()
+	if n := strings.Count(page, `data-name="app"`); n != 1 {
+		t.Errorf("app listed %d times, want 1", n)
+	}
+	for _, want := range []string{
+		`data-filter="all"`, `Tutti <span class="count">3</span>`,
+		`data-filter="mine"`, `Miei <span class="count">2</span>`,
+		`Pubblici <span class="count">1</span>`, `Con codice <span class="count">1</span>`,
+		`Bloccati <span class="count">1</span>`,
+		`data-access="code"`, `data-mine="1"`, `data-locked="1"`,
+		"Tuo · aggiornato 2026-10-20",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("dashboard misses %q", want)
+		}
+	}
+	if strings.Contains(page, "Riservati") {
+		t.Error("a filter with no sites is shown")
+	}
+}
