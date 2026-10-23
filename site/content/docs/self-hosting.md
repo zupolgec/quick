@@ -69,7 +69,7 @@ The server fails closed: outside local development it refuses to start without `
 
 ## Storage
 
-**Local disk** keeps site files and settings in two mounted folders. Next to the settings the server keeps a map of the chunks of the live and the previous version, so incremental deploys never re-read the site; if the map is missing it is rebuilt from the files.
+**Local disk** keeps site files and settings in two mounted folders. Files identical in the live and the previous version are stored once (hardlinks), so the rollback copy costs only what changed. Next to the settings the server keeps a map of the chunks of the live and the previous version, so incremental deploys never re-read the site; if the map is missing it is rebuilt from the files.
 
 **S3-compatible storage** (Hetzner, MinIO, R2, AWS and others) makes the container stateless. Each deploy writes to `versions/<site>/<id>/` and then switches one pointer, `live/<site>.json`, which names the live and the previous version; rollback swaps them. Old versions are removed by later deploys after a 15-minute grace period, so requests in flight and other instances can finish reading them. Other instances see a new pointer within a few seconds.
 

@@ -254,7 +254,9 @@ quick rollback foo   # restores the previous version (a second rollback redoes i
 ```
 
 Every deploy keeps the previous version: `rollback` swaps them. This works on local
-storage and on object storage alike.
+storage and on object storage alike. On local storage, files that didn't change
+between the two versions are stored once (hardlinks), so a large unchanged video
+doesn't take twice the space.
 
 Publishing is atomic on both: the new version is written aside and becomes visible
 all at once only at the end, so visitors see the old version or the new one, never a

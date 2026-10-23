@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -99,5 +101,79 @@ func TestLocalReportsFreeSpace(t *testing.T) {
 	}
 	if n, err := sr.FreeBytes(); err != nil || n <= 0 {
 		t.Fatalf("FreeBytes = %d, %v", n, err)
+	}
+}
+
+// A file identical to the live one is shared with it (hardlink), so the
+// rollback copy of an unchanged file takes no space; changed files are not.
+// Rolling back and forth keeps every version's content.
+func TestPutSiteSharesUnchangedFiles(t *testing.T) {
+	l := newLocalT(t)
+	video := strings.Repeat("v", 1<<20)
+	if err := l.PutSite("demo", tarOf(map[string]string{"video.mp4": video, "index.html": "one"})); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.PutSite("demo", tarOf(map[string]string{"video.mp4": video, "index.html": "two"})); err != nil {
+		t.Fatal(err)
+	}
+	stat := func(dir, name string) os.FileInfo {
+		fi, err := os.Stat(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fi
+	}
+	live, prev := filepath.Join(l.sitesDir, "demo"), l.prevPath("demo")
+	if !os.SameFile(stat(live, "video.mp4"), stat(prev, "video.mp4")) {
+		t.Error("unchanged file not shared between versions")
+	}
+	if os.SameFile(stat(live, "index.html"), stat(prev, "index.html")) {
+		t.Error("changed file shared between versions")
+	}
+	read := func(name string) string {
+		rc, _, err := l.OpenFile("demo", name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rc.Close()
+		b, _ := io.ReadAll(rc)
+		return string(b)
+	}
+	if ok, err := l.Rollback("demo"); !ok || err != nil {
+		t.Fatalf("rollback: %v %v", ok, err)
+	}
+	if read("index.html") != "one" || read("video.mp4") != video {
+		t.Error("rolled back content differs")
+	}
+	if ok, err := l.Rollback("demo"); !ok || err != nil {
+		t.Fatalf("roll forward: %v %v", ok, err)
+	}
+	if read("index.html") != "two" || read("video.mp4") != video {
+		t.Error("rolled forward content differs")
+	}
+}
+
+// A path listed twice in a deploy, first identical to the live file (so
+// linked) then different, must not change the live file through the link.
+func TestPutSiteDuplicatePathKeepsLiveIntact(t *testing.T) {
+	l := newLocalT(t)
+	if err := l.PutSite("demo", tarOf(map[string]string{"a.txt": "old"})); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	for _, c := range []string{"old", "new"} {
+		_ = tw.WriteHeader(&tar.Header{Name: "a.txt", Mode: 0o644, Size: int64(len(c)), Typeflag: tar.TypeReg})
+		_, _ = tw.Write([]byte(c))
+	}
+	_ = tw.Close()
+	if err := l.PutSite("demo", tar.NewReader(&buf)); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(l.prevPath("demo"), "a.txt")); string(b) != "old" {
+		t.Fatalf("previous version changed to %q", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(l.sitesDir, "demo", "a.txt")); string(b) != "new" {
+		t.Fatalf("live is %q, want new", b)
 	}
 }

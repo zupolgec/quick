@@ -5,6 +5,7 @@ package storage
 
 import (
 	"archive/tar"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -171,6 +172,9 @@ func (l *local) PutSite(site string, tr *tar.Reader) error {
 			if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 				return err
 			}
+			// A path seen twice may already be linked to the live file:
+			// never write through it.
+			os.Remove(dst)
 			f, err := os.Create(dst)
 			if err != nil {
 				return err
@@ -185,6 +189,7 @@ func (l *local) PutSite(site string, tr *tar.Reader) error {
 			if extracted += n; extracted > MaxExtractBytes {
 				return errArchiveTooBig
 			}
+			shareIfSame(filepath.Join(l.sitesDir, site, rel), dst, n)
 		}
 	}
 
@@ -206,6 +211,52 @@ func (l *local) PutSite(site string, tr *tar.Reader) error {
 		return err
 	}
 	return nil
+}
+
+// shareIfSame replaces the new file dst with a hardlink to the live file at
+// the same path when their contents are identical, so the rollback copy of an
+// unchanged file takes no space. Safe because no file under the sites dir is
+// ever written in place: deploys write new trees, rollbacks rename them.
+// Best effort: on any error dst stays a copy.
+func shareIfSame(live, dst string, size int64) {
+	fi, err := os.Lstat(live)
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() != size || !sameContent(live, dst) {
+		return
+	}
+	tmp := dst + ".link"
+	if err := os.Link(live, tmp); err != nil {
+		return
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		os.Remove(tmp)
+	}
+}
+
+func sameContent(a, b string) bool {
+	fa, err := os.Open(a)
+	if err != nil {
+		return false
+	}
+	defer fa.Close()
+	fb, err := os.Open(b)
+	if err != nil {
+		return false
+	}
+	defer fb.Close()
+	ba, bb := make([]byte, 256<<10), make([]byte, 256<<10)
+	for {
+		na, ea := io.ReadFull(fa, ba)
+		nb, eb := io.ReadFull(fb, bb)
+		if na != nb || !bytes.Equal(ba[:na], bb[:nb]) {
+			return false
+		}
+		if ea == io.EOF || ea == io.ErrUnexpectedEOF {
+			return eb == ea
+		}
+		if ea != nil || eb != nil {
+			return false
+		}
+	}
 }
 
 // AtomicPutSite: extraction goes to a temp dir, swapped in only at the end.

@@ -259,7 +259,9 @@ quick rollback foo   # ripristina la versione precedente (un secondo rollback la
 ```
 
 Ogni deploy conserva la versione precedente: `rollback` le scambia. Vale sia
-sullo storage locale sia sull'object storage.
+sullo storage locale sia sull'object storage. Con lo storage locale i file che non
+cambiano tra le due versioni sono salvati una volta sola (hardlink), così un video
+grande rimasto uguale non occupa il doppio dello spazio.
 
 La pubblicazione è atomica su entrambi: la nuova versione viene scritta a parte
 e diventa visibile tutta insieme solo alla fine, quindi chi visita il sito vede
