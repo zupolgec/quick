@@ -52,6 +52,10 @@ Run `quick status` or `quick deploy --dry-run` to see what is in and what is out
 
 Builds compressed as a whole change everywhere on every build, so they gain little from incremental deploys. Publish them uncompressed if upload time matters more than file size.
 
+## Size limit
+
+A site can take up to 100 MB per version, unless the server sets another default. Bigger sites, such as game builds with video, need an administrator to raise that site's limit (`quick limit <site> 1.5GB`, or the site's page in the dashboard). `quick limit <site>` shows the current one. A deploy over the limit is refused before anything changes on the site.
+
 ## Incremental deploys
 
 The CLI splits files into content-defined chunks of about 64 KiB and uploads only the chunks the server doesn't already have in the published version. Changing part of a large file sends a few chunks; a renamed file sends nothing. The CLI reports what it really sent, for example `uploaded 9.2 KB of 3.1 MB`. Against an older server, or a busy one, it uploads the whole folder.

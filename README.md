@@ -274,6 +274,22 @@ for who can overwrite/delete/change visibility is set on the server with
 On top of that, the creator can `quick lock` their site to reserve changes to
 themselves in any mode (`quick unlock` to reopen it).
 
+## Size limits
+
+Every site can take up to **100 MB** per version, so quick stays a place for sites
+and not a file store. An administrator (`QUICK_ADMINS`) can raise the limit of a
+single site, up to `QUICK_SITE_LIMIT_MAX` (2 GB by default), from the site's page in
+the dashboard or from the CLI:
+
+```bash
+quick limit foo          # the site's limit, and who can change it
+quick limit foo 1.5GB    # administrators only; `default` goes back to 100 MB
+```
+
+A deploy over the limit is refused before anything is published, with a message
+asking to contact an administrator. On local storage a deploy is also refused when it
+would leave less than `QUICK_MIN_FREE` (5 GB by default) free on the disk.
+
 ## Deleting a site
 
 ```bash
@@ -361,6 +377,9 @@ the roadmap (local `docs/`).
 See `.env.example`. In short: `QUICK_BASE_DOMAIN`, `QUICK_ALLOWED_DOMAINS` (one, a list
 `a,b`, or `*`), `GOOGLE_CLIENT_ID/SECRET` (OAuth **Web** client for oauth2-proxy),
 `COOKIE_SECRET`, `QUICK_META_SECRET`, `QUICK_OWNERSHIP`=`free|shared|owned`,
+`QUICK_ADMINS` (administrator emails), `QUICK_SITE_LIMIT` (default site limit, 100MB),
+`QUICK_SITE_LIMIT_MAX` (highest limit an administrator can set, 2GB), `QUICK_MIN_FREE`
+(free disk space a deploy must leave, 5GB; local storage only),
 `QUICK_STORAGE`=`local|s3` (+ `QUICK_S3_*`), `QUICK_HOST_DIR` (host folder for the
 data, for several instances on the same host), `QUICK_CHUNK_DIR` (incremental-deploy
 chunks waiting to be published; default the system temp folder, removed on publish or

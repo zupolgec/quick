@@ -88,6 +88,7 @@ type policy struct {
 	Viewers   []string     `json:"viewers,omitempty"`   // "people": lowercased emails, owner excluded
 	Tokens    []siteToken  `json:"tokens,omitempty"`
 	Domains   []siteDomain `json:"domains,omitempty"`
+	SizeLimit int64        `json:"size_limit,omitempty"` // bytes, set by an administrator; 0 = default
 	// Index ids of the live and the rollback tree ("" = not indexed), see index.go.
 	Version     string `json:"version,omitempty"`
 	PrevVersion string `json:"prev_version,omitempty"`
@@ -416,6 +417,8 @@ func (s *server) handleSiteAPI(w http.ResponseWriter, r *http.Request) {
 		s.handleTokens(w, r, name, rest)
 	case action == "domains":
 		s.handleDomains(w, r, name, rest)
+	case action == "limit":
+		s.handleLimit(w, r, name)
 	case action == "" && r.Method == http.MethodDelete:
 		s.handleDelete(w, r, name)
 	default:

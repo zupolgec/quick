@@ -5,6 +5,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -101,6 +102,11 @@ type accessLevel struct {
 }
 
 func (s *server) renderSitePage(w http.ResponseWriter, r *http.Request, name, email, reveal string, status int, errText string) {
+	s.renderSitePageWith(w, r, name, email, reveal, status, errText, "")
+}
+
+// renderSitePageWith is renderSitePage with an error for the size limit form.
+func (s *server) renderSitePageWith(w http.ResponseWriter, r *http.Request, name, email, reveal string, status int, errText, sizeErr string) {
 	p, err := s.meta.load(name)
 	if err != nil {
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
@@ -145,6 +151,8 @@ func (s *server) renderSitePage(w http.ResponseWriter, r *http.Request, name, em
 		"CurrentLevel": currentLabel, "People": p.Access == quick.AccessPeople,
 		"Viewers": p.Viewers, "HasCode": p.Access == quick.AccessCode, "Error": errText,
 		"Domain": s.companyDomain(), "Lang": string(l), "T": t,
+		"Limit": quick.FormatSize(s.limitOf(p)), "Admin": s.isAdmin(email), "SizeError": sizeErr,
+		"SizeHint": fmt.Sprintf(t.SizeHint, quick.FormatSize(s.ceiling()), quick.FormatSize(s.defaultLimit())),
 	})
 }
 
@@ -514,6 +522,20 @@ form.access .btn{justify-self:start;margin-top:.6rem}
     </form>
     <p class="hint small">{{.T.PeopleEmailHint}}</p>
     {{end}}{{end}}
+  </section>
+
+  <section class="panel" id="size">
+    <h2>{{.T.SizeTitle}}</h2>
+    <p class="hint">{{.T.SizeIntro}} <b>{{.Limit}}</b>.{{if not .Admin}} {{.T.SizeAsk}}{{end}}</p>
+    {{if .Admin}}
+    {{if .SizeError}}<div class="err" role="alert">{{.SizeError}}</div>{{end}}
+    <form class="create" method="post" action="/api/site/{{.Name}}/limit">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <div class="field name"><label for="size-limit">{{.T.SizeLabel}}</label><input id="size-limit" name="size_limit" autocomplete="off" placeholder="1.5GB"></div>
+      <button class="btn" type="submit">{{.T.SizeSave}}</button>
+    </form>
+    <p class="hint small">{{.SizeHint}}</p>
+    {{end}}
   </section>
 
   <section class="panel">

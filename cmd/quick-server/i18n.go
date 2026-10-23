@@ -111,6 +111,9 @@ type uiText struct {
 	RestrictedTitle, RestrictedHeading, RestrictedBy, RestrictedCanOpen string
 	RestrictedSignedIn, RestrictedAsk, RestrictedSwitch                 string
 
+	SizeTitle, SizeIntro, SizeAsk, SizeLabel, SizeHint, SizeSave string
+	SizeInvalid, SizeTooHigh                                     string
+
 	SiteBack, SiteNoFiles, SiteTokens, SiteTokensHint, SiteTokensEmpty  string
 	SiteTitle                                                           string
 	TokenCreated, TokenStoreAs, TokenNotShown                           string
@@ -193,6 +196,14 @@ var uiTexts = map[lang]uiText{
 		AccessOwner:     "Owner:",
 		AccessCurrent:   "Right now:",
 		AccessOwnerOnly: "Only the owner can change it from here.",
+		SizeTitle:       "Size limit",
+		SizeIntro:       "Every version of this site can take up to",
+		SizeAsk:         "To publish something bigger, ask an administrator.",
+		SizeLabel:       "New limit",
+		SizeHint:        "Up to %s, e.g. 500MB or 1.5GB. Leave empty to go back to the default (%s).",
+		SizeSave:        "Change limit",
+		SizeInvalid:     "Write the size as a number with MB or GB, e.g. 500MB or 1.5GB.",
+		SizeTooHigh:     "The limit can be at most %s.",
 		AccessSave:      "Save",
 		AccessCodeLabel: "Access code",
 		AccessCodeKeep:  "Leave empty to keep the current code",
@@ -313,6 +324,14 @@ var uiTexts = map[lang]uiText{
 		AccessOwner:     "Proprietario:",
 		AccessCurrent:   "Al momento:",
 		AccessOwnerOnly: "Solo il proprietario può cambiarlo da qui.",
+		SizeTitle:       "Dimensione massima",
+		SizeIntro:       "Ogni versione di questo sito può occupare fino a",
+		SizeAsk:         "Per pubblicare qualcosa di più grande chiedi a un amministratore.",
+		SizeLabel:       "Nuovo limite",
+		SizeHint:        "Fino a %s, per esempio 500MB o 1.5GB. Lascia vuoto per tornare al valore predefinito (%s).",
+		SizeSave:        "Cambia limite",
+		SizeInvalid:     "Scrivi la dimensione come numero con MB o GB, per esempio 500MB o 1.5GB.",
+		SizeTooHigh:     "Il limite può essere al massimo %s.",
 		AccessSave:      "Salva",
 		AccessCodeLabel: "Codice di accesso",
 		AccessCodeKeep:  "Lascia vuoto per tenere il codice attuale",

@@ -29,7 +29,10 @@ import (
 	"github.com/zupolgec/quick/internal/storage"
 )
 
-const maxUpload = 200 << 20 // 200 MiB per deploy
+const (
+	maxUpload = 200 << 20 // 200 MiB per request (chunk batch; tar: at least)
+	tarSlack  = 64 << 20  // tar upload over the site limit: headers, gzip
+)
 
 // Set at image build time via -ldflags "-X main.version=vX.Y.Z"; exposed in
 // /api/config so a running server can be told apart from the outside.
@@ -63,9 +66,14 @@ type server struct {
 	oidcIssuer   string         // QUICK_OIDC_ISSUER; empty = Google
 	oidcMu       sync.Mutex     // guards oidcVerifier (lazy init)
 	oidcVerifier *oidc.IDTokenVerifier
-	domains      *domainIndex // custom domain -> site
-	domainsMu    sync.Mutex   // serializes custom domain changes across sites
-	resolver     resolver     // DNS checks for custom domains
+	domains      *domainIndex          // custom domain -> site
+	domainsMu    sync.Mutex            // serializes custom domain changes across sites
+	resolver     resolver              // DNS checks for custom domains
+	siteLimit    int64                 // default size limit per site (limit.go)
+	maxSiteLimit int64                 // highest limit an administrator can set
+	minFree      int64                 // disk space a deploy must leave free
+	freeSpace    func() (int64, error) // nil = not on a local disk
+	admins       map[string]bool       // QUICK_ADMINS, lowercased
 }
 
 type authIdentity struct {
@@ -118,6 +126,9 @@ func main() {
 		oidcIssuer:   strings.TrimSpace(os.Getenv("QUICK_OIDC_ISSUER")),
 	}
 	if err := s.validateConfig(metaSecret); err != nil {
+		log.Fatal(err)
+	}
+	if err := s.configureLimits(); err != nil { // before the stage: it sizes it
 		log.Fatal(err)
 	}
 	s.meta = newMetaStore(store, []byte(metaSecret), 5*time.Second)
@@ -299,7 +310,12 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer s.leases.release(name, lease)
-	body := http.MaxBytesReader(w, r.Body, maxUpload)
+	// The size is known only once read: the space check assumes the limit.
+	limit := s.limitOf(cur)
+	if !s.checkSpace(w, limit) {
+		return
+	}
+	body := http.MaxBytesReader(w, r.Body, max(maxUpload, limit+tarSlack))
 	gz, err := gzip.NewReader(body)
 	if err != nil {
 		http.Error(w, "gzip: "+err.Error(), http.StatusBadRequest)
@@ -318,14 +334,20 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer close(done)
 		var err error
-		files, err = indexingTar(pw, tar.NewReader(gz))
+		files, err = indexingTar(pw, tar.NewReader(gz), limit)
 		pw.CloseWithError(err)
 	}()
 	err = s.store.PutSite(name, tar.NewReader(pr))
 	pr.Close() // unblocks the indexer if PutSite stopped early
 	<-done
 	if err != nil {
-		http.Error(w, "deploy: "+err.Error(), s.publishFailed(name, &cur, old, err))
+		code := s.publishFailed(name, &cur, old, err)
+		var big errTooBig
+		if errors.As(err, &big) {
+			http.Error(w, big.Error(), http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "deploy: "+err.Error(), code)
 		return
 	}
 	cur.PrevVersion = old.live

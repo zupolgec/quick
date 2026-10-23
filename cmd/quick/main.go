@@ -94,6 +94,8 @@ func runCmd(cmd string, args []string) {
 		deleteCmd(args)
 	case "access":
 		accessCmd(args)
+	case "limit":
+		limitCmd(args)
 	case "publish", "unpublish", "private", "lock", "unlock":
 		policyCmd(cmd, args)
 	default:
@@ -144,6 +146,7 @@ func printUsage(w io.Writer) {
   quick unlock    [<site>]
   quick token create|list|revoke [<site>]
   quick domains [add|rm] [<site>] [domain]  # custom domains (www.example.com)
+  quick limit   [<site>] [<size>|default]  # site size limit; administrators change it
   quick upgrade   [--check]          # update the CLI to the latest version
   quick version
 <site> is optional inside a folder with a .quick file (written by the first deploy).`)

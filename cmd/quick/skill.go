@@ -68,6 +68,7 @@ quick deploy my-site ./build                    # -> https://my-site.quick.examp
 | ` + "`quick domains [<site>]`" + ` | List custom domains and the DNS records still missing |
 | ` + "`quick domains add [<site>] <domain>`" + ` | Attach a custom domain (e.g. www.example.com) |
 | ` + "`quick domains rm [<site>] <domain>`" + ` | Detach a custom domain |
+| ` + "`quick limit [<site>] [<size>\\|default]`" + ` | Show the site's size limit (100 MB by default); administrators change it, e.g. ` + "`1.5GB`" + ` |
 | ` + "`quick rollback [<site>]`" + ` | Restore the previous version (with confirmation; ` + "`--yes`" + ` skips it; ` + "`--takeover`" + ` even during someone's deploy) |
 | ` + "`quick delete [<site>]`" + ` | Delete the site (irreversible, with confirmation) |
 | ` + "`quick upgrade [--check]`" + ` | Update the CLI to the latest release (` + "`--check`" + ` only checks) |
@@ -212,6 +213,11 @@ Use ` + "`quick status`" + ` or ` + "`quick deploy ... --dry-run`" + ` to see in
 
 ## Notes
 
+- Every site has a size limit per version (100 MB unless the server says
+  otherwise; ` + "`quick limit`" + ` shows it). A deploy over it fails with 413 and nothing
+  changes: tell the user an administrator has to raise the site's limit, don't try
+  to split the site or work around it. A 507 means the server is short on disk
+  space: also a matter for an administrator.
 - New subdomains are immediate; visibility changes are instant.
 - A **locked** site can be overwritten or deleted only by its owner.
 - **Chosen people** (` + "`quick access <site> add|remove|only-me`" + `): visitors sign in with SSO and must be the

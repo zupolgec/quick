@@ -56,6 +56,10 @@ The proxy needs a wildcard certificate for `*.quick.acme.com`, which means a DNS
 | `QUICK_META_SECRET` | Signs access codes and site cookies: `openssl rand -base64 48` |
 | `QUICK_SSO_PROVIDER`, `QUICK_OIDC_ISSUER` | `oidc` and the issuer URL, for providers other than Google |
 | `QUICK_OWNERSHIP` | `free` (default), `shared` or `owned`; see [Access and safety](/docs/access) |
+| `QUICK_ADMINS` | Administrator emails, comma-separated: they can raise a single site's size limit |
+| `QUICK_SITE_LIMIT` | Size limit of every site, per version (default `100MB`) |
+| `QUICK_SITE_LIMIT_MAX` | Highest limit an administrator can give a site (default `2GB`) |
+| `QUICK_MIN_FREE` | On local disk, refuse deploys that would leave less free space than this (default `5GB`) |
 | `QUICK_STORAGE` | `local` (default) or `s3` |
 | `QUICK_S3_ENDPOINT`, `_REGION`, `_BUCKET`, `_ACCESS_KEY`, `_SECRET_KEY`, `_PREFIX`, `_USE_SSL` | S3-compatible storage |
 | `QUICK_HOST_DIR` | Host folder for the data, to run several instances on one host |

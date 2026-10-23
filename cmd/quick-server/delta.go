@@ -157,6 +157,15 @@ func parseManifest(m quick.DeployManifest) ([]deltaFile, error) {
 	return out, nil
 }
 
+// manifestSize is the bytes a manifest publishes.
+func manifestSize(files []deltaFile) int64 {
+	var n int64
+	for _, f := range files {
+		n += f.size
+	}
+	return n
+}
+
 // readManifest decodes the request body (JSON, optionally gzip), capped.
 func readManifest(w http.ResponseWriter, r *http.Request) ([]deltaFile, error) {
 	var body io.Reader = http.MaxBytesReader(w, r.Body, maxManifest)
@@ -236,6 +245,9 @@ func (s *server) handleDeployPlan(w http.ResponseWriter, r *http.Request) {
 	// answering, when the index must still be the live version's: the answer
 	// never reflects a version published after the caller lost access.
 	if cur, ok = s.recheckPlan(w, r, name, ident, lease); !ok {
+		return
+	}
+	if !s.checkDeploySize(w, cur, manifestSize(files)) {
 		return
 	}
 	idx, version, err := s.liveIndexForPlan(name, cur)
@@ -606,6 +618,9 @@ func (s *server) handleDeployCommit(w http.ResponseWriter, r *http.Request) {
 	files, err := readManifest(w, r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if !s.checkDeploySize(w, cur, manifestSize(files)) {
 		return
 	}
 	unpin := s.stage.pin(name)

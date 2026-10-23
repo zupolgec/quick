@@ -441,3 +441,9 @@ func (l *local) PruneIndexes(site string, keep ...string) error {
 	}
 	return nil
 }
+
+// SpaceReporter is implemented by backends on a local disk (unix): the free
+// space a deploy would use. Object storage has no such limit.
+type SpaceReporter interface {
+	FreeBytes() (int64, error)
+}

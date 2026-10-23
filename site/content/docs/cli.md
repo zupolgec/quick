@@ -29,6 +29,7 @@ description: Every quick command, how the server is chosen, and the deploy flags
 | `quick domains [<site>]` | Custom domains and the DNS records still missing |
 | `quick domains add [<site>] <domain>` | Attach a custom domain |
 | `quick domains rm [<site>] <domain>` | Detach it |
+| `quick limit [<site>] [<size>\|default]` | Show the site's size limit; administrators change it (e.g. `1.5GB`) |
 | `quick rollback [<site>]` | Swap back to the previous version (run it again to undo) |
 | `quick delete [<site>]` | Delete the site and its settings, for good |
 | `quick skill` | Install the agent skill (see [CI and agents](/docs/ci-and-agents)) |

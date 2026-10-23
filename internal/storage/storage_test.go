@@ -87,3 +87,17 @@ func TestPutSiteWithinLimits(t *testing.T) {
 		t.Fatalf("content = %q", b)
 	}
 }
+
+func TestLocalReportsFreeSpace(t *testing.T) {
+	be, err := New(Config{Kind: "local", SitesDir: t.TempDir(), MetaDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sr, ok := be.(SpaceReporter)
+	if !ok {
+		t.Skip("no free space reporting on this platform")
+	}
+	if n, err := sr.FreeBytes(); err != nil || n <= 0 {
+		t.Fatalf("FreeBytes = %d, %v", n, err)
+	}
+}

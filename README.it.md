@@ -280,6 +280,23 @@ aggiornamento. La regola di chi può sovrascrivere/eliminare/cambiare visibilit�
 In più, il creatore può `quick lock` il suo sito per riservarne a sé la modifica
 in qualunque modalità (`quick unlock` per riaprirlo).
 
+## Limiti di dimensione
+
+Ogni sito può occupare fino a **100 MB** per versione, così quick resta un posto per
+siti e non un archivio di file. Un amministratore (`QUICK_ADMINS`) può alzare il
+limite di un singolo sito, fino a `QUICK_SITE_LIMIT_MAX` (2 GB di default), dalla
+pagina del sito in dashboard o dalla CLI:
+
+```bash
+quick limit foo          # il limite del sito e chi può cambiarlo
+quick limit foo 1.5GB    # solo amministratori; `default` torna a 100 MB
+```
+
+Un deploy oltre il limite viene rifiutato prima di pubblicare qualsiasi cosa, con un
+messaggio che invita a contattare un amministratore. Con lo storage locale un deploy
+viene rifiutato anche quando lascerebbe sul disco meno di `QUICK_MIN_FREE` liberi
+(5 GB di default).
+
 ## Eliminare un sito
 
 ```bash
@@ -366,6 +383,10 @@ sito (same-origin, dietro lo stesso controllo di accesso dei file): libreria
 Vedi `.env.example`. In sintesi: `QUICK_BASE_DOMAIN`, `QUICK_ALLOWED_DOMAINS` (uno, lista `a,b`, o `*`),
 `GOOGLE_CLIENT_ID/SECRET` (client OAuth **Web** per oauth2-proxy), `COOKIE_SECRET`,
 `QUICK_META_SECRET`, `QUICK_OWNERSHIP`=`free|shared|owned`, `QUICK_STORAGE`=`local|s3` (+ `QUICK_S3_*`),
+`QUICK_ADMINS` (email degli amministratori), `QUICK_SITE_LIMIT` (limite di default per
+sito, 100MB), `QUICK_SITE_LIMIT_MAX` (limite massimo impostabile da un amministratore,
+2GB), `QUICK_MIN_FREE` (spazio libero che un deploy deve lasciare sul disco, 5GB; solo
+storage locale),
 `QUICK_HOST_DIR` (cartella host dei dati, per più istanze sullo stesso host),
 `QUICK_CHUNK_DIR` (blocchi del deploy incrementale in attesa di pubblicazione;
 default la cartella temporanea di sistema, vengono rimossi alla pubblicazione o

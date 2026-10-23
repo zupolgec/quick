@@ -20,3 +20,24 @@ func TestSiteAndArg(t *testing.T) {
 		}
 	}
 }
+
+// quick limit [<site>] [<size>|default]: a single positional is the size when
+// it reads as one, else the site.
+func TestLimitArgs(t *testing.T) {
+	cases := []struct {
+		in         []string
+		site, size string
+	}{
+		{nil, "", ""},
+		{[]string{"launch"}, "launch", ""},
+		{[]string{"1.5GB"}, "", "1.5GB"},
+		{[]string{"default"}, "", "default"},
+		{[]string{"launch", "800MB"}, "launch", "800MB"},
+	}
+	for _, c := range cases {
+		site, size := limitArgs(c.in)
+		if site != c.site || size != c.size {
+			t.Errorf("limitArgs(%q) = %q, %q; want %q, %q", c.in, site, size, c.site, c.size)
+		}
+	}
+}
