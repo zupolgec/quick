@@ -130,8 +130,10 @@ type uiText struct {
 	NotFoundTitle, NotFoundSiteHeading, NotFoundSiteIntro string
 	NotFoundPageHeading, NotFoundPageIntro                string
 
-	AuthDeniedHeading, AuthDeniedIntro, AuthDeniedAny string
-	AuthFailedHeading, AuthFailedIntro, AuthRetry     string
+	AuthDeniedHeading, AuthDeniedIntro, AuthDeniedAny      string
+	AuthFailedHeading, AuthFailedIntro, AuthRetry          string
+	AuthExpiredHeading, AuthExpiredIntro, AuthWrongAccount string
+	AuthDetails, AuthDetailsHint, AuthRequestID            string
 }
 
 var uiTexts = map[lang]uiText{
@@ -272,12 +274,18 @@ var uiTexts = map[lang]uiText{
 		NotFoundPageHeading: "Page not found",
 		NotFoundPageIntro:   "This page doesn't exist on",
 
-		AuthDeniedHeading: "Access not allowed",
-		AuthDeniedIntro:   "We couldn't sign you in with this account. Use your company account ending in @%s and try again.",
-		AuthDeniedAny:     "We couldn't sign you in with this account. Use an account with access and try again.",
-		AuthFailedHeading: "Sign-in failed",
-		AuthFailedIntro:   "Something went wrong while signing you in. Please try again in a moment.",
-		AuthRetry:         "Sign in again",
+		AuthDeniedHeading:  "Access not allowed",
+		AuthDeniedIntro:    "We couldn't sign you in with this account. Use your company account ending in @%s and try again.",
+		AuthDeniedAny:      "We couldn't sign you in with this account. Use an account with access and try again.",
+		AuthFailedHeading:  "Sign-in failed",
+		AuthFailedIntro:    "Something went wrong while signing you in. Please try again in a moment.",
+		AuthRetry:          "Sign in again",
+		AuthWrongAccount:   "This account has no access here: use your company account ending in @%s.",
+		AuthExpiredHeading: "Sign-in expired",
+		AuthExpiredIntro:   "The sign-in took too long or was started in another window. Please try again.",
+		AuthDetails:        "Details",
+		AuthDetailsHint:    "If it keeps happening, send these details to whoever manages Quick.",
+		AuthRequestID:      "Request",
 	},
 	langIT: {
 		NavDashboard: "Dashboard",
@@ -416,12 +424,18 @@ var uiTexts = map[lang]uiText{
 		NotFoundPageHeading: "Pagina non trovata",
 		NotFoundPageIntro:   "Questa pagina non esiste su",
 
-		AuthDeniedHeading: "Accesso non consentito",
-		AuthDeniedIntro:   "Non è stato possibile farti entrare con questo account. Usa l'account aziendale che termina con @%s e riprova.",
-		AuthDeniedAny:     "Non è stato possibile farti entrare con questo account. Usa un account autorizzato e riprova.",
-		AuthFailedHeading: "Accesso non riuscito",
-		AuthFailedIntro:   "Qualcosa è andato storto durante l'accesso. Riprova tra poco.",
-		AuthRetry:         "Accedi di nuovo",
+		AuthDeniedHeading:  "Accesso non consentito",
+		AuthDeniedIntro:    "Non è stato possibile farti entrare con questo account. Usa l'account aziendale che termina con @%s e riprova.",
+		AuthDeniedAny:      "Non è stato possibile farti entrare con questo account. Usa un account autorizzato e riprova.",
+		AuthFailedHeading:  "Accesso non riuscito",
+		AuthFailedIntro:    "Qualcosa è andato storto durante l'accesso. Riprova tra poco.",
+		AuthRetry:          "Accedi di nuovo",
+		AuthWrongAccount:   "Questo account non ha accesso: usa quello aziendale che termina con @%s.",
+		AuthExpiredHeading: "Accesso scaduto",
+		AuthExpiredIntro:   "L'accesso è durato troppo o è stato avviato in un'altra finestra. Riprova.",
+		AuthDetails:        "Dettagli",
+		AuthDetailsHint:    "Se il problema continua, invia questi dettagli a chi gestisce Quick.",
+		AuthRequestID:      "Richiesta",
 	},
 }
 

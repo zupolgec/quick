@@ -24,6 +24,19 @@ func (s *server) renderSSOPage(w http.ResponseWriter, r *http.Request, host stri
 	signIn := "https://" + s.baseDomain + "/oauth2/sign_in?rd=" + url.QueryEscape(rd)
 	l := pickLang(r)
 	t := textsFor(l)
+	if email, ok := s.ssoSession(r); ok && !s.noAuth && !s.emailAllowed(email) {
+		// signed in, but not with a company account: say which, offer a switch.
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Add("Vary", "Accept-Language")
+		w.WriteHeader(http.StatusForbidden)
+		_ = ssoPage.Execute(w, map[string]any{
+			"Host": host, "Lang": string(l), "T": t, "Email": email,
+			"Denied": fmt.Sprintf(t.AuthWrongAccount, s.companyDomain()),
+			"Switch": "https://" + s.baseDomain + "/oauth2/sign_out?rd=" + url.QueryEscape(rd),
+		})
+		return
+	}
 	if s.oidcIssuer != "" {
 		// generic IdP: neutral label, no provider name.
 		if l == langIT {
@@ -372,9 +385,11 @@ p b{color:var(--ink);font-weight:500}
 </style></head><body>
 <div class="card">
   ` + brandWordmark + `
-  <h1>{{.T.SSOHeading}}</h1>
+  {{if .Email}}<h1>{{.T.AuthDeniedHeading}}</h1>
+  <p>{{.T.RestrictedSignedIn}} <b>{{.Email}}</b>. {{.Denied}}</p>
+  <a class="btn" href="{{.Switch}}">{{.T.RestrictedSwitch}}</a>{{else}}<h1>{{.T.SSOHeading}}</h1>
   <p>{{.T.SSOIntro}} <b>{{.Host}}</b>.</p>
-  <a class="btn" href="{{.SignIn}}">{{.T.SSOButton}}</a>
+  <a class="btn" href="{{.SignIn}}">{{.T.SSOButton}}</a>{{end}}
 </div></body></html>`))
 
 var notFoundPage = template.Must(template.New("404").Parse(`<!doctype html>

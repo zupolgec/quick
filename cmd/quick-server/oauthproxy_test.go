@@ -14,13 +14,13 @@ func newOAuthErrServer(t *testing.T) *server {
 	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Query().Get("fail") {
 		case "403":
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.WriteHeader(http.StatusForbidden)
-			w.Write([]byte("<html>Secured with OAuth2 Proxy 403 Forbidden</html>"))
+			proxyErrorPage(w, http.StatusForbidden, "You do not have permission to access this resource.")
+		case "csrf":
+			proxyErrorPage(w, http.StatusForbidden, "Login Failed: Unable to find a valid CSRF token. Please try again.")
 		case "500":
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("<html>Secured with OAuth2 Proxy 500</html>"))
+			proxyErrorPage(w, http.StatusInternalServerError, "Oops! Something went wrong. For more information contact your server administrator.")
+		case "idp":
+			proxyErrorPage(w, http.StatusForbidden, "access_denied &amp; more")
 		case "json":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)
@@ -35,6 +35,22 @@ func newOAuthErrServer(t *testing.T) *server {
 		t.Fatal(err)
 	}
 	return s
+}
+
+// proxyErrorPage writes the "More Info" part of oauth2-proxy's error template.
+func proxyErrorPage(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	w.Write([]byte(`<html><body><div class="status-code">` + http.StatusText(status) + `</div>
+      <div class="card-content has-text-left is-hidden">
+        <div class="content">
+          ` + msg + `
+        </div>
+        <div class="content">
+          Request ID: 2732b6d6-79db
+        </div>
+      </div>
+<p>Secured with OAuth2 Proxy</p></body></html>`))
 }
 
 func oauthReq(s *server, path, acceptLang string) *httptest.ResponseRecorder {
@@ -58,10 +74,26 @@ func TestOAuthErrorPageIsBranded(t *testing.T) {
 	if strings.Contains(body, "OAuth2 Proxy") {
 		t.Fatalf("oauth2-proxy page leaked through: %s", body)
 	}
-	for _, want := range []string{`class="brand"`, "Accesso non consentito", "example.com", `href="/oauth2/sign_in"`} {
+	for _, want := range []string{`class="brand"`, "Accesso non consentito", "example.com", `href="/oauth2/sign_in"`, "<details", "2732b6d6-79db"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("403 page misses %q:\n%s", want, body)
 		}
+	}
+	if strings.Contains(body, "You do not have permission") {
+		t.Errorf("generic oauth2-proxy message shown: %s", body)
+	}
+
+	// An expired sign-in is not a refused account.
+	w = oauthReq(s, "/oauth2/callback?fail=csrf", "it")
+	body = w.Body.String()
+	if !strings.Contains(body, "Accesso scaduto") || strings.Contains(body, "Accesso non consentito") || !strings.Contains(body, "CSRF") {
+		t.Errorf("csrf page: %s", body)
+	}
+
+	// The IdP's own reason is kept, unescaped once and escaped again.
+	w = oauthReq(s, "/oauth2/callback?fail=idp", "en")
+	if body = w.Body.String(); !strings.Contains(body, "access_denied &amp; more") {
+		t.Errorf("idp message lost: %s", body)
 	}
 
 	w = oauthReq(s, "/oauth2/callback?fail=500", "en")

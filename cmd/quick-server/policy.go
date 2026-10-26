@@ -317,12 +317,29 @@ func fwdHost(r *http.Request) string {
 	return r.Host
 }
 
-// checkSSO asks oauth2-proxy /oauth2/auth (202 = valid session), forwarding the
-// request cookie.
+// checkSSO reports the signed-in company user: a valid oauth2-proxy session
+// for an account in QUICK_ALLOWED_DOMAINS. oauth2-proxy signs in any account,
+// so this is the only domain check for browser sessions.
 func (s *server) checkSSO(r *http.Request) (string, bool) {
 	if s.noAuth {
 		return "dev@" + def(s.domain, "example.com"), true
 	}
+	email, ok := s.ssoSession(r)
+	if !ok || !s.emailAllowed(email) {
+		return "", false
+	}
+	return email, true
+}
+
+// emailAllowed applies QUICK_ALLOWED_DOMAINS to a session email.
+func (s *server) emailAllowed(email string) bool {
+	_, domain, _ := strings.Cut(email, "@")
+	return s.domainAllowed(domain)
+}
+
+// ssoSession asks oauth2-proxy /oauth2/auth (202 = valid session), forwarding
+// the request cookie. Any account: callers wanting access use checkSSO.
+func (s *server) ssoSession(r *http.Request) (string, bool) {
 	req, err := http.NewRequest(http.MethodGet, s.oauth2URL+"/oauth2/auth", nil)
 	if err != nil {
 		return "", false
