@@ -42,7 +42,9 @@ The proxy needs a wildcard certificate for `*.quick.acme.com`, which means a DNS
 - a **Web application** client for oauth2-proxy, with redirect URI `https://quick.acme.com/oauth2/callback`;
 - a client for the CLI with redirect URI `http://127.0.0.1:8765/callback`. Either a **Desktop app** client (set only its ID, the CLI uses PKCE without a secret) or the same Web client again (set ID and secret: the secret is handed to the CLI by the server, which is acceptable for a PKCE loopback client).
 
-**Any OIDC provider** (Zitadel, Keycloak, Authentik and others): set `QUICK_SSO_PROVIDER=oidc` and `QUICK_OIDC_ISSUER=https://idp.acme.com`, a Web client for oauth2-proxy, and a native PKCE client for the CLI with the same loopback redirect. Tokens are verified locally against the issuer; the domain checked is the part of the email after `@`, and only if the email is verified.
+Only accounts of the Workspace domains in `QUICK_ALLOWED_DOMAINS` get in: a personal Google account that uses a company address does not. Each sign-in asks which account to use.
+
+**Any OIDC provider** (Zitadel, Keycloak, Authentik and others): set `QUICK_OIDC_ISSUER=https://idp.acme.com`, a Web client for oauth2-proxy, and a native PKCE client for the CLI with the same loopback redirect. Tokens are verified locally against the issuer; the domain checked is the part of the email after `@`, and only if the email is verified.
 
 ## Configuration
 
@@ -54,7 +56,7 @@ The proxy needs a wildcard certificate for `*.quick.acme.com`, which means a DNS
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | oauth2-proxy's Web client (also for OIDC providers) |
 | `COOKIE_SECRET` | oauth2-proxy cookie secret: `openssl rand -base64 32` |
 | `QUICK_META_SECRET` | Signs access codes and site cookies: `openssl rand -base64 48` |
-| `QUICK_SSO_PROVIDER`, `QUICK_OIDC_ISSUER` | `oidc` and the issuer URL, for providers other than Google |
+| `QUICK_OIDC_ISSUER` | The issuer URL, for providers other than Google |
 | `QUICK_OWNERSHIP` | `free` (default), `shared` or `owned`; see [Access and safety](/docs/access) |
 | `QUICK_ADMINS` | Administrator emails, comma-separated: they can raise a single site's size limit |
 | `QUICK_SITE_LIMIT` | Size limit of every site, per version (default `100MB`) |

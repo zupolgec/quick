@@ -18,6 +18,7 @@ func newApexGateServer(t *testing.T) *server {
 		case "/oauth2/auth":
 			if c, err := r.Cookie("_oauth2_proxy"); err == nil && c.Value == "ok" {
 				w.Header().Set("X-Auth-Request-Email", "ann@example.com")
+				w.Header().Set("X-Auth-Request-Groups", "example.com") // Google Workspace (hd)
 				w.WriteHeader(http.StatusAccepted)
 				return
 			}

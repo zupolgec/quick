@@ -384,7 +384,7 @@ sito (same-origin, dietro lo stesso controllo di accesso dei file): libreria
 | `internal/chunk/` | Divisione dei file in blocchi per il deploy incrementale (FastCDC) |
 | `site/` | [quick-cli.com](https://quick-cli.com): homepage, docs, llms.txt (Worker Cloudflare) |
 | `docker-compose.yaml` | Stack per Coolify (label Caddy + env) |
-| oauth2-proxy (env `OAUTH2_PROXY_*`) | SSO Google o OIDC (`QUICK_SSO_PROVIDER`) |
+| oauth2-proxy (env `OAUTH2_PROXY_*`) | SSO Google o OIDC (`QUICK_OIDC_ISSUER`) |
 
 ## Configurazione (env)
 
@@ -426,7 +426,7 @@ puntatore illeggibile blocca i deploy del sito con un errore chiaro;
 eliminare il sito lo ripulisce comunque. Al bucket non serve nulla di
 particolare (niente versioning, niente scritture condizionali); conviene una
 regola di lifecycle che elimini gli upload multiparte incompleti.
-Con un IdP OIDC (es. Zitadel): `QUICK_SSO_PROVIDER=oidc`, `QUICK_OIDC_ISSUER`, e in
+Con un IdP OIDC (es. Zitadel): `QUICK_OIDC_ISSUER`, e in
 `GOOGLE_CLIENT_ID/SECRET` il client Web dell'IdP per oauth2-proxy; per la CLI un client
 nativo con PKCE e redirect `http://127.0.0.1:8765/callback`.
 

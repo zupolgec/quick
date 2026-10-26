@@ -24,7 +24,7 @@ func (s *server) renderSSOPage(w http.ResponseWriter, r *http.Request, host stri
 	signIn := "https://" + s.baseDomain + "/oauth2/sign_in?rd=" + url.QueryEscape(rd)
 	l := pickLang(r)
 	t := textsFor(l)
-	if email, ok := s.ssoSession(r); ok && !s.noAuth && !s.emailAllowed(email) {
+	if email, hd, ok := s.ssoSession(r); ok && !s.noAuth && !s.sessionAllowed(email, hd) {
 		// signed in, but not with a company account: say which, offer a switch.
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")

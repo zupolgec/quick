@@ -376,7 +376,7 @@ the roadmap (local `docs/`).
 | `internal/chunk/` | File chunking for incremental deploys (FastCDC) |
 | `site/` | [quick-cli.com](https://quick-cli.com): homepage, docs, llms.txt (Cloudflare Worker) |
 | `docker-compose.yaml` | Stack for Coolify (Caddy labels + env) |
-| oauth2-proxy (env `OAUTH2_PROXY_*`) | Google or OIDC SSO (`QUICK_SSO_PROVIDER`) |
+| oauth2-proxy (env `OAUTH2_PROXY_*`) | Google or OIDC SSO (`QUICK_OIDC_ISSUER`) |
 
 ## Configuration (env)
 
@@ -414,7 +414,7 @@ next deploy). It is very unlikely; if it happens, just deploy again. An unreadab
 pointer blocks the site's deploys with a clear error; deleting the site cleans it up
 anyway. The bucket needs nothing special (no versioning, no conditional writes); a
 lifecycle rule that deletes incomplete multipart uploads is a good idea.
-With an OIDC IdP (e.g. Zitadel): `QUICK_SSO_PROVIDER=oidc`, `QUICK_OIDC_ISSUER`, and in
+With an OIDC IdP (e.g. Zitadel): `QUICK_OIDC_ISSUER`, and in
 `GOOGLE_CLIENT_ID/SECRET` the IdP's Web client for oauth2-proxy; for the CLI a native
 client with PKCE and redirect `http://127.0.0.1:8765/callback`.
 

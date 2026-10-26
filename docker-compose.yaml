@@ -96,11 +96,17 @@ services:
     restart: unless-stopped
     environment:
       OAUTH2_PROXY_HTTP_ADDRESS: "0.0.0.0:4180"
-      # Provider SSO: google di default (config effettiva invariata); per un IdP
-      # non Google metti QUICK_SSO_PROVIDER=oidc e QUICK_OIDC_ISSUER=https://idp....
-      # OAUTH2_PROXY_OIDC_ISSUER_URL vuoto è ignorato dal provider google.
-      OAUTH2_PROXY_PROVIDER: ${QUICK_SSO_PROVIDER:-google}
-      OAUTH2_PROXY_OIDC_ISSUER_URL: ${QUICK_OIDC_ISSUER:-}
+      # Provider OIDC anche per Google (issuer di default): così il claim hd
+      # (dominio Workspace) arriva a quick-server come gruppo della sessione e
+      # quick ammette solo account del Workspace, non indirizzi aziendali usati
+      # su account Google personali. Per un altro IdP: QUICK_OIDC_ISSUER.
+      OAUTH2_PROXY_PROVIDER: oidc
+      OAUTH2_PROXY_OIDC_ISSUER_URL: ${QUICK_OIDC_ISSUER:-https://accounts.google.com}
+      OAUTH2_PROXY_OIDC_GROUPS_CLAIM: hd
+      # A ogni accesso l'IdP chiede quale account usare, così si può cambiare.
+      OAUTH2_PROXY_PROMPT: select_account
+      # Nome nuovo: le sessioni del vecchio provider google (senza hd) non valgono.
+      OAUTH2_PROXY_COOKIE_NAME: _quick_sso
       OAUTH2_PROXY_REVERSE_PROXY: "true"
       OAUTH2_PROXY_SET_XAUTHREQUEST: "true"
       OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"

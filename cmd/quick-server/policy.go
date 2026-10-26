@@ -324,39 +324,45 @@ func (s *server) checkSSO(r *http.Request) (string, bool) {
 	if s.noAuth {
 		return "dev@" + def(s.domain, "example.com"), true
 	}
-	email, ok := s.ssoSession(r)
-	if !ok || !s.emailAllowed(email) {
+	email, hd, ok := s.ssoSession(r)
+	if !ok || !s.sessionAllowed(email, hd) {
 		return "", false
 	}
 	return email, true
 }
 
-// emailAllowed applies QUICK_ALLOWED_DOMAINS to a session email.
-func (s *server) emailAllowed(email string) bool {
+// sessionAllowed applies QUICK_ALLOWED_DOMAINS as checkIDClaims does: with
+// Google the Workspace domain (hd), since personal Google accounts can use a
+// company address; with other IdPs the email domain.
+func (s *server) sessionAllowed(email, hd string) bool {
+	if s.oidcIssuerURL() == googleIssuer {
+		return s.domainAllowed(hd)
+	}
 	_, domain, _ := strings.Cut(email, "@")
 	return s.domainAllowed(domain)
 }
 
 // ssoSession asks oauth2-proxy /oauth2/auth (202 = valid session), forwarding
-// the request cookie. Any account: callers wanting access use checkSSO.
-func (s *server) ssoSession(r *http.Request) (string, bool) {
+// the request cookie. Any account: callers wanting access use checkSSO. hd is
+// the Google Workspace domain, which oauth2-proxy passes as the groups.
+func (s *server) ssoSession(r *http.Request) (email, hd string, ok bool) {
 	req, err := http.NewRequest(http.MethodGet, s.oauth2URL+"/oauth2/auth", nil)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
 	if c := r.Header.Get("Cookie"); c != "" {
 		req.Header.Set("Cookie", c)
 	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
 	defer resp.Body.Close()
 	io.Copy(io.Discard, resp.Body)
 	if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusOK {
-		return "", false
+		return "", "", false
 	}
-	return resp.Header.Get("X-Auth-Request-Email"), true
+	return resp.Header.Get("X-Auth-Request-Email"), resp.Header.Get("X-Auth-Request-Groups"), true
 }
 
 // redirect sends the browser to path (sign_in or code page) with ?rd= set to the
