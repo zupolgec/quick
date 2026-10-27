@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"io"
 	"mime"
-	"mime/quotedprintable"
+	"mime/multipart"
 	"net"
 	"net/mail"
 	"strings"
@@ -38,7 +38,8 @@ func fakeSMTP(t *testing.T) (addr string, got chan string) {
 			cmd := strings.ToUpper(strings.TrimSpace(line))
 			switch {
 			case strings.HasPrefix(cmd, "EHLO"), strings.HasPrefix(cmd, "HELO"):
-				say("250 fake")
+				say("250-fake")
+				say("250 8BITMIME")
 			case strings.HasPrefix(cmd, "DATA"):
 				say("354 go")
 				for {
@@ -68,10 +69,17 @@ func TestSMTPMailerSends(t *testing.T) {
 		t.Fatal(err)
 	}
 	link := "https://app.quick.test/__quick/email?t=" + strings.Repeat("x", 90)
-	if err := m.Send("dave@client.it", "Il tuo link di accesso a app.quick.test", "Ciao,\n\n"+link+"\n"); err != nil {
+	err = m.Send(mailMessage{To: "dave@client.it", Subject: "Il tuo link di accesso a app.quick.test",
+		Text: "Ciao, è qui:\n\n" + link + "\n", HTML: `<p>Ciao, è qui: <a href="` + link + `">apri</a></p>`})
+	if err != nil {
 		t.Fatal(err)
 	}
-	msg, err := mail.ReadMessage(strings.NewReader(<-got))
+	raw := <-got
+	// the link stays whole in the raw message: no soft line breaks or =3D.
+	if strings.Count(raw, link) != 2 {
+		t.Fatalf("link not intact in both parts:\n%s", raw)
+	}
+	msg, err := mail.ReadMessage(strings.NewReader(raw))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,9 +90,25 @@ func TestSMTPMailerSends(t *testing.T) {
 	if subj != "Il tuo link di accesso a app.quick.test" {
 		t.Fatalf("subject %q", subj)
 	}
-	body, _ := io.ReadAll(quotedprintable.NewReader(msg.Body))
-	if !strings.Contains(string(body), link) {
-		t.Fatalf("link not intact in body:\n%s", body)
+	mt, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	if err != nil || mt != "multipart/alternative" {
+		t.Fatalf("content type %q", msg.Header.Get("Content-Type"))
+	}
+	mr := multipart.NewReader(msg.Body, params["boundary"])
+	var types []string
+	for {
+		part, err := mr.NextPart()
+		if err != nil {
+			break
+		}
+		body, _ := io.ReadAll(part)
+		types = append(types, part.Header.Get("Content-Type"))
+		if !strings.Contains(string(body), "è qui") {
+			t.Errorf("%s part: %q", part.Header.Get("Content-Type"), body)
+		}
+	}
+	if len(types) != 2 || !strings.HasPrefix(types[0], "text/plain") || !strings.HasPrefix(types[1], "text/html") {
+		t.Fatalf("parts %v, want text then html", types)
 	}
 }
 

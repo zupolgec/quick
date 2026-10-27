@@ -8,11 +8,14 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"mime"
+	"mime/multipart"
 	"mime/quotedprintable"
 	"net"
 	"net/mail"
 	"net/smtp"
+	"net/textproto"
 	"net/url"
 	"os"
 	"strings"
@@ -20,7 +23,12 @@ import (
 )
 
 type mailer interface {
-	Send(to, subject, body string) error
+	Send(m mailMessage) error
+}
+
+// mailMessage is sent as multipart/alternative: Text, then HTML.
+type mailMessage struct {
+	To, Subject, Text, HTML string
 }
 
 type smtpMailer struct {
@@ -67,13 +75,10 @@ func newSMTPMailer(raw, from string) (mailer, error) {
 	return m, nil
 }
 
-func (m *smtpMailer) Send(to, subject, body string) error {
-	msg, err := buildMail(m.from, m.fromAddr, to, subject, body)
-	if err != nil {
-		return err
-	}
+func (m *smtpMailer) Send(msg mailMessage) error {
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	var conn net.Conn
+	var err error
 	if m.implicitTLS {
 		conn, err = tls.DialWithDialer(dialer, "tcp", m.addr, &tls.Config{ServerName: m.host})
 	} else {
@@ -99,17 +104,24 @@ func (m *smtpMailer) Send(to, subject, body string) error {
 			return err
 		}
 	}
+	// 8bit keeps links whole in the raw message; quoted-printable (which
+	// splits long lines) only for servers that don't take 8-bit bodies.
+	eightBit, _ := c.Extension("8BITMIME")
+	data, err := buildMail(m.from, m.fromAddr, msg, eightBit)
+	if err != nil {
+		return err
+	}
 	if err := c.Mail(m.fromAddr); err != nil {
 		return err
 	}
-	if err := c.Rcpt(to); err != nil {
+	if err := c.Rcpt(msg.To); err != nil {
 		return err
 	}
 	w, err := c.Data()
 	if err != nil {
 		return err
 	}
-	if _, err := w.Write(msg); err != nil {
+	if _, err := w.Write(data); err != nil {
 		return err
 	}
 	if err := w.Close(); err != nil {
@@ -118,26 +130,48 @@ func (m *smtpMailer) Send(to, subject, body string) error {
 	return c.Quit()
 }
 
-// buildMail writes a plain-text UTF-8 message with CRLF line endings.
-func buildMail(from, fromAddr, to, subject, body string) ([]byte, error) {
-	if strings.ContainsAny(to+subject, "\r\n") {
+// buildMail writes a multipart/alternative UTF-8 message (text, then HTML)
+// with CRLF line endings.
+func buildMail(from, fromAddr string, msg mailMessage, eightBit bool) ([]byte, error) {
+	if strings.ContainsAny(msg.To+msg.Subject, "\r\n") {
 		return nil, errors.New("invalid mail header")
 	}
 	_, domain, _ := strings.Cut(fromAddr, "@")
 	var b bytes.Buffer
 	hdr := func(k, v string) { b.WriteString(k + ": " + v + "\r\n") }
 	hdr("From", from)
-	hdr("To", to)
-	hdr("Subject", mime.QEncoding.Encode("utf-8", subject))
+	hdr("To", msg.To)
+	hdr("Subject", mime.QEncoding.Encode("utf-8", msg.Subject))
 	hdr("Date", time.Now().Format(time.RFC1123Z))
 	hdr("Message-ID", "<"+randomID(18)+"@"+domain+">")
 	hdr("Auto-Submitted", "auto-generated")
 	hdr("MIME-Version", "1.0")
-	hdr("Content-Type", "text/plain; charset=utf-8")
-	hdr("Content-Transfer-Encoding", "quoted-printable")
+	mw := multipart.NewWriter(&b)
+	hdr("Content-Type", "multipart/alternative; boundary="+mw.Boundary())
 	b.WriteString("\r\n")
-	qp := quotedprintable.NewWriter(&b)
-	qp.Write([]byte(strings.ReplaceAll(strings.ReplaceAll(body, "\r\n", "\n"), "\n", "\r\n")))
-	qp.Close()
+	enc := "quoted-printable"
+	if eightBit {
+		enc = "8bit"
+	}
+	for _, part := range []struct{ ct, body string }{{"text/plain", msg.Text}, {"text/html", msg.HTML}} {
+		w, err := mw.CreatePart(textproto.MIMEHeader{
+			"Content-Type":              {part.ct + "; charset=utf-8"},
+			"Content-Transfer-Encoding": {enc},
+		})
+		if err != nil {
+			return nil, err
+		}
+		body := strings.ReplaceAll(strings.ReplaceAll(part.body, "\r\n", "\n"), "\n", "\r\n")
+		if eightBit {
+			io.WriteString(w, body)
+		} else {
+			qp := quotedprintable.NewWriter(w)
+			io.WriteString(qp, body)
+			qp.Close()
+		}
+	}
+	if err := mw.Close(); err != nil {
+		return nil, err
+	}
 	return b.Bytes(), nil
 }

@@ -204,8 +204,12 @@ func (s *server) handleGuestLink(w http.ResponseWriter, r *http.Request, sub str
 		if s.isGuest(p, email) {
 			if tok, ok := s.guests.issue(sub, email, rd); ok {
 				link := "https://" + host + "/__quick/email?t=" + tok
+				msg, err := guestMail(t, l, email, host, link)
 				go func() {
-					if err := s.mail.Send(email, fmt.Sprintf(t.GuestMailSubject, host), fmt.Sprintf(t.GuestMailBody, host, link)); err != nil {
+					if err == nil {
+						err = s.mail.Send(msg)
+					}
+					if err != nil {
 						log.Printf("guest link for %s on %q: %v", email, sub, err)
 					}
 				}()
@@ -216,6 +220,41 @@ func (s *server) handleGuestLink(w http.ResponseWriter, r *http.Request, sub str
 		http.Redirect(w, r, "https://"+host+"/", http.StatusFound)
 	}
 }
+
+// guestMail is the email with the sign-in link, as text and HTML.
+func guestMail(t uiText, l lang, to, host, link string) (mailMessage, error) {
+	intro := fmt.Sprintf(t.GuestMailIntro, host)
+	text := t.GuestMailHello + "\n\n" + intro + "\n\n" + link + "\n\n" + t.GuestMailValid + "\n\n" + t.GuestMailIgnore + "\n\n-- \nquick · " + host + "\n"
+	var html strings.Builder
+	err := guestMailHTML.Execute(&html, map[string]any{
+		"Lang": string(l), "T": t, "Intro": intro, "Link": template.URL(link), "Host": host,
+	})
+	return mailMessage{To: to, Subject: fmt.Sprintf(t.GuestMailSubject, host), Text: text, HTML: html.String()}, err
+}
+
+// Email clients ignore most CSS: tables and inline styles only.
+var guestMailHTML = template.Must(template.New("guestmail").Parse(`<!doctype html>
+<html lang="{{.Lang}}"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>{{.T.GuestMailButton}}</title></head>
+<body style="margin:0;padding:0;background:#e8e6fd">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#e8e6fd">
+<tr><td align="center" style="padding:32px 16px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff">
+<tr><td style="padding:36px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1a2238;font-size:16px;line-height:1.5">
+<p style="margin:0 0 24px;font-size:22px;font-weight:700;color:#1a2238">quick</p>
+<p style="margin:0 0 8px">{{.T.GuestMailHello}}</p>
+<p style="margin:0 0 24px">{{.Intro}}</p>
+<table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background:#4a3ddb">
+<a href="{{.Link}}" style="display:inline-block;padding:14px 28px;color:#ffffff;text-decoration:none;font-weight:600">{{.T.GuestMailButton}}</a>
+</td></tr></table>
+<p style="margin:24px 0 8px;font-size:14px;color:#5b5878">{{.T.GuestMailValid}}</p>
+<p style="margin:0 0 24px;font-size:14px;color:#5b5878">{{.T.GuestMailIgnore}}</p>
+<p style="margin:0 0 4px;font-size:13px;color:#5b5878">{{.T.GuestMailFallback}}</p>
+<p style="margin:0;font-size:13px;word-break:break-all"><a href="{{.Link}}" style="color:#4a3ddb">{{.Link}}</a></p>
+</td></tr></table>
+<p style="margin:16px 0 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;font-size:12px;color:#5b5878">quick · {{.Host}}</p>
+</td></tr></table>
+</body></html>`))
 
 // guestForm is the email link form shown under the SSO button on sites with
 // outside people.

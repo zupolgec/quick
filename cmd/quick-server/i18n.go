@@ -131,7 +131,9 @@ type uiText struct {
 	GuestSentHeading, GuestSentA, GuestSentB                           string
 	GuestConfirmHeading, GuestConfirmIntro, GuestConfirmStay           string
 	GuestConfirmButton, GuestInvalidHeading, GuestInvalidIntro         string
-	GuestInvalidButton, GuestMailSubject, GuestMailBody, PeopleOutside string
+	GuestInvalidButton, GuestMailSubject, PeopleOutside                string
+	GuestMailHello, GuestMailIntro, GuestMailButton, GuestMailFallback string
+	GuestMailValid, GuestMailIgnore                                    string
 	PeopleGuestTag, GuestEmailLabel                                    string
 
 	NotFoundTitle, NotFoundSiteHeading, NotFoundSiteIntro string
@@ -291,7 +293,12 @@ var uiTexts = map[lang]uiText{
 		GuestInvalidIntro:   "Sign-in links work once, for 15 minutes. Ask for a new one from the site.",
 		GuestInvalidButton:  "Ask for a new link",
 		GuestMailSubject:    "Your sign-in link for %s",
-		GuestMailBody:       "Hi,\n\nuse this link to open %s:\n\n%s\n\nIt works once, within 15 minutes, and keeps you signed in on that browser for 7 days.\nIf you didn't ask for it, you can ignore this email.\n",
+		GuestMailHello:      "Hi,",
+		GuestMailIntro:      "you asked to open %s. Use this link to sign in:",
+		GuestMailButton:     "Open the site",
+		GuestMailFallback:   "If the button doesn't work, copy this address into your browser:",
+		GuestMailValid:      "The link works once, for 15 minutes. Once used, you stay signed in on that browser for 7 days.",
+		GuestMailIgnore:     "If you didn't ask for it, ignore this email: without the link nobody can sign in in your place.",
 		PeopleOutside:       "People outside the company get a sign-in link by email.",
 		PeopleGuestTag:      "email link",
 		GuestEmailLabel:     "Email",
@@ -462,7 +469,12 @@ var uiTexts = map[lang]uiText{
 		GuestInvalidIntro:   "Il link di accesso vale una volta sola, per 15 minuti. Chiedine uno nuovo dal sito.",
 		GuestInvalidButton:  "Chiedi un nuovo link",
 		GuestMailSubject:    "Il tuo link di accesso a %s",
-		GuestMailBody:       "Ciao,\n\nusa questo link per aprire %s:\n\n%s\n\nVale una volta sola, entro 15 minuti, e ti tiene dentro da quel browser per 7 giorni.\nSe non l'hai chiesto tu, ignora questa email.\n",
+		GuestMailHello:      "Ciao,",
+		GuestMailIntro:      "hai chiesto di aprire %s. Usa questo link per entrare:",
+		GuestMailButton:     "Apri il sito",
+		GuestMailFallback:   "Se il pulsante non funziona, copia questo indirizzo nel browser:",
+		GuestMailValid:      "Il link vale una volta sola, per 15 minuti. Una volta usato, l'accesso resta valido su quel browser per 7 giorni.",
+		GuestMailIgnore:     "Se non l'hai chiesto tu, ignora questa email: senza il link nessuno può entrare al posto tuo.",
 		PeopleOutside:       "Chi è fuori dall'azienda riceve un link di accesso via email.",
 		PeopleGuestTag:      "link via email",
 		GuestEmailLabel:     "Email",

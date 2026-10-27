@@ -18,12 +18,12 @@ import (
 
 const dave = "dave@client.it" // outside the company domain (example.com)
 
-type sentMail struct{ to, subject, body string }
+type sentMail struct{ to, subject, body, html string }
 
 type fakeMailer struct{ sent chan sentMail }
 
-func (f *fakeMailer) Send(to, subject, body string) error {
-	f.sent <- sentMail{to, subject, body}
+func (f *fakeMailer) Send(m mailMessage) error {
+	f.sent <- sentMail{m.To, m.Subject, m.Text, m.HTML}
 	return nil
 }
 
@@ -96,6 +96,9 @@ func askLink(t *testing.T, e *peopleEnv, m *fakeMailer, email string) string {
 	link := linkRE.FindString(mail.body)
 	if link == "" {
 		t.Fatalf("no link in mail:\n%s", mail.body)
+	}
+	if !strings.Contains(mail.html, `href="`+link+`"`) {
+		t.Fatalf("html part without the link:\n%s", mail.html)
 	}
 	return link
 }
