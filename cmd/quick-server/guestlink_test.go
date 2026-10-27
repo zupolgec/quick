@@ -97,6 +97,9 @@ func askLink(t *testing.T, e *peopleEnv, m *fakeMailer, email string) string {
 	if link == "" {
 		t.Fatalf("no link in mail:\n%s", mail.body)
 	}
+	if !strings.Contains(mail.html, `<img src="https://quick.test/img/logo.png"`) {
+		t.Fatalf("html part without the logo:\n%s", mail.html)
+	}
 	if !strings.Contains(mail.html, `href="`+link+`"`) {
 		t.Fatalf("html part without the link:\n%s", mail.html)
 	}

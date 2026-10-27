@@ -204,7 +204,7 @@ func (s *server) handleGuestLink(w http.ResponseWriter, r *http.Request, sub str
 		if s.isGuest(p, email) {
 			if tok, ok := s.guests.issue(sub, email, rd); ok {
 				link := "https://" + host + "/__quick/email?t=" + tok
-				msg, err := guestMail(t, l, email, host, link)
+				msg, err := guestMail(t, l, email, host, link, "https://"+s.baseDomain+"/img/logo.png")
 				go func() {
 					if err == nil {
 						err = s.mail.Send(msg)
@@ -222,12 +222,12 @@ func (s *server) handleGuestLink(w http.ResponseWriter, r *http.Request, sub str
 }
 
 // guestMail is the email with the sign-in link, as text and HTML.
-func guestMail(t uiText, l lang, to, host, link string) (mailMessage, error) {
+func guestMail(t uiText, l lang, to, host, link, logo string) (mailMessage, error) {
 	intro := fmt.Sprintf(t.GuestMailIntro, host)
 	text := t.GuestMailHello + "\n\n" + intro + "\n\n" + link + "\n\n" + t.GuestMailValid + "\n\n" + t.GuestMailIgnore + "\n\n-- \nquick · " + host + "\n"
 	var html strings.Builder
 	err := guestMailHTML.Execute(&html, map[string]any{
-		"Lang": string(l), "T": t, "Intro": intro, "Link": template.URL(link), "Host": host,
+		"Lang": string(l), "T": t, "Intro": intro, "Link": template.URL(link), "Host": host, "Logo": logo,
 	})
 	return mailMessage{To: to, Subject: fmt.Sprintf(t.GuestMailSubject, host), Text: text, HTML: html.String()}, err
 }
@@ -241,7 +241,7 @@ var guestMailHTML = template.Must(template.New("guestmail").Parse(`<!doctype htm
 <tr><td align="center" style="padding:32px 16px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#ffffff">
 <tr><td style="padding:36px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1a2238;font-size:16px;line-height:1.5">
-<p style="margin:0 0 24px;font-size:22px;font-weight:700;color:#1a2238">quick</p>
+<img src="{{.Logo}}" width="111" height="32" alt="quick" style="display:block;border:0;margin:0 0 28px;font-size:22px;font-weight:700;color:#1a2238">
 <p style="margin:0 0 8px">{{.T.GuestMailHello}}</p>
 <p style="margin:0 0 24px">{{.Intro}}</p>
 <table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background:#4a3ddb">
