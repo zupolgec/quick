@@ -26,6 +26,7 @@ _quick.example.com  TXT  launch
 - The domain stays "waiting for DNS" until the record resolves through public resolvers (1.1.1.1, 8.8.8.8), then turns active on its own.
 - The HTTPS certificate is issued on the first visit.
 - A domain belongs to one site. It moves to another site only once its DNS points there (for an apex domain: once the TXT record names the other site).
+- Search engines can index a site on its custom domain: the `noindex` quick puts on `<site>.<your-domain>` is not added there. Use `_headers` if you want it anyway.
 - Public and access-code sites are served on the custom domain. Sites behind company sign-in redirect visitors to `<site>.<your-domain>`, because a sign-in does not carry across domains.
 
 Custom domains have to be switched on by whoever runs the server: see [Self-hosting](/docs/self-hosting#custom-domains).

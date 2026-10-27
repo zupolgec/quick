@@ -128,6 +128,37 @@ no injected keys, for now). Proxied paths follow the site's visibility (SSO, cod
 public), so a protected site has its APIs protected too. The `_redirects` file is
 never served; changes propagate within a few seconds.
 
+**`_headers`** (Netlify style): a `_headers` file at the root of the site sets
+response headers per path. A path line, then the headers indented under it:
+
+```
+/*
+  X-Frame-Options: DENY
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+  Access-Control-Allow-Origin: *
+```
+
+Paths are the ones in the address bar (`/about`, not `/about.html`); the only
+wildcard is a trailing `/*`. Every matching rule applies, and a header set by
+several rules gets its values joined with `, `. Headers apply to the site's files,
+`200.html` and `404.html` included, not to redirects or proxied responses. Headers
+quick manages itself can't be set (the line is ignored): `Set-Cookie`,
+`WWW-Authenticate`, `Authorization`, `Proxy-*`, `Content-Type`, `Content-Encoding`,
+`Content-Length`, `Content-Range`, `Transfer-Encoding`, `ETag`, `Last-Modified`,
+`Accept-Ranges`, `Location`, `X-Content-Type-Options`, `Strict-Transport-Security`,
+`Alt-Svc`, `Clear-Site-Data`, `Access-Control-Allow-Credentials`, `X-Quick-*`,
+`X-Forwarded-*` and hop-by-hop headers. The `_headers` file is never served; changes
+propagate within a few seconds.
+
+**Search engines**: every response on a `<site>.<domain>` address carries
+`X-Robots-Tag: noindex, nofollow`, pages as well as images, fonts and scripts, so
+drafts stay out of search results. It can't be turned off: an `X-Robots-Tag` in
+`_headers` adds directives on top of it. A site that must be found goes on a custom
+domain (`quick domains add`), where quick adds nothing. Don't block crawlers with
+`Disallow: /` in `robots.txt`: a crawler that can't fetch a page never sees its
+noindex and may still list the bare address.
+
 `quick status` shows server, login, site visibility and what the deploy would upload.
 `quick skill` publishes an Agent Skill (`SKILL.md`) that teaches an agent how to use
 the CLI. `SKILL.md` is an open cross-vendor format (Claude Code, Codex, Gemini,
@@ -309,7 +340,6 @@ retype its name.
 
 "By file, zero config" conventions not implemented yet, in order of usefulness:
 
-- **`_headers`**: per-path headers (Cache-Control, CSP…) defined by the site.
 - **`Cache-Control` defaults**: HTML `no-cache`, assets with a long `max-age` (best
   with hashed asset names).
 - **Compression (gzip + brotli)**: negotiated through `Accept-Encoding`, with `Vary:

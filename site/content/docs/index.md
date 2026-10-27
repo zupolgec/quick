@@ -65,6 +65,6 @@ That is the whole loop. A few things worth knowing:
 ## Next
 
 - [CLI reference](/docs/cli): every command and flag.
-- [Site conventions](/docs/sites): `404.html`, SPAs, `_redirects`, what is never uploaded.
+- [Site conventions](/docs/sites): `404.html`, SPAs, `_redirects`, `_headers`, search engines, what is never uploaded.
 - [Access and safety](/docs/access): public sites, access codes, locks, rollback.
 - [CI and agents](/docs/ci-and-agents): deploy tokens, GitHub Actions, the agent skill.

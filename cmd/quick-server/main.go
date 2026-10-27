@@ -164,18 +164,23 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 		s.handleDomainCheck(w, r)
 		return
 	}
+	host := hostNoPort(fwdHost(r))
+	sub := subOf(host, s.baseDomain)
+	// quick addresses are for drafts and internal work: nothing served there
+	// is indexed. Custom domains are the way to publish an indexable site.
+	if sub != "" {
+		w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+	}
 	// Brand assets (font, logo, favicon) are served same-origin on every host so
 	// their URLs never need CORS (pages live on the apex and site subdomains).
 	if strings.HasPrefix(r.URL.Path, "/fonts/") || strings.HasPrefix(r.URL.Path, "/img/") {
 		s.handleAsset(w, r)
 		return
 	}
-	host := hostNoPort(fwdHost(r))
 	if host == s.baseDomain {
 		s.apexMux.ServeHTTP(w, r)
 		return
 	}
-	sub := subOf(host, s.baseDomain)
 	if sub == "" {
 		if sub = s.customDomainSite(w, r, host); sub == "" {
 			return

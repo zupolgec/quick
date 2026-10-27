@@ -194,16 +194,22 @@ func joinQuery(a, b string) string {
 	return a + "&" + b
 }
 
+// siteRules are a site's parsed _redirects and _headers.
+type siteRules struct {
+	redirects []redirectRule
+	headers   []headerRule
+}
+
 type cachedRules struct {
-	rules []redirectRule
+	rules siteRules
 	at    time.Time
 }
 
-// rulesStore caches parsed _redirects per site (same shape as metaStore).
-// Unlike metaStore it also caches the negative result: most sites have no
-// _redirects and every probe is a storage round trip (an S3 GET). Storage
-// backends collapse errors into ErrNotFound, so a transient error caches as
-// "no rules" for one TTL — fail-open on serving, never fail-closed.
+// rulesStore caches parsed _redirects and _headers per site (same shape as
+// metaStore). Unlike metaStore it also caches the negative result: most sites
+// have neither file and every probe is a storage round trip (an S3 GET).
+// Storage backends collapse errors into ErrNotFound, so a transient error
+// caches as "no rules" for one TTL — fail-open on serving, never fail-closed.
 type rulesStore struct {
 	be    storage.Backend
 	ttl   time.Duration
@@ -215,7 +221,7 @@ func newRulesStore(be storage.Backend, ttl time.Duration) *rulesStore {
 	return &rulesStore{be: be, ttl: ttl, cache: map[string]cachedRules{}}
 }
 
-func (rs *rulesStore) load(site string) []redirectRule {
+func (rs *rulesStore) load(site string) siteRules {
 	rs.mu.Lock()
 	if c, ok := rs.cache[site]; ok && time.Since(c.at) < rs.ttl {
 		rs.mu.Unlock()
@@ -223,24 +229,40 @@ func (rs *rulesStore) load(site string) []redirectRule {
 	}
 	rs.mu.Unlock()
 
-	var rules []redirectRule
-	if rc, _, err := rs.be.OpenFile(site, "/_redirects"); err == nil {
-		data, rerr := io.ReadAll(io.LimitReader(rc, maxRedirectsBytes+1))
-		rc.Close()
-		if rerr == nil && int64(len(data)) <= maxRedirectsBytes {
-			var skipped int
-			rules, skipped = parseRedirects(data)
-			if skipped > 0 {
-				log.Printf("site %s: _redirects: %d invalid line(s) skipped", site, skipped)
-			}
-		} else {
-			log.Printf("site %s: _redirects unreadable or over %d bytes, ignored", site, maxRedirectsBytes)
+	var rules siteRules
+	if data, ok := rs.readCapped(site, "/_redirects"); ok {
+		var skipped int
+		rules.redirects, skipped = parseRedirects(data)
+		if skipped > 0 {
+			log.Printf("site %s: _redirects: %d invalid line(s) skipped", site, skipped)
+		}
+	}
+	if data, ok := rs.readCapped(site, "/_headers"); ok {
+		var skipped int
+		rules.headers, skipped = parseHeaders(data)
+		if skipped > 0 {
+			log.Printf("site %s: _headers: %d invalid or forbidden line(s) skipped", site, skipped)
 		}
 	}
 	rs.mu.Lock()
 	rs.cache[site] = cachedRules{rules, time.Now()}
 	rs.mu.Unlock()
 	return rules
+}
+
+// readCapped reads a rules file, refusing (and logging) one over the size cap.
+func (rs *rulesStore) readCapped(site, name string) ([]byte, bool) {
+	rc, _, err := rs.be.OpenFile(site, name)
+	if err != nil {
+		return nil, false
+	}
+	data, rerr := io.ReadAll(io.LimitReader(rc, maxRedirectsBytes+1))
+	rc.Close()
+	if rerr != nil || int64(len(data)) > maxRedirectsBytes {
+		log.Printf("site %s: %s unreadable or over %d bytes, ignored", site, strings.TrimPrefix(name, "/"), maxRedirectsBytes)
+		return nil, false
+	}
+	return data, true
 }
 
 func (rs *rulesStore) forget(site string) {

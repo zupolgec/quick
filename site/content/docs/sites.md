@@ -1,6 +1,6 @@
 ---
 title: Site conventions
-description: How quick serves your files, what never gets uploaded, _redirects, single-page apps, precompressed builds and quick.js.
+description: How quick serves your files, what never gets uploaded, _redirects, _headers, search engines, single-page apps, precompressed builds and quick.js.
 ---
 
 # Site conventions
@@ -35,6 +35,32 @@ A `_redirects` file at the root of the site defines redirects, rewrites and prox
 - A proxy passes requests through to a public `https` host: never to private or internal addresses, never to other quick sites, and no credentials are added.
 - Proxied paths follow the site's visibility: a site behind sign-in has its API behind sign-in too.
 - The `_redirects` file itself is never served. Changes take effect within a few seconds.
+
+## `_headers`
+
+A `_headers` file at the root of the site sets response headers per path, in the Netlify style: a path, then the headers indented under it.
+
+```
+/*
+  X-Frame-Options: DENY
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+  Access-Control-Allow-Origin: *
+```
+
+- Paths are the ones in the address bar: `/about`, not `/about.html`. The only wildcard is a trailing `/*`.
+- Every matching rule applies. A header set by several rules gets its values joined with `, `.
+- Headers apply to the site's files, `200.html` and `404.html` included. Redirects and proxied responses don't get them.
+- Headers quick manages itself can't be set, and their line is ignored: cookies (`Set-Cookie`), sign-in (`WWW-Authenticate`, `Authorization`, `Proxy-*`), how a file is sent (`Content-Type`, `Content-Encoding`, `Content-Length`, `Content-Range`, `Transfer-Encoding`, `ETag`, `Last-Modified`, `Accept-Ranges`, `Location`), security (`X-Content-Type-Options`, `Strict-Transport-Security`, `Access-Control-Allow-Credentials`, `Clear-Site-Data`), `Alt-Svc`, `X-Quick-*` and `X-Forwarded-*`.
+- The `_headers` file itself is never served. Changes take effect within a few seconds.
+
+## Search engines
+
+Sites on a quick address are drafts and internal work, so they stay out of search results: every response on `<site>.<your-domain>` carries `X-Robots-Tag: noindex, nofollow`, pages as well as images, fonts and scripts.
+
+- It can't be turned off. An `X-Robots-Tag` in `_headers` adds directives on top of it.
+- A site that should be found goes on a [custom domain](/docs/custom-domains), where quick adds nothing.
+- Don't block crawlers with `Disallow: /` in `robots.txt`: a crawler that can't fetch a page never sees its noindex and may still list the bare address.
 
 ## What is never uploaded
 

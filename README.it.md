@@ -128,6 +128,40 @@ la visibilità del sito (SSO, codice, pubblico), quindi un sito protetto ha anch
 le sue API protette. Il file `_redirects` non viene mai servito; le modifiche si
 propagano entro qualche secondo.
 
+**`_headers`** (stile Netlify): un file `_headers` nella radice del sito imposta
+gli header delle risposte per path. Una riga col path, poi gli header indentati
+sotto:
+
+```
+/*
+  X-Frame-Options: DENY
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+  Access-Control-Allow-Origin: *
+```
+
+I path sono quelli della barra degli indirizzi (`/about`, non `/about.html`); il
+wildcard è solo `/*` finale. Si applicano tutte le regole che corrispondono, e un
+header impostato da più regole ha i valori uniti con `, `. Gli header valgono per i
+file del sito, `200.html` e `404.html` compresi, non per i redirect né per le
+risposte proxate. Gli header che quick gestisce da sé non si possono impostare (la
+riga viene ignorata): `Set-Cookie`, `WWW-Authenticate`, `Authorization`, `Proxy-*`,
+`Content-Type`, `Content-Encoding`, `Content-Length`, `Content-Range`,
+`Transfer-Encoding`, `ETag`, `Last-Modified`, `Accept-Ranges`, `Location`,
+`X-Content-Type-Options`, `Strict-Transport-Security`, `Alt-Svc`, `Clear-Site-Data`,
+`Access-Control-Allow-Credentials`, `X-Quick-*`, `X-Forwarded-*` e gli header
+hop-by-hop. Il file `_headers` non viene mai servito; le modifiche si propagano entro
+qualche secondo.
+
+**Motori di ricerca**: ogni risposta su un indirizzo `<sito>.<dominio>` ha
+`X-Robots-Tag: noindex, nofollow`, le pagine ma anche immagini, font e script, così
+le bozze restano fuori dai risultati di ricerca. Non si può disattivare: un
+`X-Robots-Tag` in `_headers` aggiunge direttive in più. Un sito che deve essere
+trovato va su un dominio personalizzato (`quick domains add`), dove quick non
+aggiunge niente. Non bloccare i crawler con `Disallow: /` nel `robots.txt`: un
+crawler che non può leggere una pagina non vede il suo noindex e può comunque
+elencare l'indirizzo nudo.
+
 `quick status` mostra server, login, visibilità del sito e cosa salirebbe col deploy.
 `quick skill` pubblica una Agent Skill (`SKILL.md`) che insegna a un agente come usare
 la CLI. `SKILL.md` è un formato aperto cross-vendor (Claude Code, Codex, Gemini,
@@ -318,7 +352,6 @@ ridigitarne il nome.
 
 Convenzioni "via file, zero config" non ancora implementate, in ordine di utilità:
 
-- **`_headers`**: header per-path (Cache-Control, CSP…) definiti dal sito.
 - **Default di `Cache-Control`**: HTML `no-cache`, asset con `max-age` lungo (al meglio
   con asset con hash nel nome).
 - **Compressione (gzip + brotli)**: negoziata via `Accept-Encoding`, con `Vary:

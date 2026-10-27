@@ -21,7 +21,8 @@ description: >-
   create deploy tokens for CI/agent environments, attach a custom domain, or understand why a deploy
   excludes certain files. Covers mirror deploys, .quickignore, the 404.html /
   200.html / clean URL / _redirects conventions (redirects, SPA rewrites and
-  same-origin API proxying), login, multiple servers, deploy tokens and status.
+  same-origin API proxying), per-path response headers with _headers, the
+  noindex on quick addresses, login, multiple servers, deploy tokens and status.
 ---
 
 # quick CLI
@@ -201,6 +202,31 @@ Use ` + "`quick status`" + ` or ` + "`quick deploy ... --dry-run`" + ` to see in
   pass-through to public https hosts only (no private IPs, no quick subdomains,
   no injected credentials) and follows the site's visibility. The
   ` + "`_redirects`" + ` file itself is never served.
+- ` + "`_headers`" + ` at the root (Netlify-style): response headers per path, a path
+  line then indented ` + "`Name: value`" + ` lines:
+
+  ` + "```" + `
+  /*
+    X-Frame-Options: DENY
+  /assets/*
+    Cache-Control: public, max-age=31536000, immutable
+  ` + "```" + `
+
+  Paths as in the address bar (` + "`/about`" + `, not ` + "`/about.html`" + `), only a trailing
+  ` + "`/*`" + ` wildcard. Every matching rule applies; a header from several rules is
+  joined with ` + "`, `" + `. Applies to the site's files (also ` + "`200.html`" + `/` + "`404.html`" + `),
+  not to redirects or proxied responses. Headers quick owns are ignored:
+  ` + "`Set-Cookie`" + `, auth (` + "`WWW-Authenticate`" + `, ` + "`Authorization`" + `, ` + "`Proxy-*`" + `),
+  ` + "`Content-Type`" + `/` + "`Content-Encoding`" + `/` + "`Content-Length`" + `/` + "`ETag`" + `/` + "`Last-Modified`" + `
+  and other transport headers, ` + "`Location`" + `, ` + "`X-Content-Type-Options`" + `,
+  ` + "`Strict-Transport-Security`" + `, ` + "`Access-Control-Allow-Credentials`" + `, ` + "`X-Quick-*`" + `,
+  ` + "`X-Forwarded-*`" + `. The ` + "`_headers`" + ` file itself is never served.
+- Every response on a ` + "`<site>.<domain>`" + ` address has
+  ` + "`X-Robots-Tag: noindex, nofollow`" + ` (assets too); it can't be turned off, and an
+  ` + "`X-Robots-Tag`" + ` in ` + "`_headers`" + ` only adds directives. For a site that must be
+  indexed, attach a custom domain (` + "`quick domains add`" + `): quick adds no noindex
+  there. Don't add ` + "`Disallow: /`" + ` to ` + "`robots.txt`" + `: crawlers then can't see the
+  noindex. Pages don't need their own robots meta tag on quick addresses.
 - Precompressed assets work as-is: ` + "`x.js.br`" + `, ` + "`x.wasm.gz`" + `, ` + "`x.data.br`" + `,
   ` + "`x.json.gz`" + ` are served with the right type and Content-Encoding. Unity WebGL
   builds deploy unchanged with any compression setting (Brotli, Gzip, or

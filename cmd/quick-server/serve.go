@@ -129,8 +129,8 @@ func (s *server) serveSite(w http.ResponseWriter, r *http.Request, sub string) {
 		http.Redirect(w, r, withRawQuery(target, r.URL.RawQuery), http.StatusTemporaryRedirect)
 		return
 	}
-	// _redirects itself is never served: it can reveal upstream hosts.
-	if cand, ok := s.htmlAssetCandidate(sub, p); ok && p != "/_redirects" {
+	// _redirects and _headers are never served: they can reveal upstream hosts.
+	if cand, ok := s.htmlAssetCandidate(sub, p); ok && p != "/_redirects" && p != "/_headers" {
 		s.serveFile(w, r, sub, cand, http.StatusOK)
 		return
 	}
@@ -155,7 +155,7 @@ func (s *server) applyRedirectRules(w http.ResponseWriter, r *http.Request, sub,
 	if s.rules == nil {
 		return false
 	}
-	m, ok := matchRules(s.rules.load(sub), p)
+	m, ok := matchRules(s.rules.load(sub).redirects, p)
 	if !ok {
 		return false
 	}
@@ -302,6 +302,9 @@ func (s *server) serveFile(w http.ResponseWriter, r *http.Request, sub, cand str
 	// No MIME sniffing: a public site must not be able to get a file interpreted
 	// as the wrong type (XSS vector). The octet-stream fallback downloads, not renders.
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	if s.rules != nil {
+		applyHeaderRules(w.Header(), s.rules.load(sub).headers, r.URL.Path)
+	}
 	ct, enc, ok := precompressed(cand)
 	if !ok && path.Ext(cand) == ".unityweb" {
 		ct, enc, ok = unitywebEncoding(cand, rc)
