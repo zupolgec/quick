@@ -140,7 +140,8 @@ func (s *server) editViewers(cur policy, req quick.PolicyRequest) ([]string, *po
 }
 
 // normViewer validates a viewer address: a bare, well-formed email in one of
-// the company's allowed domains (any domain with QUICK_ALLOWED_DOMAINS="*").
+// the company's allowed domains (any domain with QUICK_ALLOWED_DOMAINS="*"),
+// or any domain when the server can send email links (guestlink.go).
 func (s *server) normViewer(raw string) (string, *policyErr) {
 	v := strings.ToLower(strings.TrimSpace(raw))
 	a, err := mail.ParseAddress(v)
@@ -149,9 +150,10 @@ func (s *server) normViewer(raw string) (string, *policyErr) {
 		return "", &policyErr{status: http.StatusBadRequest, kind: errBadEmail, arg: raw,
 			msg: "invalid email address " + strconv.Quote(raw)}
 	}
-	if !s.domainAllowed(domain) {
+	if !s.domainAllowed(domain) && s.mail == nil {
 		return "", &policyErr{status: http.StatusBadRequest, kind: errDomain, arg: v,
-			msg: v + " is not a company account (allowed: " + strings.TrimSpace(s.domain) + ")"}
+			msg: v + " is not a company account (allowed: " + strings.TrimSpace(s.domain) +
+				"); sharing with people outside the company needs this server to send email, which isn't set up"}
 	}
 	return v, nil
 }

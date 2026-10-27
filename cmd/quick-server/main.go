@@ -74,6 +74,8 @@ type server struct {
 	minFree      int64                 // disk space a deploy must leave free
 	freeSpace    func() (int64, error) // nil = not on a local disk
 	admins       map[string]bool       // QUICK_ADMINS, lowercased
+	mail         mailer                // QUICK_SMTP_URL; nil = no email, no outside people
+	guests       guestLinks            // email links for outside people (guestlink.go)
 }
 
 type authIdentity struct {
@@ -128,6 +130,9 @@ func main() {
 	if err := s.validateConfig(metaSecret); err != nil {
 		log.Fatal(err)
 	}
+	if s.mail, err = mailerFromEnv(); err != nil {
+		log.Fatal(err)
+	}
 	if err := s.configureLimits(); err != nil { // before the stage: it sizes it
 		log.Fatal(err)
 	}
@@ -147,7 +152,7 @@ func main() {
 	s.apexMux = s.buildApexMux()
 
 	addr := quick.Env("QUICK_ADDR", ":8080")
-	log.Printf("quick-server %s on %s (base=%s, storage=%s, ownership=%s, noauth=%v)", version, addr, s.baseDomain, quick.Env("QUICK_STORAGE", "local"), s.ownership, s.noAuth)
+	log.Printf("quick-server %s on %s (base=%s, storage=%s, ownership=%s, email=%v, noauth=%v)", version, addr, s.baseDomain, quick.Env("QUICK_STORAGE", "local"), s.ownership, s.mail != nil, s.noAuth)
 	log.Fatal(newHTTPServer(addr, http.HandlerFunc(s.route)).ListenAndServe())
 }
 
@@ -194,6 +199,10 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/__quick/code" {
 		s.handleCodePage(w, r, sub)
+		return
+	}
+	if r.URL.Path == "/__quick/email" {
+		s.handleGuestLink(w, r, sub)
 		return
 	}
 	if r.URL.Path == "/__quick/quick.js" || r.URL.Path == "/__quick/quick.d.ts" {

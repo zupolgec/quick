@@ -22,7 +22,8 @@ quick access launch public                  # anyone, no sign-in
 Inside a folder linked to the site (it has a `.quick` file) you can drop the name: `quick access only-me`, `quick access add giulia@acme.com`.
 
 - **Everyone at the company** checks the visitor's session with your identity provider (Google Workspace or any OIDC provider). Only accounts in the allowed email domains get in.
-- **Chosen people** works like company sign-in, but only the owner (whoever created the site) and the accounts on the list get in. Anyone else at the company sees a page saying the site is restricted and who owns it, never who else is on the list. "Only me" is the same with an empty list. The list takes company accounts only.
+- **Chosen people** works like company sign-in, but only the owner (whoever created the site) and the accounts on the list get in. Anyone else at the company sees a page saying the site is restricted and who owns it, never who else is on the list. "Only me" is the same with an empty list. The list takes company accounts, and people outside the company too when the server can send email (see below).
+- **People outside the company** on a chosen-people list can't use company sign-in. On the sign-in page they enter their email and get a link: it works once, for 15 minutes, and keeps them signed in on that browser for 7 days. Only listed addresses get the email, and the page answers the same way for anyone, so it doesn't reveal who is on the list. Take someone off the list and they're out at once. This needs the server to send email (`QUICK_SMTP_URL`); without it, `quick access add` refuses addresses outside the company.
 - **Access code** shows a page asking for the code. Once entered, it is remembered for 7 days.
 - **Public** serves the site to everyone.
 

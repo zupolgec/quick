@@ -85,13 +85,14 @@ func (s *server) handleSite(w http.ResponseWriter, r *http.Request, sub string) 
 	case signedIn: // chosen people, and the visitor isn't one of them
 		s.renderRestricted(w, r, host, p, email)
 	default: // SSO: if not authenticated, show the sign-in page (no bare redirect)
-		s.renderSSOPage(w, r, host)
+		s.renderSSOPage(w, r, host, s.hasGuests(p))
 	}
 }
 
 // siteAccess applies the site's visibility to the request: ok reports whether
 // the visitor may see it, email is the SSO user (only checked on SSO and
-// people sites), signedIn whether they have an SSO session.
+// people sites) or the outside person signed in with an email link,
+// signedIn whether they have an SSO session.
 func (s *server) siteAccess(r *http.Request, sub string) (p policy, email string, signedIn, ok bool, err error) {
 	p, err = s.meta.load(sub)
 	if err != nil {
@@ -104,6 +105,9 @@ func (s *server) siteAccess(r *http.Request, sub string) (p policy, email string
 		c, err := r.Cookie("quick_access_" + sub)
 		return p, "", false, err == nil && s.meta.validAccessCookie(sub, c.Value), nil
 	default:
+		if guest, ok := s.guestFromCookie(r, sub, p); ok {
+			return p, guest, false, true, nil
+		}
 		email, signedIn = s.checkSSO(r)
 		return p, email, signedIn, signedIn && s.mayView(p, email), nil
 	}

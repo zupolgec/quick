@@ -58,7 +58,7 @@ quick deploy my-site ./build                    # -> https://my-site.quick.examp
 | ` + "`quick ignore [folder]`" + ` | Create an editable ` + "`.quickignore`" + ` with the defaults already inside |
 | ` + "`quick access [<site>]`" + ` | Who can see the site: level, owner, and the people list (if you are on it) |
 | ` + "`quick access [<site>] team \\| public \\| code [--code X] \\| only-me`" + ` | Set who can see it: everyone at the company (default), public, by code, or only you |
-| ` + "`quick access [<site>] add <email>...`" + ` / ` + "`remove <email>...`" + ` | Share with (or stop sharing with) chosen company accounts; ` + "`add`" + ` limits the site to the owner + the list |
+| ` + "`quick access [<site>] add <email>...`" + ` / ` + "`remove <email>...`" + ` | Share with (or stop sharing with) chosen people (company accounts; outside addresses too if the server sends email); ` + "`add`" + ` limits the site to the owner + the list |
 | ` + "`quick publish [<site>]`" + ` | Open to the public (no SSO) |
 | ` + "`quick unpublish [<site>]`" + ` | Back behind company SSO (default) |
 | ` + "`quick private [<site>] [--code X]`" + ` | Access by code (generated if absent) |
@@ -252,7 +252,11 @@ Use ` + "`quick status`" + ` or ` + "`quick deploy ... --dry-run`" + ` to see in
   "me and the administrators": say so if the user relies on it for privacy.
 - **Chosen people** (` + "`quick access <site> add|remove|only-me`" + `): visitors sign in with SSO and must be the
   owner (the site's creator) or on its list; anyone else gets a "restricted" page that names the owner,
-  never the list. Emails must be company accounts (max 100 per site). Only the owner can limit a site
+  never the list. Emails must be company accounts (max 100 per site), unless the server can
+  send email (QUICK_SMTP_URL): then outside addresses are accepted too, and those people
+  ask for a sign-in link on the site's sign-in page (works once, 15 minutes; keeps them
+  in on that browser for 7 days; removing them locks them out at once). Without email,
+  ` + "`add`" + ` of an outside address is refused with a message saying so. Only the owner can limit a site
   to chosen people, change who sees such a site (in any ownership mode), or delete it;
   other users get ` + "`only the owner (x) can change who can see this site`" + `. Deploys are unchanged:
   whoever may deploy the site still can, even without seeing it (then, and with deploy

@@ -138,7 +138,7 @@ func printUsage(w io.Writer) {
   quick delete    [<site>]          # delete the site (irreversible)
   quick access    [<site>]          # who can see the site (level, owner, people)
   quick access    [<site>] team | public | code [--code X] | only-me
-  quick access    [<site>] add|remove <email>...  # share with chosen company accounts
+  quick access    [<site>] add|remove <email>...  # share with chosen people
   quick publish   [<site>]          # open to the public (no SSO)
   quick unpublish [<site>]          # back behind company SSO
   quick private   [<site>] [--code X] # access by code (generated if absent)

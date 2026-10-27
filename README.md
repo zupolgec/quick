@@ -253,7 +253,12 @@ see a "restricted" page naming the owner (never the list). Only the owner change
 list or the visibility of such a site, or deletes it, in every ownership mode; deploys
 follow the usual rules, and whoever can't open the site (and any deploy token) uploads
 the whole folder instead of a delta. In a folder linked with `.quick` the site name is
-optional (`quick access only-me`). The **lock**
+optional (`quick access only-me`). When the server can send email (`QUICK_SMTP_URL`),
+the list can also hold **people outside the company**: on the sign-in page they enter
+their address and get a link that works once, for 15 minutes, and keeps them signed in
+on that browser for 7 days. Anyone may ask; only listed addresses get an email, and the
+answer is the same either way. Removing someone locks them out at once. Without email
+the list takes company accounts only. The **lock**
 records you (from your Google identity) as owner: others can no longer overwrite it
 or change its policy until you `unlock`.
 
@@ -413,7 +418,8 @@ the roadmap (local `docs/`).
 See `.env.example`. In short: `QUICK_BASE_DOMAIN`, `QUICK_ALLOWED_DOMAINS` (one, a list
 `a,b`, or `*`), `GOOGLE_CLIENT_ID/SECRET` (OAuth **Web** client for oauth2-proxy),
 `COOKIE_SECRET`, `QUICK_META_SECRET`, `QUICK_OWNERSHIP`=`free|shared|owned`,
-`QUICK_ADMINS` (administrator emails), `QUICK_SITE_LIMIT` (default site limit, 100MB),
+`QUICK_ADMINS` (administrator emails), `QUICK_SMTP_URL` + `QUICK_MAIL_FROM` (email
+sending, for people outside the company on chosen-people sites), `QUICK_SITE_LIMIT` (default site limit, 100MB),
 `QUICK_SITE_LIMIT_MAX` (highest limit an administrator can set, 2GB), `QUICK_MIN_FREE`
 (free disk space a deploy must leave, 5GB; local storage only),
 `QUICK_STORAGE`=`local|s3` (+ `QUICK_S3_*`), `QUICK_HOST_DIR` (host folder for the

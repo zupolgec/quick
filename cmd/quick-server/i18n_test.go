@@ -42,7 +42,7 @@ func TestSSOPageLocalized(t *testing.T) {
 	s := &server{baseDomain: "example.test"}
 
 	en := httptest.NewRecorder()
-	s.renderSSOPage(en, httptest.NewRequest(http.MethodGet, "/", nil), "foo.example.test")
+	s.renderSSOPage(en, httptest.NewRequest(http.MethodGet, "/", nil), "foo.example.test", false)
 	if b := en.Body.String(); !strings.Contains(b, `<html lang="en"`) || !strings.Contains(b, "Sign-in required") {
 		t.Errorf("english SSO page not localized:\n%s", b)
 	}
@@ -53,7 +53,7 @@ func TestSSOPageLocalized(t *testing.T) {
 	it := httptest.NewRecorder()
 	ri := httptest.NewRequest(http.MethodGet, "/", nil)
 	ri.Header.Set("Accept-Language", "it-IT,it;q=0.9")
-	s.renderSSOPage(it, ri, "foo.example.test")
+	s.renderSSOPage(it, ri, "foo.example.test", false)
 	if b := it.Body.String(); !strings.Contains(b, `<html lang="it"`) || !strings.Contains(b, "Accesso richiesto") {
 		t.Errorf("italian SSO page not localized:\n%s", b)
 	}

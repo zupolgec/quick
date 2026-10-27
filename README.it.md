@@ -261,7 +261,13 @@ visibilità ed eliminazione di questi siti spettano solo al proprietario, in ogn
 modalità; il deploy segue le regole di sempre, e chi non può aprire il sito (e ogni
 token di deploy) carica tutta la cartella invece delle sole differenze. In una
 cartella collegata con `.quick` il nome del sito è facoltativo (`quick access
-only-me`). Il **lock** registra te (dalla tua identità Google) come
+only-me`). Se il server può inviare email (`QUICK_SMTP_URL`), l'elenco può
+includere anche **persone esterne all'azienda**: nella pagina di accesso inseriscono
+il loro indirizzo e ricevono un link che vale una volta sola, per 15 minuti, e le tiene
+dentro da quel browser per 7 giorni. Chiunque può chiederlo, ma l'email arriva solo
+agli indirizzi in elenco e la risposta è la stessa in ogni caso. Chi viene tolto
+dall'elenco resta fuori subito. Senza email l'elenco accetta solo account aziendali.
+Il **lock** registra te (dalla tua identità Google) come
 owner: gli altri non possono più sovrascrivere né cambiare policy finché non fai
 `unlock`.
 
@@ -424,7 +430,8 @@ sito (same-origin, dietro lo stesso controllo di accesso dei file): libreria
 Vedi `.env.example`. In sintesi: `QUICK_BASE_DOMAIN`, `QUICK_ALLOWED_DOMAINS` (uno, lista `a,b`, o `*`),
 `GOOGLE_CLIENT_ID/SECRET` (client OAuth **Web** per oauth2-proxy), `COOKIE_SECRET`,
 `QUICK_META_SECRET`, `QUICK_OWNERSHIP`=`free|shared|owned`, `QUICK_STORAGE`=`local|s3` (+ `QUICK_S3_*`),
-`QUICK_ADMINS` (email degli amministratori), `QUICK_SITE_LIMIT` (limite di default per
+`QUICK_ADMINS` (email degli amministratori), `QUICK_SMTP_URL` + `QUICK_MAIL_FROM` (invio
+email, per le persone esterne sui siti per persone scelte), `QUICK_SITE_LIMIT` (limite di default per
 sito, 100MB), `QUICK_SITE_LIMIT_MAX` (limite massimo impostabile da un amministratore,
 2GB), `QUICK_MIN_FREE` (spazio libero che un deploy deve lasciare sul disco, 5GB; solo
 storage locale),

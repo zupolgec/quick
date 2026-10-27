@@ -59,6 +59,7 @@ Only accounts of the Workspace domains in `QUICK_ALLOWED_DOMAINS` get in: a pers
 | `QUICK_OIDC_ISSUER` | The issuer URL, for providers other than Google |
 | `QUICK_OWNERSHIP` | `free` (default), `shared` or `owned`; see [Access and safety](/docs/access) |
 | `QUICK_ADMINS` | Administrator emails, comma-separated: they can raise a single site's size limit |
+| `QUICK_SMTP_URL`, `QUICK_MAIL_FROM` | Email sending, e.g. `smtp://user:pass@host:587` (or `smtps://` on 465) and `quick <quick@example.com>`. Lets chosen-people sites include people outside the company, who sign in with an email link |
 | `QUICK_SITE_LIMIT` | Size limit of every site, per version (default `100MB`) |
 | `QUICK_SITE_LIMIT_MAX` | Highest limit an administrator can give a site (default `2GB`) |
 | `QUICK_MIN_FREE` | On local disk, refuse deploys that would leave less free space than this (default `5GB`) |

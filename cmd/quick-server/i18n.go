@@ -127,6 +127,13 @@ type uiText struct {
 	CodeTitle, CodeHeading, CodeIntro string
 	CodeLabel, CodeButton, CodeError  string
 
+	GuestOr, GuestIntro, GuestEmail, GuestSend, GuestTitle             string
+	GuestSentHeading, GuestSentA, GuestSentB                           string
+	GuestConfirmHeading, GuestConfirmIntro, GuestConfirmStay           string
+	GuestConfirmButton, GuestInvalidHeading, GuestInvalidIntro         string
+	GuestInvalidButton, GuestMailSubject, GuestMailBody, PeopleOutside string
+	PeopleGuestTag, GuestEmailLabel                                    string
+
 	NotFoundTitle, NotFoundSiteHeading, NotFoundSiteIntro string
 	NotFoundPageHeading, NotFoundPageIntro                string
 
@@ -267,6 +274,27 @@ var uiTexts = map[lang]uiText{
 		CodeLabel:   "Code",
 		CodeButton:  "Enter",
 		CodeError:   "Wrong code, try again.",
+
+		GuestOr:             "Not from the company?",
+		GuestIntro:          "If you've been invited, get a sign-in link by email.",
+		GuestEmail:          "Your email",
+		GuestSend:           "Email me a link",
+		GuestTitle:          "quick — sign-in link",
+		GuestSentHeading:    "Check your email",
+		GuestSentA:          "If this address can open",
+		GuestSentB:          ", you'll get an email with a sign-in link in a few minutes. The link works once, for 15 minutes.",
+		GuestConfirmHeading: "Open the site",
+		GuestConfirmIntro:   "You're about to open",
+		GuestConfirmStay:    "You'll stay signed in on this browser for 7 days.",
+		GuestConfirmButton:  "Continue",
+		GuestInvalidHeading: "This link no longer works",
+		GuestInvalidIntro:   "Sign-in links work once, for 15 minutes. Ask for a new one from the site.",
+		GuestInvalidButton:  "Ask for a new link",
+		GuestMailSubject:    "Your sign-in link for %s",
+		GuestMailBody:       "Hi,\n\nuse this link to open %s:\n\n%s\n\nIt works once, within 15 minutes, and keeps you signed in on that browser for 7 days.\nIf you didn't ask for it, you can ignore this email.\n",
+		PeopleOutside:       "People outside the company get a sign-in link by email.",
+		PeopleGuestTag:      "email link",
+		GuestEmailLabel:     "Email",
 
 		NotFoundTitle:       "quick — not found",
 		NotFoundSiteHeading: "Site not found",
@@ -417,6 +445,27 @@ var uiTexts = map[lang]uiText{
 		CodeLabel:   "Codice",
 		CodeButton:  "Entra",
 		CodeError:   "Codice errato, riprova.",
+
+		GuestOr:             "Non fai parte dell'azienda?",
+		GuestIntro:          "Se ti hanno invitato, ricevi un link di accesso via email.",
+		GuestEmail:          "La tua email",
+		GuestSend:           "Inviami il link",
+		GuestTitle:          "quick · link di accesso",
+		GuestSentHeading:    "Controlla la posta",
+		GuestSentA:          "Se questo indirizzo può aprire",
+		GuestSentB:          ", tra pochi minuti riceverai un'email con il link di accesso. Il link vale una volta sola, per 15 minuti.",
+		GuestConfirmHeading: "Apri il sito",
+		GuestConfirmIntro:   "Stai per aprire",
+		GuestConfirmStay:    "L'accesso resta valido su questo browser per 7 giorni.",
+		GuestConfirmButton:  "Continua",
+		GuestInvalidHeading: "Questo link non vale più",
+		GuestInvalidIntro:   "Il link di accesso vale una volta sola, per 15 minuti. Chiedine uno nuovo dal sito.",
+		GuestInvalidButton:  "Chiedi un nuovo link",
+		GuestMailSubject:    "Il tuo link di accesso a %s",
+		GuestMailBody:       "Ciao,\n\nusa questo link per aprire %s:\n\n%s\n\nVale una volta sola, entro 15 minuti, e ti tiene dentro da quel browser per 7 giorni.\nSe non l'hai chiesto tu, ignora questa email.\n",
+		PeopleOutside:       "Chi è fuori dall'azienda riceve un link di accesso via email.",
+		PeopleGuestTag:      "link via email",
+		GuestEmailLabel:     "Email",
 
 		NotFoundTitle:       "quick · non trovato",
 		NotFoundSiteHeading: "Sito non trovato",

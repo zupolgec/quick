@@ -258,14 +258,14 @@ func TestCheckClaimsGeneric(t *testing.T) {
 func TestSSOButtonLabel(t *testing.T) {
 	google := &server{baseDomain: "quick.example.test"}
 	w := httptest.NewRecorder()
-	google.renderSSOPage(w, httptest.NewRequest(http.MethodGet, "/", nil), "foo.quick.example.test")
+	google.renderSSOPage(w, httptest.NewRequest(http.MethodGet, "/", nil), "foo.quick.example.test", false)
 	if b := w.Body.String(); !strings.Contains(b, "Sign in with Google") {
 		t.Fatalf("google button should mention Google:\n%s", b)
 	}
 
 	oidc := &server{baseDomain: "quick.example.test", oidcIssuer: "https://idp.example.test"}
 	wo := httptest.NewRecorder()
-	oidc.renderSSOPage(wo, httptest.NewRequest(http.MethodGet, "/", nil), "foo.quick.example.test")
+	oidc.renderSSOPage(wo, httptest.NewRequest(http.MethodGet, "/", nil), "foo.quick.example.test", false)
 	bo := wo.Body.String()
 	if strings.Contains(bo, "Google") {
 		t.Fatalf("oidc button must be provider-neutral:\n%s", bo)
@@ -276,7 +276,7 @@ func TestSSOButtonLabel(t *testing.T) {
 
 	ri := httptest.NewRequest(http.MethodGet, "/?lang=it", nil)
 	wi := httptest.NewRecorder()
-	oidc.renderSSOPage(wi, ri, "foo.quick.example.test")
+	oidc.renderSSOPage(wi, ri, "foo.quick.example.test", false)
 	if bi := wi.Body.String(); !strings.Contains(bi, ">Accedi</a>") || strings.Contains(bi, "Google") {
 		t.Fatalf("italian oidc button should say Accedi:\n%s", bi)
 	}

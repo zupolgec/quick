@@ -19,7 +19,8 @@ import (
 // renderSSOPage shows the sign-in page (no bare redirect): branding + SSO
 // button. The button goes to sign_in on the apex, which after sign-in
 // returns to rd.
-func (s *server) renderSSOPage(w http.ResponseWriter, r *http.Request, host string) {
+// guests adds the email link form for outside people (guestlink.go).
+func (s *server) renderSSOPage(w http.ResponseWriter, r *http.Request, host string, guests bool) {
 	rd := "https://" + host + r.URL.RequestURI()
 	signIn := "https://" + s.baseDomain + "/oauth2/sign_in?rd=" + url.QueryEscape(rd)
 	l := pickLang(r)
@@ -31,7 +32,7 @@ func (s *server) renderSSOPage(w http.ResponseWriter, r *http.Request, host stri
 		w.Header().Add("Vary", "Accept-Language")
 		w.WriteHeader(http.StatusForbidden)
 		_ = ssoPage.Execute(w, map[string]any{
-			"Host": host, "Lang": string(l), "T": t, "Email": email,
+			"Host": host, "Lang": string(l), "T": t, "Email": email, "Guests": guests, "RD": rd,
 			"Denied": fmt.Sprintf(t.AuthWrongAccount, s.companyDomain()),
 			"Switch": "https://" + s.baseDomain + "/oauth2/sign_out?rd=" + url.QueryEscape(rd),
 		})
@@ -48,7 +49,7 @@ func (s *server) renderSSOPage(w http.ResponseWriter, r *http.Request, host stri
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Add("Vary", "Accept-Language")
 	_ = ssoPage.Execute(w, map[string]any{
-		"Host": host, "SignIn": signIn, "Lang": string(l), "T": t,
+		"Host": host, "SignIn": signIn, "Lang": string(l), "T": t, "Guests": guests, "RD": rd,
 	})
 }
 
@@ -60,7 +61,7 @@ func (s *server) handleApexRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, ok := s.checkSSO(r); !ok {
-		s.renderSSOPage(w, r, s.baseDomain)
+		s.renderSSOPage(w, r, s.baseDomain, false)
 		return
 	}
 	l := pickLang(r)
@@ -78,7 +79,7 @@ func (s *server) handleApexRoot(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	email, ok := s.checkSSO(r)
 	if !ok {
-		s.renderSSOPage(w, r, s.baseDomain)
+		s.renderSSOPage(w, r, s.baseDomain, false)
 		return
 	}
 	s.renderDashboard(w, pickLang(r), email)
@@ -87,7 +88,7 @@ func (s *server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleDashboardSite(w http.ResponseWriter, r *http.Request) {
 	email, ok := s.checkSSO(r)
 	if !ok {
-		s.renderSSOPage(w, r, s.baseDomain)
+		s.renderSSOPage(w, r, s.baseDomain, false)
 		return
 	}
 	name := strings.Trim(strings.TrimPrefix(r.URL.Path, "/dashboard/site/"), "/")
@@ -167,11 +168,24 @@ func (s *server) renderSitePageWith(w http.ResponseWriter, r *http.Request, name
 		"Tokens": tokenInfos(p.Tokens), "Reveal": reveal, "CSRF": csrf,
 		"Owner": p.CreatedBy, "IsOwner": s.actsAsOwner(p, email), "Levels": levels,
 		"CurrentLevel": currentLabel, "People": p.Access == quick.AccessPeople,
-		"Viewers": p.Viewers, "HasCode": p.Access == quick.AccessCode, "Error": errText,
+		"Viewers": s.viewerInfos(p), "Outside": s.mail != nil, "HasCode": p.Access == quick.AccessCode, "Error": errText,
 		"Domain": s.companyDomain(), "Lang": string(l), "T": t,
 		"Limit": quick.FormatSize(s.limitOf(p)), "Admin": s.isAdmin(email), "SizeError": sizeErr, "SizeAsk": sizeAsk, "AdminsNote": adminsNote,
 		"SizeHint": fmt.Sprintf(t.SizeHint, quick.FormatSize(s.ceiling()), quick.FormatSize(s.defaultLimit())),
 	})
+}
+
+type viewerInfo struct {
+	Email string
+	Guest bool // outside the company: signs in with an email link
+}
+
+func (s *server) viewerInfos(p policy) []viewerInfo {
+	out := make([]viewerInfo, len(p.Viewers))
+	for i, v := range p.Viewers {
+		out[i] = viewerInfo{Email: v, Guest: s.isGuest(p, v)}
+	}
+	return out
 }
 
 // companyDomain is the first allowed email domain ("" when any is allowed),
@@ -381,7 +395,7 @@ body{display:grid;place-items:center;padding:1.5rem}
 h1{font-size:1.75rem;line-height:1.1;margin:0 0 .5rem;color:var(--ink)}
 p{margin:0 0 1.75rem;color:var(--muted);font-size:1rem;overflow-wrap:anywhere}
 p b{color:var(--ink);font-weight:500}
-.btn{width:100%;min-height:3rem;font-size:1rem}
+.btn{width:100%;min-height:3rem;font-size:1rem}` + guestFormCSS + `
 </style></head><body>
 <div class="card">
   ` + brandWordmark + `
@@ -389,7 +403,7 @@ p b{color:var(--ink);font-weight:500}
   <p>{{.T.RestrictedSignedIn}} <b>{{.Email}}</b>. {{.Denied}}</p>
   <a class="btn" href="{{.Switch}}">{{.T.RestrictedSwitch}}</a>{{else}}<h1>{{.T.SSOHeading}}</h1>
   <p>{{.T.SSOIntro}} <b>{{.Host}}</b>.</p>
-  <a class="btn" href="{{.SignIn}}">{{.T.SSOButton}}</a>{{end}}
+  <a class="btn" href="{{.SignIn}}">{{.T.SSOButton}}</a>{{end}}` + guestForm + `
 </div></body></html>`))
 
 var notFoundPage = template.Must(template.New("404").Parse(`<!doctype html>
@@ -581,6 +595,7 @@ form.access:not(:has(input[value=code]:checked)) .field.code{display:none}
 form.access .btn{justify-self:start;margin-top:.6rem}
 .person{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.7rem 1rem;background:var(--sunk);margin-top:4px}
 .person-email{min-width:0;overflow-wrap:anywhere;color:var(--ink)}
+.person-tag{margin-left:.5rem;font-size:.8rem;color:var(--muted)}
 @media(max-width:680px){form.access .btn{justify-self:stretch}.person{display:block}.person form{margin-top:.55rem}.person .btn-secondary{width:100%}}
 @media(max-width:680px){.wrap{padding:1.5rem 1rem 3rem}header{display:block}.top{display:block}.tags{justify-content:flex-start;margin-top:.9rem}.token{display:block}.token form{margin-top:.65rem}.token .btn-secondary{width:100%}.who{text-align:left;margin-top:.75rem}.secret{display:block}.secret .btn-secondary{width:100%;margin-top:.55rem}form.create{display:grid;grid-template-columns:minmax(0,1fr)}.field.name{min-width:0}.btn{width:100%}h1{font-size:2rem}}
 </style></head><body>
@@ -617,11 +632,11 @@ form.access .btn{justify-self:start;margin-top:.6rem}
     <h3>{{.T.PeopleTitle}}</h3>
     {{if .Viewers}}{{range .Viewers}}
     <div class="person">
-      <span class="person-email">{{.}}</span>
+      <span class="person-email">{{.Email}}{{if .Guest}}<span class="person-tag">{{$.T.PeopleGuestTag}}</span>{{end}}</span>
       {{if $.IsOwner}}<form method="post" action="/api/site/{{$.Name}}/policy">
         <input type="hidden" name="csrf" value="{{$.CSRF}}">
         <input type="hidden" name="op" value="remove">
-        <input type="hidden" name="email" value="{{.}}">
+        <input type="hidden" name="email" value="{{.Email}}">
         <button class="btn-secondary" type="submit">{{$.T.PeopleRemove}}</button>
       </form>{{end}}
     </div>{{end}}{{else}}<p class="empty">{{.T.PeopleOnlyOwner}}</p>{{end}}
@@ -629,10 +644,10 @@ form.access .btn{justify-self:start;margin-top:.6rem}
     <form class="create" method="post" action="/api/site/{{.Name}}/policy">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <input type="hidden" name="op" value="add">
-      <div class="field name"><label for="viewer-email">{{.T.PeopleEmail}}</label><input id="viewer-email" name="email" type="text" inputmode="email" autocomplete="off"{{if .Domain}} placeholder="{{.T.PeopleEmailUser}}@{{.Domain}}"{{end}} required></div>
+      <div class="field name"><label for="viewer-email">{{if .Outside}}{{.T.GuestEmailLabel}}{{else}}{{.T.PeopleEmail}}{{end}}</label><input id="viewer-email" name="email" type="text" inputmode="email" autocomplete="off"{{if .Domain}} placeholder="{{.T.PeopleEmailUser}}@{{.Domain}}"{{end}} required></div>
       <button class="btn" type="submit">{{.T.PeopleAdd}}</button>
     </form>
-    <p class="hint small">{{.T.PeopleEmailHint}}</p>
+    <p class="hint small">{{.T.PeopleEmailHint}}{{if .Outside}} {{.T.PeopleOutside}}{{end}}</p>
     {{end}}{{end}}
   </section>
 

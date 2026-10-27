@@ -33,6 +33,10 @@ services:
       QUICK_OWNERSHIP: ${QUICK_OWNERSHIP:-free}   # free | shared | owned
       # Amministratori (email): alzano il limite di dimensione dei singoli siti.
       QUICK_ADMINS: ${QUICK_ADMINS:-}
+      # Invio email (facoltativo): con entrambi impostati, i siti "persone scelte" possono
+      # includere persone esterne, che entrano con un link via email.
+      QUICK_SMTP_URL: ${QUICK_SMTP_URL:-}     # smtp://user:pass@host:587 o smtps://...:465
+      QUICK_MAIL_FROM: ${QUICK_MAIL_FROM:-}   # es. quick <quick@example.com>
       QUICK_SITE_LIMIT: ${QUICK_SITE_LIMIT:-100MB}          # limite di default per sito
       QUICK_SITE_LIMIT_MAX: ${QUICK_SITE_LIMIT_MAX:-2GB}    # massimo impostabile da un admin
       QUICK_MIN_FREE: ${QUICK_MIN_FREE:-5GB}                # spazio libero da lasciare sul disco
