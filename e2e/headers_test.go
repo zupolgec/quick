@@ -57,13 +57,13 @@ func TestHeadersEndToEnd(t *testing.T) {
 	}
 
 	site := filepath.Join(tmp, "site")
-	os.MkdirAll(filepath.Join(site, "assets"), 0o755)
+	os.MkdirAll(filepath.Join(site, "img"), 0o755)
 	files := map[string]string{
-		"index.html":   "<h1>draft</h1>",
-		"assets/a.svg": "<svg/>",
-		"_headers":     "/*\n  X-Frame-Options: DENY\n  Set-Cookie: nope=1\n/assets/*\n  Cache-Control: public, max-age=600\n",
-		"_redirects":   "/old / 301\n",
-		"robots.txt":   "User-agent: *\nAllow: /\n",
+		"index.html": "<h1>draft</h1>",
+		"img/a.svg":  "<svg/>",
+		"_headers":   "/*\n  X-Frame-Options: DENY\n  Set-Cookie: nope=1\n/img/*\n  Cache-Control: public, max-age=600\n",
+		"_redirects": "/old / 301\n",
+		"robots.txt": "User-agent: *\nAllow: /\n",
 	}
 	for p, c := range files {
 		if err := os.WriteFile(filepath.Join(site, p), []byte(c), 0o644); err != nil {
@@ -97,12 +97,12 @@ func TestHeadersEndToEnd(t *testing.T) {
 	if r.StatusCode != http.StatusOK || r.Header.Get("X-Frame-Options") != "DENY" || r.Header.Get("Set-Cookie") != "" {
 		t.Errorf("/: %d %v", r.StatusCode, r.Header)
 	}
-	r = visit("/assets/a.svg")
+	r = visit("/img/a.svg")
 	if r.Header.Get("Cache-Control") != "public, max-age=600" || r.Header.Get("X-Robots-Tag") != "noindex, nofollow" {
-		t.Errorf("/assets/a.svg: %v", r.Header)
+		t.Errorf("/img/a.svg: %v", r.Header)
 	}
 	if !slices.Contains(r.Header.Values("X-Content-Type-Options"), "nosniff") {
-		t.Errorf("/assets/a.svg lost nosniff: %v", r.Header)
+		t.Errorf("/img/a.svg lost nosniff: %v", r.Header)
 	}
 	if r = visit("/robots.txt"); r.StatusCode != http.StatusOK || r.Header.Get("X-Robots-Tag") != "noindex, nofollow" {
 		t.Errorf("/robots.txt: %d %v", r.StatusCode, r.Header)

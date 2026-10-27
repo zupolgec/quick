@@ -12,7 +12,8 @@ import (
 // (lavender, the letters' navy, violet, a dark ground in dark mode), square
 // corners, no shadows or borders. The vector logo is inlined so its letters
 // follow each colour scheme; PNGs stay for external links. All assets are
-// embedded in the binary and served same-origin from /fonts and /img.
+// embedded in the binary and served same-origin from /__quick/fonts and
+// /__quick/img on every host (and /fonts, /img on the apex).
 
 //go:embed fonts/hanken-grotesk-latin.woff2 img/logo.png img/logo-dark.png img/logo.svg img/favicon.png img/favicon.svg
 var assets embed.FS
@@ -20,10 +21,15 @@ var assets embed.FS
 //go:embed img/logo-inline.svg
 var logoInline string
 
-// handleAsset serves the embedded fonts/images. Wired in route() for every host
-// so asset URLs are always same-origin (no CORS, works on site subdomains too).
-func (s *server) handleAsset(w http.ResponseWriter, r *http.Request) {
-	p := path.Clean(strings.TrimPrefix(r.URL.Path, "/"))
+func isAssetPath(p string) bool {
+	return strings.HasPrefix(p, "/fonts/") || strings.HasPrefix(p, "/img/")
+}
+
+// handleAsset serves the embedded font/image at asset path p ("/img/logo.png").
+// Wired in route() so asset URLs are always same-origin (no CORS, works on
+// site subdomains too).
+func (s *server) handleAsset(w http.ResponseWriter, r *http.Request, p string) {
+	p = path.Clean(strings.TrimPrefix(p, "/"))
 	if !strings.HasPrefix(p, "fonts/") && !strings.HasPrefix(p, "img/") {
 		http.NotFound(w, r)
 		return
@@ -48,7 +54,7 @@ func (s *server) handleAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 // brandHead loads the favicon (the Q from the logo). Concatenated into each <head>.
-const brandHead = `<link rel="icon" type="image/svg+xml" href="/img/favicon.svg"><link rel="icon" type="image/png" href="/img/favicon.png"><link rel="apple-touch-icon" href="/img/favicon.png">`
+const brandHead = `<link rel="icon" type="image/svg+xml" href="/__quick/img/favicon.svg"><link rel="icon" type="image/png" href="/__quick/img/favicon.png"><link rel="apple-touch-icon" href="/__quick/img/favicon.png">`
 
 // brandLink is the clickable logo for page headers; brandWordmark the static one.
 var brandLink = `<a class="brand" href="/" aria-label="Quick">` + strings.TrimSpace(logoInline) + `</a>`
@@ -56,7 +62,7 @@ var brandWordmark = `<span class="brand" role="img" aria-label="Quick">` + strin
 
 // brandCSS holds the design tokens, base typography and the shared brand/button
 // primitives. Each page appends its own layout CSS after this.
-const brandCSS = `@font-face{font-family:'Hanken Grotesk';font-style:normal;font-weight:400 700;font-display:swap;src:url("/fonts/hanken-grotesk-latin.woff2") format("woff2")}
+const brandCSS = `@font-face{font-family:'Hanken Grotesk';font-style:normal;font-weight:400 700;font-display:swap;src:url("/__quick/fonts/hanken-grotesk-latin.woff2") format("woff2")}
 :root{
   --bg:#e8e6fd;--card:#ffffff;--sunk:#f3f2fe;--ink:#1a2238;--fg:#1a2238;--muted:#5b5878;
   --brand:#4a3ddb;--brand-hover:#3a2ec4;--btn:#4a3ddb;--btn-fg:#fff;--accent:#4a3ddb;--ring:#4a3ddb;

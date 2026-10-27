@@ -10,7 +10,8 @@ import (
 func TestFontServedSameOriginNoCDN(t *testing.T) {
 	s := &server{baseDomain: "quick.example.test", noAuth: true} // signed in: the home is SSO-gated
 
-	// Assets served on the apex and on a site subdomain (same-origin everywhere).
+	// Assets served on the apex and on a site subdomain (same-origin everywhere),
+	// under the reserved /__quick/ path.
 	wantCT := map[string]string{
 		"/fonts/hanken-grotesk-latin.woff2": "font/woff2",
 		"/img/logo.svg":                     "image/svg+xml",
@@ -21,6 +22,7 @@ func TestFontServedSameOriginNoCDN(t *testing.T) {
 	}
 	for _, host := range []string{"quick.example.test", "foo.quick.example.test"} {
 		for p, ct := range wantCT {
+			p = "/__quick" + p
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodGet, p, nil)
 			r.Host = host
@@ -79,5 +81,36 @@ func TestHealthDoesNotRequireHost(t *testing.T) {
 	}
 	if strings.TrimSpace(w.Body.String()) != "ok" {
 		t.Fatalf("body %q, want ok", w.Body.String())
+	}
+}
+
+// A site's own img/ and fonts/ folders are the site's: quick's brand assets
+// live under the reserved /__quick/ path on site hosts.
+func TestSiteOwnsImgAndFontsFolders(t *testing.T) {
+	s := newAPITestServer(t, true)
+	putSite(t, s.store, "app", map[string]string{
+		"index.html":       "<h1>app</h1>",
+		"img/logo.png":     "site-logo",
+		"fonts/body.woff2": "site-font",
+	})
+	for p, want := range map[string]string{"/img/logo.png": "site-logo", "/fonts/body.woff2": "site-font"} {
+		if w := hostGet(s, "app.quick.test", p); w.Code != http.StatusOK || w.Body.String() != want {
+			t.Errorf("%s on a site: code %d body %q, want the site's file", p, w.Code, w.Body.String())
+		}
+	}
+	for _, host := range []string{"app.quick.test", "quick.test"} {
+		for _, p := range []string{"/__quick/img/favicon.svg", "/__quick/fonts/hanken-grotesk-latin.woff2"} {
+			if w := hostGet(s, host, p); w.Code != http.StatusOK || w.Body.Len() == 0 {
+				t.Errorf("%s on %s: code %d", p, host, w.Code)
+			}
+		}
+	}
+	// The apex keeps the old URLs (the PNG logo is linked from outside).
+	if w := hostGet(s, "quick.test", "/img/logo.png"); w.Code != http.StatusOK {
+		t.Errorf("/img/logo.png on the apex: code %d", w.Code)
+	}
+	// Server-rendered pages point at the reserved path.
+	if strings.Contains(brandHead+brandCSS, `"/img/`) || strings.Contains(brandHead+brandCSS, `"/fonts/`) {
+		t.Errorf("pages still reference /img or /fonts")
 	}
 }

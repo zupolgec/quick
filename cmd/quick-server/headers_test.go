@@ -146,7 +146,7 @@ func TestNoindexOnQuickAddresses(t *testing.T) {
 	if got := w.Header().Values("X-Robots-Tag"); !reflect.DeepEqual(got, []string{"noindex, nofollow", "noarchive"}) {
 		t.Errorf("quick address X-Robots-Tag = %q, want the default plus the site's", got)
 	}
-	for _, p := range []string{"/missing.css", "/fonts/hanken-grotesk-latin.woff2", "/__quick/code", "/robots.txt"} {
+	for _, p := range []string{"/missing.css", "/__quick/fonts/hanken-grotesk-latin.woff2", "/__quick/code", "/robots.txt"} {
 		if got := hostGet(s, "other.quick.test", p).Header().Get("X-Robots-Tag"); got != "noindex, nofollow" {
 			t.Errorf("%s: X-Robots-Tag = %q", p, got)
 		}

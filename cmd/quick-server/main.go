@@ -171,10 +171,16 @@ func (s *server) route(w http.ResponseWriter, r *http.Request) {
 	if sub != "" {
 		w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 	}
-	// Brand assets (font, logo, favicon) are served same-origin on every host so
-	// their URLs never need CORS (pages live on the apex and site subdomains).
-	if strings.HasPrefix(r.URL.Path, "/fonts/") || strings.HasPrefix(r.URL.Path, "/img/") {
-		s.handleAsset(w, r)
+	// Brand assets (font, logo, favicon) are served same-origin on every host
+	// under the reserved /__quick/ path, so their URLs never need CORS and never
+	// shadow a site's own img/ or fonts/ folder. The apex keeps the old /img and
+	// /fonts URLs: the PNG logo is linked from outside.
+	if rest, ok := strings.CutPrefix(r.URL.Path, "/__quick"); ok && isAssetPath(rest) {
+		s.handleAsset(w, r, rest)
+		return
+	}
+	if host == s.baseDomain && isAssetPath(r.URL.Path) {
+		s.handleAsset(w, r, r.URL.Path)
 		return
 	}
 	if host == s.baseDomain {
