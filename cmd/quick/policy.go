@@ -80,7 +80,7 @@ func policyCmd(action string, args []string) {
 	url := "https://" + res.Site + "." + cfg.BaseDomain
 	switch action {
 	case "private":
-		fmt.Printf("✓ %s protected by code → %s\n  code: %s\n", name, url, code)
+		fmt.Printf("✓ %s protected by code → %s\n  code: %s\n  link: %s\n", name, url, code, codeLink(url, code))
 	case "publish":
 		fmt.Printf("✓ %s public → %s\n", name, url)
 	case "unpublish":
@@ -121,6 +121,11 @@ func postPolicy(ctx context.Context, cfg *cliConfig, name, tok string, payload q
 	}
 	json.Unmarshal(rb, &res)
 	return res, nil
+}
+
+// codeLink is the address that opens a code site without typing the code.
+func codeLink(siteURL, code string) string {
+	return siteURL + "/?quick_code=" + url.QueryEscape(code)
 }
 
 // genCode creates a short, readable access code (no ambiguous characters).

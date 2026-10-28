@@ -116,13 +116,14 @@ func TestDescribeSiteAccess(t *testing.T) {
 	}{
 		{quick.PolicyResponse{Access: "sso", CreatedBy: "ann@x.it"}, []string{"everyone at the company", "Owner:   ann@x.it"}, nil},
 		{quick.PolicyResponse{Access: "public"}, []string{"public"}, nil},
-		{quick.PolicyResponse{Access: "code"}, []string{"access code"}, nil},
+		{quick.PolicyResponse{Access: "code"}, []string{"access code", "Code:    not visible"}, []string{"Link:"}},
+		{quick.PolicyResponse{Access: "code", Code: "abcd1234"}, []string{"Code:    abcd1234", "Link:    https://foo.quick.test/?quick_code=abcd1234"}, nil},
 		{quick.PolicyResponse{Access: "people", CreatedBy: "ann@x.it"}, []string{"only the owner"}, []string{"Viewers"}},
 		{quick.PolicyResponse{Access: "people", CreatedBy: "ann@x.it", Viewers: []string{"bob@x.it", "carl@x.it"}}, []string{"chosen people (2)", "bob@x.it", "carl@x.it"}, nil},
 		{quick.PolicyResponse{Access: "people", CreatedBy: "ann@x.it", ViewersHidden: true}, []string{"chosen people", "you're not on the list"}, []string{"only the owner"}},
 	}
 	for _, c := range cases {
-		got := describeSiteAccess(c.res)
+		got := describeSiteAccess(c.res, "https://foo.quick.test")
 		for _, w := range c.want {
 			if !strings.Contains(got, w) {
 				t.Errorf("%+v: missing %q in\n%s", c.res, w, got)
@@ -161,5 +162,11 @@ func TestParseAccessArgsSiteOptional(t *testing.T) {
 		if err != nil || a.Name != c.name || a.Op != c.op || len(a.Emails) != c.emails {
 			t.Errorf("%v: got name=%q op=%q emails=%v err=%v", c.args, a.Name, a.Op, a.Emails, err)
 		}
+	}
+}
+
+func TestCodeLink(t *testing.T) {
+	if got := codeLink("https://foo.quick.test", "k7m2 xq&9"); got != "https://foo.quick.test/?quick_code=k7m2+xq%269" {
+		t.Errorf("codeLink = %q", got)
 	}
 }

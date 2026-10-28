@@ -100,6 +100,7 @@ type uiText struct {
 
 	AccessTitle, AccessOwner, AccessCurrent, AccessOwnerOnly, AccessSave string
 	AccessCodeLabel, AccessCodeKeep                                      string
+	AccessCodeCurrent, AccessCodeLink, AccessCodeHidden                  string
 	LevelTeam, LevelTeamHint, LevelOnlyMe, LevelOnlyMeHint               string
 	LevelPeople, LevelPeopleHint, LevelCode, LevelCodeHint               string
 	LevelPublic, LevelPublicHint                                         string
@@ -108,6 +109,7 @@ type uiText struct {
 	AccessErrNotOwnerA, AccessErrNotOwnerB, AccessErrNoOwner             string
 	AccessErrBadEmail, AccessErrMissingEmail, AccessErrDomain            string
 	AccessErrTooMany, AccessErrOwnerAlways, AccessErrCode                string
+	AccessErrCodeShort                                                   string
 	AccessErrGeneric                                                     string
 
 	RestrictedTitle, RestrictedHeading, RestrictedBy, RestrictedCanOpen string
@@ -126,6 +128,7 @@ type uiText struct {
 
 	CodeTitle, CodeHeading, CodeIntro string
 	CodeLabel, CodeButton, CodeError  string
+	CodeTooMany                       string
 
 	GuestOr, GuestIntro, GuestEmail, GuestSend, GuestTitle             string
 	GuestSentHeading, GuestSentA, GuestSentB                           string
@@ -233,23 +236,27 @@ var uiTexts = map[lang]uiText{
 		AccessSave:      "Save",
 		AccessCodeLabel: "Access code",
 		AccessCodeKeep:  "Leave empty to keep the current code",
-		LevelTeam:       "Everyone at the company",
-		LevelTeamHint:   "Anyone signed in with a company account.",
-		LevelOnlyMe:     "Only me",
-		LevelOnlyMeHint: "Just you, once signed in.",
-		LevelPeople:     "Chosen people",
-		LevelPeopleHint: "You and the people you add below.",
-		LevelCode:       "With a code",
-		LevelCodeHint:   "Anyone who has the access code.",
-		LevelPublic:     "Public",
-		LevelPublicHint: "Anyone with the link, no sign-in.",
-		PeopleTitle:     "People who can see it",
-		PeopleOnlyOwner: "For now, only you.",
-		PeopleRemove:    "Remove",
-		PeopleAdd:       "Add",
-		PeopleEmail:     "Company email",
-		PeopleEmailHint: "You can add several, separated by commas.",
-		PeopleEmailUser: "name",
+
+		AccessCodeCurrent: "Current code",
+		AccessCodeLink:    "Link that opens the site",
+		AccessCodeHidden:  "The code can't be shown. Set a new one to see it here.",
+		LevelTeam:         "Everyone at the company",
+		LevelTeamHint:     "Anyone signed in with a company account.",
+		LevelOnlyMe:       "Only me",
+		LevelOnlyMeHint:   "Just you, once signed in.",
+		LevelPeople:       "Chosen people",
+		LevelPeopleHint:   "You and the people you add below.",
+		LevelCode:         "With a code",
+		LevelCodeHint:     "Anyone who has the access code.",
+		LevelPublic:       "Public",
+		LevelPublicHint:   "Anyone with the link, no sign-in.",
+		PeopleTitle:       "People who can see it",
+		PeopleOnlyOwner:   "For now, only you.",
+		PeopleRemove:      "Remove",
+		PeopleAdd:         "Add",
+		PeopleEmail:       "Company email",
+		PeopleEmailHint:   "You can add several, separated by commas.",
+		PeopleEmailUser:   "name",
 
 		AccessErrNotOwnerA:    "Only the owner",
 		AccessErrNotOwnerB:    "can change who can see this site.",
@@ -260,6 +267,7 @@ var uiTexts = map[lang]uiText{
 		AccessErrTooMany:      "A site can be shared with at most 100 people.",
 		AccessErrOwnerAlways:  "The owner can always see the site.",
 		AccessErrCode:         "Choose an access code.",
+		AccessErrCodeShort:    "The access code must be at least 8 characters.",
 		AccessErrGeneric:      "The change couldn't be saved.",
 
 		RestrictedTitle:    "quick — restricted",
@@ -276,6 +284,7 @@ var uiTexts = map[lang]uiText{
 		CodeLabel:   "Code",
 		CodeButton:  "Enter",
 		CodeError:   "Wrong code, try again.",
+		CodeTooMany: "Too many wrong attempts. Try again in a few minutes.",
 
 		GuestOr:             "Not from the company?",
 		GuestIntro:          "If you've been invited, get a sign-in link by email.",
@@ -409,23 +418,27 @@ var uiTexts = map[lang]uiText{
 		AccessSave:      "Salva",
 		AccessCodeLabel: "Codice di accesso",
 		AccessCodeKeep:  "Lascia vuoto per tenere il codice attuale",
-		LevelTeam:       "Tutta l'azienda",
-		LevelTeamHint:   "Chiunque acceda con un account aziendale.",
-		LevelOnlyMe:     "Solo io",
-		LevelOnlyMeHint: "Solo tu, dopo l'accesso.",
-		LevelPeople:     "Persone scelte",
-		LevelPeopleHint: "Tu e le persone che aggiungi qui sotto.",
-		LevelCode:       "Con codice",
-		LevelCodeHint:   "Chiunque abbia il codice di accesso.",
-		LevelPublic:     "Pubblico",
-		LevelPublicHint: "Chiunque abbia il link, senza accesso.",
-		PeopleTitle:     "Persone che possono vederlo",
-		PeopleOnlyOwner: "Per ora solo tu.",
-		PeopleRemove:    "Rimuovi",
-		PeopleAdd:       "Aggiungi",
-		PeopleEmail:     "Email aziendale",
-		PeopleEmailHint: "Puoi aggiungerne più di una, separate da virgole.",
-		PeopleEmailUser: "nome",
+
+		AccessCodeCurrent: "Codice attuale",
+		AccessCodeLink:    "Link che apre il sito",
+		AccessCodeHidden:  "Il codice non è visibile. Impostane uno nuovo per vederlo qui.",
+		LevelTeam:         "Tutta l'azienda",
+		LevelTeamHint:     "Chiunque acceda con un account aziendale.",
+		LevelOnlyMe:       "Solo io",
+		LevelOnlyMeHint:   "Solo tu, dopo l'accesso.",
+		LevelPeople:       "Persone scelte",
+		LevelPeopleHint:   "Tu e le persone che aggiungi qui sotto.",
+		LevelCode:         "Con codice",
+		LevelCodeHint:     "Chiunque abbia il codice di accesso.",
+		LevelPublic:       "Pubblico",
+		LevelPublicHint:   "Chiunque abbia il link, senza accesso.",
+		PeopleTitle:       "Persone che possono vederlo",
+		PeopleOnlyOwner:   "Per ora solo tu.",
+		PeopleRemove:      "Rimuovi",
+		PeopleAdd:         "Aggiungi",
+		PeopleEmail:       "Email aziendale",
+		PeopleEmailHint:   "Puoi aggiungerne più di una, separate da virgole.",
+		PeopleEmailUser:   "nome",
 
 		AccessErrNotOwnerA:    "Solo il proprietario",
 		AccessErrNotOwnerB:    "può cambiare chi vede questo sito.",
@@ -436,6 +449,7 @@ var uiTexts = map[lang]uiText{
 		AccessErrTooMany:      "Un sito si può condividere con al massimo 100 persone.",
 		AccessErrOwnerAlways:  "Il proprietario può sempre vedere il sito.",
 		AccessErrCode:         "Scegli un codice di accesso.",
+		AccessErrCodeShort:    "Il codice di accesso deve avere almeno 8 caratteri.",
 		AccessErrGeneric:      "Non è stato possibile salvare la modifica.",
 
 		RestrictedTitle:    "quick · accesso riservato",
@@ -452,6 +466,7 @@ var uiTexts = map[lang]uiText{
 		CodeLabel:   "Codice",
 		CodeButton:  "Entra",
 		CodeError:   "Codice errato, riprova.",
+		CodeTooMany: "Troppi tentativi sbagliati. Riprova tra qualche minuto.",
 
 		GuestOr:             "Non fai parte dell'azienda?",
 		GuestIntro:          "Se ti hanno invitato, ricevi un link di accesso via email.",

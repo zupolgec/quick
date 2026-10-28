@@ -148,8 +148,36 @@ func TestAccessChosenPeopleEndToEnd(t *testing.T) {
 	if out := quick(true, "access", "secret"); !strings.Contains(out, "everyone at the company") || strings.Contains(out, "bob@") {
 		t.Errorf("after unpublish:\n%s", out)
 	}
-	if out := quick(true, "access", "secret", "code", "--code", "abc123"); !strings.Contains(out, "code: abc123") {
+	if out := quick(false, "access", "secret", "code", "--code", "abc123"); !strings.Contains(out, "at least 8 characters") {
+		t.Errorf("short code:\n%s", out)
+	}
+	out = quick(true, "access", "secret", "code", "--code", "abc12345")
+	if !strings.Contains(out, "code: abc12345") || !strings.Contains(out, "link: https://secret.127.0.0.1/?quick_code=abc12345") {
 		t.Errorf("code:\n%s", out)
+	}
+	if out = quick(true, "access", "secret"); !strings.Contains(out, "Code:    abc12345") || !strings.Contains(out, "Link:    https://secret.127.0.0.1/?quick_code=abc12345") {
+		t.Errorf("show code:\n%s", out)
+	}
+	// The link signs in and leaves a clean address; the cookie opens the site.
+	req, _ := http.NewRequest(http.MethodGet, "http://"+addr+"/?quick_code=abc12345", nil)
+	req.Host = "secret.127.0.0.1"
+	resp, err := http.DefaultTransport.RoundTrip(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if loc := resp.Header.Get("Location"); resp.StatusCode != http.StatusFound || loc != "https://secret.127.0.0.1/" || len(resp.Cookies()) == 0 {
+		t.Fatalf("code link: %d %q %v", resp.StatusCode, loc, resp.Cookies())
+	}
+	req, _ = http.NewRequest(http.MethodGet, "http://"+addr+"/", nil)
+	req.Host = "secret.127.0.0.1"
+	req.AddCookie(resp.Cookies()[0])
+	if resp, err = http.DefaultTransport.RoundTrip(req); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("visit with the code cookie: %d", resp.StatusCode)
 	}
 	if out := quick(true, "access", "secret", "public"); !strings.Contains(out, "public") {
 		t.Errorf("public:\n%s", out)

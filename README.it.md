@@ -246,14 +246,18 @@ quick access    foo team                 # di nuovo tutta l'azienda (default)
 quick publish   foo            # aperto a chiunque, niente SSO
 quick unpublish foo            # torna dietro l'SSO aziendale (default)
 quick private   foo            # accesso con codice (lo genera e te lo stampa)
-quick private   foo --code abc # accesso con codice scelto da te
+quick private   foo --code abc12345 # accesso con codice scelto da te
 quick lock      foo            # da ora solo tu puoi sovrascrivere foo
 quick unlock    foo
 ```
 
 Il cambio di visibilità è **istantaneo** (solo un file di metadata). La decisione
 di accesso la prende `quick-server`: pubblico → servito sempre; codice → pagina di
-inserimento codice, poi un cookie firmato vale 7 giorni; SSO → verifica la sessione
+inserimento codice (oppure un link con `?quick_code=`, che quick stampa insieme al
+codice), poi un cookie firmato vale 7 giorni, legato al codice: cambiarlo fa uscire
+tutti (`quick access foo` e la dashboard rimostrano codice e link a chi può
+modificare il sito); i codici hanno almeno 8 caratteri e ogni visitatore ha 10 tentativi sbagliati
+ogni 15 minuti; SSO → verifica la sessione
 Google via oauth2-proxy. **Persone scelte** (`only-me`, `add`, `remove`): SSO più un elenco; entrano solo il
 proprietario (chi ha creato il sito) e gli account in elenco, gli altri vedono una
 pagina "sito riservato" con il nome del proprietario (mai l'elenco). Elenco,

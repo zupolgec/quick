@@ -76,6 +76,7 @@ type server struct {
 	admins       map[string]bool       // QUICK_ADMINS, lowercased
 	mail         mailer                // QUICK_SMTP_URL; nil = no email, no outside people
 	guests       guestLinks            // email links for outside people (guestlink.go)
+	codeTries    codeAttempts          // wrong access codes per visitor (codegate.go)
 }
 
 type authIdentity struct {

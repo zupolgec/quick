@@ -116,7 +116,7 @@ func accessCall(cfg *cliConfig, a accessArgs, tok string) (quick.PolicyResponse,
 }
 
 // describeSiteAccess renders who can see the site, for `quick access <site>`.
-func describeSiteAccess(res quick.PolicyResponse) string {
+func describeSiteAccess(res quick.PolicyResponse, siteURL string) string {
 	var b strings.Builder
 	level := "everyone at the company (company SSO)"
 	switch res.Access {
@@ -144,6 +144,12 @@ func describeSiteAccess(res quick.PolicyResponse) string {
 		} else {
 			fmt.Fprintf(&b, "         %s\n", v)
 		}
+	}
+	switch {
+	case res.Code != "":
+		fmt.Fprintf(&b, "Code:    %s\nLink:    %s\n", res.Code, codeLink(siteURL, res.Code))
+	case res.Access == quick.AccessCode:
+		fmt.Fprintln(&b, "Code:    not visible")
 	}
 	if res.Locked {
 		fmt.Fprintf(&b, "Lock:    locked by %s\n", res.Owner)
@@ -197,13 +203,13 @@ func accessCmd(args []string) {
 	switch a.Op {
 	case "":
 		fmt.Printf("Site:    %s → %s\n", a.Name, url)
-		fmt.Print(describeSiteAccess(res))
+		fmt.Print(describeSiteAccess(res, url))
 	case "team":
 		fmt.Printf("✓ %s visible to everyone at the company → %s\n", a.Name, url)
 	case "public":
 		fmt.Printf("✓ %s public → %s\n", a.Name, url)
 	case "code":
-		fmt.Printf("✓ %s protected by code → %s\n  code: %s\n", a.Name, url, a.Code)
+		fmt.Printf("✓ %s protected by code → %s\n  code: %s\n  link: %s\n", a.Name, url, a.Code, codeLink(url, a.Code))
 	default: // only-me, add, remove
 		if len(res.Viewers) == 0 {
 			fmt.Printf("✓ %s visible only to you → %s\n", a.Name, url)

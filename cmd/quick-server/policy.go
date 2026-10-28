@@ -22,6 +22,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/zupolgec/quick/internal/quick"
 	"github.com/zupolgec/quick/internal/storage"
@@ -84,7 +85,8 @@ type policy struct {
 	Owner     string       `json:"owner,omitempty"`     // lock owner
 	Locked    bool         `json:"locked,omitempty"`    // only the owner can deploy/policy
 	Access    string       `json:"access,omitempty"`    // "" = SSO | "public" | "code" | "people"
-	CodeHash  string       `json:"code_hash,omitempty"` // HMAC of the code, never plaintext
+	Code      string       `json:"code,omitempty"`      // shown to who manages the site; "" on older sites
+	CodeHash  string       `json:"code_hash,omitempty"` // HMAC of the code, what visitors are checked against
 	Viewers   []string     `json:"viewers,omitempty"`   // "people": lowercased emails, owner excluded
 	Tokens    []siteToken  `json:"tokens,omitempty"`
 	Domains   []siteDomain `json:"domains,omitempty"`
@@ -262,14 +264,15 @@ func randomID(n int) string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-// signAccess builds the access cookie value: "<expiry>.<signature>".
-func (m *metaStore) signAccess(sub string, exp int64) string {
+// signAccess builds the access cookie value: "<expiry>.<signature>". The
+// signature covers the code, so changing it signs everyone out.
+func (m *metaStore) signAccess(sub, codeHash string, exp int64) string {
 	mac := hmac.New(sha256.New, m.secret)
-	mac.Write([]byte(sub + "|" + strconv.FormatInt(exp, 10)))
+	mac.Write([]byte(sub + "|" + codeHash + "|" + strconv.FormatInt(exp, 10)))
 	return strconv.FormatInt(exp, 10) + "." + hex.EncodeToString(mac.Sum(nil))
 }
 
-func (m *metaStore) validAccessCookie(sub, val string) bool {
+func (m *metaStore) validAccessCookie(sub, codeHash, val string) bool {
 	expStr, _, ok := strings.Cut(val, ".")
 	if !ok {
 		return false
@@ -278,7 +281,7 @@ func (m *metaStore) validAccessCookie(sub, val string) bool {
 	if err != nil || time.Now().Unix() > exp {
 		return false
 	}
-	return hmac.Equal([]byte(m.signAccess(sub, exp)), []byte(val))
+	return hmac.Equal([]byte(m.signAccess(sub, codeHash, exp)), []byte(val))
 }
 
 func (m *metaStore) signCSRF(email string, exp int64) string {
@@ -387,26 +390,11 @@ func (s *server) handleCodePage(w http.ResponseWriter, r *http.Request, sub stri
 	if !safeRedirect(rd, host) {
 		rd = "https://" + host + "/"
 	}
-	l := pickLang(r)
 	if r.Method == http.MethodPost {
-		if !s.meta.checkCode(p, r.FormValue("code")) {
-			renderCodeForm(w, l, host, rd, true)
-			return
-		}
-		exp := time.Now().Add(codeAccessTTL).Unix()
-		http.SetCookie(w, &http.Cookie{
-			Name:     "quick_access_" + sub,
-			Value:    s.meta.signAccess(sub, exp),
-			Path:     "/",
-			Secure:   true,
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			Expires:  time.Unix(exp, 0),
-		})
-		http.Redirect(w, r, rd, http.StatusFound)
+		s.enterCode(w, r, sub, p, r.FormValue("code"), rd)
 		return
 	}
-	renderCodeForm(w, l, host, rd, false)
+	renderCodeForm(w, pickLang(r), host, rd, 0)
 }
 
 // safeRedirect only allows same-host https URLs or relative paths.
@@ -617,18 +605,22 @@ func (s *server) applyPolicy(cur *policy, email string, req quick.PolicyRequest)
 	if changesAccess {
 		switch access {
 		case "", quick.AccessPublic:
-			cur.Access, cur.CodeHash, cur.Viewers = access, "", nil
+			cur.Access, cur.Code, cur.CodeHash, cur.Viewers = access, "", "", nil
 		case quick.AccessCode:
 			if req.Code == nil || *req.Code == "" {
 				return &policyErr{status: http.StatusBadRequest, kind: errCodeRequired, msg: "access=code requires a code"}
 			}
-			cur.Access, cur.CodeHash, cur.Viewers = quick.AccessCode, s.meta.hashCode(*req.Code), nil
+			if utf8.RuneCountInString(*req.Code) < codeMinLength {
+				return &policyErr{status: http.StatusBadRequest, kind: errCodeShort,
+					msg: fmt.Sprintf("the access code must be at least %d characters", codeMinLength)}
+			}
+			cur.Access, cur.Code, cur.CodeHash, cur.Viewers = quick.AccessCode, *req.Code, s.meta.hashCode(*req.Code), nil
 		case quick.AccessPeople:
 			viewers, perr := s.editViewers(*cur, req)
 			if perr != nil {
 				return perr
 			}
-			cur.Access, cur.CodeHash, cur.Viewers = quick.AccessPeople, "", viewers
+			cur.Access, cur.Code, cur.CodeHash, cur.Viewers = quick.AccessPeople, "", "", viewers
 		}
 	}
 	if req.Locked != nil {
@@ -655,7 +647,7 @@ func (s *server) writePolicy(w http.ResponseWriter, name string, p policy, email
 	_ = json.NewEncoder(w).Encode(quick.PolicyResponse{
 		Site: name, Access: access, Locked: p.Locked, Owner: p.Owner, Exists: exists,
 		CreatedBy: p.CreatedBy, CreatedAt: p.CreatedAt, UpdatedBy: p.UpdatedBy, UpdatedAt: p.UpdatedAt,
-		Viewers: viewers, ViewersHidden: !visible,
+		Viewers: viewers, ViewersHidden: !visible, Code: s.visibleCode(p, email),
 	})
 }
 
@@ -727,16 +719,26 @@ var codeForm = template.Must(template.New("code").Parse(`<!doctype html>
   <label for="code">{{.T.CodeLabel}}</label>
   <input id="code" type="password" name="code" placeholder="••••••••" autofocus required autocomplete="off">
   <button class="btn" type="submit">{{.T.CodeButton}}</button>
-  {{if .Error}}<div class="err">{{.T.CodeError}}</div>{{end}}
+  {{with .Error}}<div class="err">{{.}}</div>{{end}}
 </form></body></html>`))
 
-func renderCodeForm(w http.ResponseWriter, l lang, host, rd string, isErr bool) {
+// renderCodeForm shows the code form; status 401 (wrong code) and 429 (too
+// many wrong codes) add their message.
+func renderCodeForm(w http.ResponseWriter, l lang, host, rd string, status int) {
+	t := textsFor(l)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Add("Vary", "Accept-Language")
-	if isErr {
-		w.WriteHeader(http.StatusUnauthorized)
+	errText := ""
+	switch status {
+	case http.StatusUnauthorized:
+		errText = t.CodeError
+	case http.StatusTooManyRequests:
+		errText = t.CodeTooMany
+	}
+	if status != 0 {
+		w.WriteHeader(status)
 	}
 	_ = codeForm.Execute(w, map[string]any{
-		"Host": host, "RD": rd, "Error": isErr, "Lang": string(l), "T": textsFor(l),
+		"Host": host, "RD": rd, "Error": errText, "Lang": string(l), "T": t,
 	})
 }

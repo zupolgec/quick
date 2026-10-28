@@ -98,13 +98,13 @@ func TestLandingLocalized(t *testing.T) {
 
 func TestCodeFormLocalized(t *testing.T) {
 	en := httptest.NewRecorder()
-	renderCodeForm(en, langEN, "foo.example.test", "https://foo.example.test/", true)
+	renderCodeForm(en, langEN, "foo.example.test", "https://foo.example.test/", http.StatusUnauthorized)
 	if b := en.Body.String(); !strings.Contains(b, `<html lang="en"`) || !strings.Contains(b, "Wrong code, try again.") {
 		t.Errorf("english code form not localized:\n%s", b)
 	}
 
 	it := httptest.NewRecorder()
-	renderCodeForm(it, langIT, "foo.example.test", "https://foo.example.test/", true)
+	renderCodeForm(it, langIT, "foo.example.test", "https://foo.example.test/", http.StatusUnauthorized)
 	if b := it.Body.String(); !strings.Contains(b, `<html lang="it"`) || !strings.Contains(b, "Codice errato, riprova.") {
 		t.Errorf("italian code form not localized:\n%s", b)
 	}

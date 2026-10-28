@@ -53,6 +53,8 @@ type PolicyResponse struct {
 	Viewers []string `json:"viewers,omitempty"`
 	// A "people" site whose list the caller can't see (not on it).
 	ViewersHidden bool `json:"viewers_hidden,omitempty"`
+	// The access code of a "code" site, only for those who can change it.
+	Code string `json:"code,omitempty"`
 }
 
 // SiteInfo describes a site in the /api/sites list (and the dashboard).

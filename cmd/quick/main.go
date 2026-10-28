@@ -374,7 +374,7 @@ func runPublish(in *interrupts, cfg *cliConfig, name, tok, dir string, pl *plan,
 		if code == "" {
 			code = genCode()
 		}
-		req, done = &quick.PolicyRequest{Access: new(quick.AccessCode), Code: &code}, "  → private, code: "+code
+		req, done = &quick.PolicyRequest{Access: new(quick.AccessCode), Code: &code}, "  → private, code: "+code+"\n  link: "+codeLink(strings.TrimSuffix(res.URL, "/"), code)
 	}
 	if req != nil {
 		if _, err := postPolicy(in.context(), cfg, name, tok, *req); err != nil {

@@ -33,6 +33,13 @@ only to accounts in the company domain (company SSO); you can open it to the pub
 protect it with a code, limit it to yourself or to chosen colleagues, or lock it
 against overwrites.
 
+Access codes have at least 8 characters. Setting one prints the code and a
+` + "`link:`" + ` (` + "`https://<name>.<domain>/?quick_code=<code>`" + `) that opens the site without
+typing it: share the link, or the address plus the code. The link carries the code, so
+treat it like the code. Changing the code signs out everyone who entered the old one.
+` + "`quick access <site>`" + ` shows the current code and link again to whoever can change the
+site (codes set before this was possible show as ` + "`not visible`" + `: set a new one).
+
 The server configures itself: the only required input is the URL, via ` + "`--server`" + `
 or the ` + "`QUICK_SERVER`" + ` variable. After the first deploy, the folder remembers site
 and server in a ` + "`.quick`" + ` file, so later commands don't need
@@ -57,11 +64,11 @@ quick deploy my-site ./build                    # -> https://my-site.quick.examp
 | ` + "`quick deploy [<site>] [folder]`" + ` | Publish a folder (default: the current one) |
 | ` + "`quick ignore [folder]`" + ` | Create an editable ` + "`.quickignore`" + ` with the defaults already inside |
 | ` + "`quick access [<site>]`" + ` | Who can see the site: level, owner, and the people list (if you are on it) |
-| ` + "`quick access [<site>] team \\| public \\| code [--code X] \\| only-me`" + ` | Set who can see it: everyone at the company (default), public, by code, or only you |
+| ` + "`quick access [<site>] team \\| public \\| code [--code X] \\| only-me`" + ` | Set who can see it: everyone at the company (default), public, by code (min 8 characters, prints a ready link), or only you |
 | ` + "`quick access [<site>] add <email>...`" + ` / ` + "`remove <email>...`" + ` | Share with (or stop sharing with) chosen people (company accounts; outside addresses too if the server sends email); ` + "`add`" + ` limits the site to the owner + the list |
 | ` + "`quick publish [<site>]`" + ` | Open to the public (no SSO) |
 | ` + "`quick unpublish [<site>]`" + ` | Back behind company SSO (default) |
-| ` + "`quick private [<site>] [--code X]`" + ` | Access by code (generated if absent) |
+| ` + "`quick private [<site>] [--code X]`" + ` | Access by code (generated if absent; min 8 characters; prints a ready link) |
 | ` + "`quick lock [<site>]`" + ` / ` + "`quick unlock [<site>]`" + ` | Lock/unlock overwrites (owner only) |
 | ` + "`quick token create [<site>] --name github-actions [--expires 90d]`" + ` | Create a site-scoped deploy token |
 | ` + "`quick token list [<site>]`" + ` | List deploy tokens for a site |

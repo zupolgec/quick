@@ -92,6 +92,7 @@ const (
 	errTooMany      = "too_many"      // over maxViewers
 	errOwnerAlways  = "owner_always"  // arg: the owner
 	errCodeRequired = "code_required" // access=code without a code
+	errCodeShort    = "code_short"    // code under codeMinLength
 )
 
 // policyErr is a refused policy change: msg for the API, kind/arg for the
@@ -223,6 +224,8 @@ func policyErrText(e *policyErr, t uiText) string {
 		return t.AccessErrOwnerAlways
 	case errCodeRequired:
 		return t.AccessErrCode
+	case errCodeShort:
+		return t.AccessErrCodeShort
 	default:
 		return t.AccessErrGeneric
 	}

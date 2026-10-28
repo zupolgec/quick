@@ -240,14 +240,17 @@ quick access    foo team                 # back to everyone at the company (defa
 quick publish   foo            # open to anyone, no SSO
 quick unpublish foo            # back behind the company SSO (default)
 quick private   foo            # access by code (generated and printed)
-quick private   foo --code abc # access by a code you choose
+quick private   foo --code abc12345 # access by a code you choose
 quick lock      foo            # from now on only you can overwrite foo
 quick unlock    foo
 ```
 
 Changing visibility is **instant** (just a metadata file). `quick-server` makes the
-access decision: public → always served; code → code entry page, then a signed cookie
-valid for 7 days; SSO → checks the Google session through oauth2-proxy. **Chosen people** (`only-me`, `add`, `remove`):
+access decision: public → always served; code → code entry page (or a link carrying
+`?quick_code=`, which quick prints with the code), then a signed cookie valid for
+7 days, tied to the code so changing it signs everyone out (`quick access foo` and the
+dashboard show the code and link again to whoever can change the site); codes have at least 8
+characters and a visitor gets 10 wrong ones per 15 minutes; SSO → checks the Google session through oauth2-proxy. **Chosen people** (`only-me`, `add`, `remove`):
 SSO plus a list; only the owner (the creator) and the listed accounts get in, others
 see a "restricted" page naming the owner (never the list). Only the owner changes the
 list or the visibility of such a site, or deletes it, in every ownership mode; deploys

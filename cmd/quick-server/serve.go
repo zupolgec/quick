@@ -73,6 +73,9 @@ func precompressed(p string) (ct, enc string, ok bool) {
 // handleSite is the catch-all: resolves the site from the host, applies policy
 // (public / code / SSO) and, if access is granted, serves the file.
 func (s *server) handleSite(w http.ResponseWriter, r *http.Request, sub string) {
+	if s.codeFromLink(w, r, sub) {
+		return
+	}
 	host := fwdHost(r)
 	p, email, signedIn, ok, err := s.siteAccess(r, sub)
 	switch {
@@ -103,7 +106,7 @@ func (s *server) siteAccess(r *http.Request, sub string) (p policy, email string
 		return p, "", false, true, nil
 	case "code":
 		c, err := r.Cookie("quick_access_" + sub)
-		return p, "", false, err == nil && s.meta.validAccessCookie(sub, c.Value), nil
+		return p, "", false, err == nil && s.meta.validAccessCookie(sub, p.CodeHash, c.Value), nil
 	default:
 		if guest, ok := s.guestFromCookie(r, sub, p); ok {
 			return p, guest, false, true, nil

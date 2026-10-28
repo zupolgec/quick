@@ -153,6 +153,10 @@ func (s *server) renderSitePageWith(w http.ResponseWriter, r *http.Request, name
 		}
 	}
 	csrf := s.meta.signCSRF(email, time.Now().Add(2*time.Hour).Unix())
+	code, link := s.visibleCode(p, email), ""
+	if code != "" {
+		link = codeLink("https://"+name+"."+s.baseDomain, code)
+	}
 	sizeAsk, adminsNote := t.SizeAskSys, ""
 	if a := s.adminList(); len(a) > 0 {
 		sizeAsk = fmt.Sprintf(t.SizeAsk, strings.Join(a, ", "))
@@ -169,6 +173,7 @@ func (s *server) renderSitePageWith(w http.ResponseWriter, r *http.Request, name
 		"Owner": p.CreatedBy, "IsOwner": s.actsAsOwner(p, email), "Levels": levels,
 		"CurrentLevel": currentLabel, "People": p.Access == quick.AccessPeople,
 		"Viewers": s.viewerInfos(p), "Outside": s.mail != nil, "HasCode": p.Access == quick.AccessCode, "Error": errText,
+		"Code": code, "CodeLink": link,
 		"Domain": s.companyDomain(), "Lang": string(l), "T": t,
 		"Limit": quick.FormatSize(s.limitOf(p)), "Admin": s.isAdmin(email), "SizeError": sizeErr, "SizeAsk": sizeAsk, "AdminsNote": adminsNote,
 		"SizeHint": fmt.Sprintf(t.SizeHint, quick.FormatSize(s.ceiling()), quick.FormatSize(s.defaultLimit())),
@@ -584,6 +589,7 @@ code.inline{background:var(--sunk);padding:.1rem .35rem;font-size:.88em;font-fam
 .panel h3{font-size:1rem;margin:1.4rem 0 .4rem;color:var(--ink)}
 .err{margin:0 0 1rem;padding:.7rem .9rem;font-size:.92rem;color:var(--err);background:var(--err-bg);max-width:64ch}
 form.access{display:grid;gap:4px;max-width:560px}
+.share{max-width:560px;margin-bottom:1.4rem}.share h3:first-child{margin-top:0}.share .secret code{display:block;background:var(--sunk)}
 .opt{display:flex;align-items:flex-start;gap:.7rem;padding:.75rem 1rem;background:var(--sunk);cursor:pointer;font-size:.95rem;color:var(--fg);transition:background-color .18s}
 .opt:has(input:checked){background:var(--brand);color:#fff}
 .opt:has(input:checked) small{color:rgba(255,255,255,.85)}
@@ -617,12 +623,18 @@ form.access .btn{justify-self:start;margin-top:.6rem}
     <h2>{{.T.AccessTitle}}</h2>
     {{if .Owner}}<p class="hint">{{.T.AccessOwner}} <b>{{.Owner}}</b></p>{{end}}
     {{if .Error}}<div class="err" role="alert">{{.Error}}</div>{{end}}
+    {{if .HasCode}}{{if .Code}}<div class="share">
+    <h3>{{.T.AccessCodeCurrent}}</h3>
+    <div class="secret"><code id="site-code">{{.Code}}</code><button class="btn-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('site-code').textContent)">{{.T.Copy}}</button></div>
+    <h3>{{.T.AccessCodeLink}}</h3>
+    <div class="secret"><code id="site-code-link">{{.CodeLink}}</code><button class="btn-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('site-code-link').textContent)">{{.T.Copy}}</button></div>
+    </div>{{else}}<p class="hint">{{.T.AccessCodeHidden}}</p>{{end}}{{end}}
     {{if .IsOwner}}
     <form class="access" method="post" action="/api/site/{{.Name}}/policy">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <input type="hidden" name="op" value="access">
       {{range .Levels}}<label class="opt"><input type="radio" name="access" value="{{.Value}}"{{if .Checked}} checked{{end}}><span><strong>{{.Label}}</strong><small>{{.Hint}}</small></span></label>
-      {{end}}<div class="field code"><label for="access-code">{{.T.AccessCodeLabel}}</label><input id="access-code" name="code" autocomplete="off"{{if .HasCode}} placeholder="{{.T.AccessCodeKeep}}"{{end}}></div>
+      {{end}}<div class="field code"><label for="access-code">{{.T.AccessCodeLabel}}</label><input id="access-code" name="code" minlength="8" autocomplete="off"{{if .HasCode}} placeholder="{{.T.AccessCodeKeep}}"{{end}}></div>
       <button class="btn" type="submit">{{.T.AccessSave}}</button>
     </form>
     {{else}}<p class="hint">{{.T.AccessCurrent}} <b>{{.CurrentLevel}}</b>. {{.T.AccessOwnerOnly}}</p>{{end}}

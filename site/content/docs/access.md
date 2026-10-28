@@ -15,7 +15,7 @@ quick access launch team                    # everyone at the company (the defau
 quick access launch only-me                 # only you
 quick access launch add giulia@acme.com     # you and the people you choose
 quick access launch remove giulia@acme.com
-quick access launch code [--code abc]       # access code, generated if you don't give one
+quick access launch code [--code abc12345]  # access code, generated if you don't give one
 quick access launch public                  # anyone, no sign-in
 ```
 
@@ -24,7 +24,7 @@ Inside a folder linked to the site (it has a `.quick` file) you can drop the nam
 - **Everyone at the company** checks the visitor's session with your identity provider (Google Workspace or any OIDC provider). Only accounts in the allowed email domains get in.
 - **Chosen people** works like company sign-in, but only the owner (whoever created the site) and the accounts on the list get in. Anyone else at the company sees a page saying the site is restricted and who owns it, never who else is on the list. "Only me" is the same with an empty list. The list takes company accounts, and people outside the company too when the server can send email (see below).
 - **People outside the company** on a chosen-people list can't use company sign-in. On the sign-in page they enter their email and get a link: it works once, for 15 minutes, and keeps them signed in on that browser for 7 days. Only listed addresses get the email, and the page answers the same way for anyone, so it doesn't reveal who is on the list. Take someone off the list and they're out at once. This needs the server to send email (`QUICK_SMTP_URL`); without it, `quick access add` refuses addresses outside the company.
-- **Access code** shows a page asking for the code. Once entered, it is remembered for 7 days.
+- **Access code** shows a page asking for the code. Once entered, it is remembered for 7 days on that browser. Codes have at least 8 characters. When you set the code, quick also prints a link that carries it (`https://launch.quick.acme.com/?quick_code=...`): whoever opens it gets straight in, without typing anything, and the code leaves the address bar. Whoever can change the site sees the current code and link again with `quick access launch` and on the site's page in the dashboard. Changing the code signs out everyone who entered the old one. After 10 wrong codes in 15 minutes, a visitor has to wait before trying again.
 - **Public** serves the site to everyone.
 
 Administrators (set on the server with `QUICK_ADMINS`) can see, open and manage every site, chosen-people and "only me" ones included, and can do on any site whatever its owner can: change who sees it, lock or unlock it, delete it, manage its tokens and domains, raise its size limit. The site's page in the dashboard names them.
