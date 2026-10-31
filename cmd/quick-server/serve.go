@@ -8,6 +8,8 @@ import (
 	"path"
 	"strconv"
 	"strings"
+
+	"github.com/zupolgec/quick/internal/storage"
 )
 
 // MIME types Go doesn't know by default: with nosniff on, a wrong type means
@@ -136,9 +138,7 @@ func (s *server) serveSite(w http.ResponseWriter, r *http.Request, sub string) {
 		http.Redirect(w, r, withRawQuery(target, r.URL.RawQuery), http.StatusTemporaryRedirect)
 		return
 	}
-	// _redirects and _headers are never served: they can reveal upstream hosts.
-	if cand, ok := s.htmlAssetCandidate(sub, p); ok && p != "/_redirects" && p != "/_headers" {
-		s.serveFile(w, r, sub, cand, http.StatusOK)
+	if cand, ok := s.htmlAssetCandidate(sub, p); ok && s.serveFile(w, r, sub, cand, http.StatusOK) {
 		return
 	}
 	if s.applyRedirectRules(w, r, sub, p) {
@@ -247,6 +247,13 @@ func (s *server) htmlAssetCandidate(sub, p string) (string, bool) {
 	return "", false
 }
 
+// isRulesFile reports whether p, as storage resolves it, is _redirects or
+// _headers: they are never served, since they can reveal upstream hosts.
+func isRulesFile(p string) bool {
+	rel, err := storage.CleanRel(p)
+	return err == nil && (rel == "_redirects" || rel == "_headers")
+}
+
 func indexPath(p string) string {
 	if p == "/" {
 		return "/index.html"
@@ -301,6 +308,9 @@ func nearest404Candidates(p string) []string {
 // http.ServeContent (range, etag, content-type). With an error status it writes
 // that status with the content-type from the extension (ServeContent would force 200).
 func (s *server) serveFile(w http.ResponseWriter, r *http.Request, sub, cand string, status int) bool {
+	if isRulesFile(cand) {
+		return false
+	}
 	rc, fi, err := s.store.OpenFile(sub, cand)
 	if err != nil {
 		return false
