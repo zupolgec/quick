@@ -86,6 +86,7 @@ func (s *server) setupSiteProxy() {
 			// No SetXForwarded: Rewrite already strips inbound X-Forwarded-*,
 			// and the upstream has no business learning the visitor's IP.
 		},
+		ModifyResponse: siteOnlyCookies,
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			log.Printf("site proxy %s %s: %v", r.Method, r.URL, err)
 			http.Error(w, "upstream unreachable", http.StatusBadGateway)
@@ -93,18 +94,53 @@ func (s *server) setupSiteProxy() {
 	}
 }
 
-// stripQuickCookies removes quick's own auth cookies (site access codes and
-// oauth2-proxy sessions, including its _0/_1 shards) so they never reach an
+// quickCookiePrefixes name quick's own auth cookies: site access codes,
+// outside people's sign-ins and the SSO session (its name in the compose
+// file, and oauth2-proxy's default), including the _0/_1 shards.
+var quickCookiePrefixes = []string{"quick_access_", "quick_guest_", "_quick_sso", "_oauth2_proxy"}
+
+func isQuickCookie(name string) bool {
+	for _, p := range quickCookiePrefixes {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// stripQuickCookies removes quick's own auth cookies so they never reach an
 // upstream. Everything else forwards untouched.
 func stripQuickCookies(out *http.Request) {
 	cookies := out.Cookies()
 	out.Header.Del("Cookie")
 	for _, c := range cookies {
-		if strings.HasPrefix(c.Name, "quick_access_") || strings.HasPrefix(c.Name, "_oauth2_proxy") {
+		if isQuickCookie(c.Name) {
 			continue
 		}
 		out.AddCookie(c)
 	}
+}
+
+// siteOnlyCookies keeps an upstream's cookies on the site's own host: the
+// Domain attribute would hand them to every site under the base domain (and
+// let the upstream replace the SSO session), and quick's own cookies are
+// never set from outside.
+func siteOnlyCookies(resp *http.Response) error {
+	cookies := resp.Cookies()
+	if len(cookies) == 0 {
+		return nil
+	}
+	resp.Header.Del("Set-Cookie")
+	for _, c := range cookies {
+		if isQuickCookie(c.Name) {
+			continue
+		}
+		c.Domain = ""
+		if v := c.String(); v != "" {
+			resp.Header.Add("Set-Cookie", v)
+		}
+	}
+	return nil
 }
 
 // serveRuleProxy proxies the request to target. Two loop guards: targets under
