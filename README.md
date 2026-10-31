@@ -125,7 +125,8 @@ The only wildcard is a trailing `/*`, referenced as `:splat` in the destination;
 query string is preserved; invalid lines are ignored. The proxy is a pass-through to
 public `https` hosts (never private or internal-network IPs, never quick subdomains;
 no injected keys, for now). Proxied paths follow the site's visibility (SSO, code,
-public), so a protected site has its APIs protected too. The `_redirects` file is
+public), so a protected site has its APIs protected too. quick's own sign-in cookies never
+reach the upstream, and cookies the upstream sets stay on the site's own address. The `_redirects` file is
 never served; changes propagate within a few seconds.
 
 **`_headers`** (Netlify style): a `_headers` file at the root of the site sets

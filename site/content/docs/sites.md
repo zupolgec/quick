@@ -34,6 +34,7 @@ A `_redirects` file at the root of the site defines redirects, rewrites and prox
 - The only wildcard is a trailing `/*`, available as `:splat` in the destination. The query string is kept.
 - A proxy passes requests through to a public `https` host: never to private or internal addresses, never to other quick sites, and no credentials are added.
 - Proxied paths follow the site's visibility: a site behind sign-in has its API behind sign-in too.
+- Your visitors' quick sign-in never reaches the proxied host, and cookies it sets stay on your site's address.
 - The `_redirects` file itself is never served. Changes take effect within a few seconds.
 
 ## `_headers`

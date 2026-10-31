@@ -125,7 +125,8 @@ query string viene preservata; le righe non valide vengono ignorate. Il proxy è
 un pass-through verso host pubblici in `https` (mai IP privati o di rete interna,
 mai sottodomini quick; nessuna chiave iniettata, per ora). I path proxati seguono
 la visibilità del sito (SSO, codice, pubblico), quindi un sito protetto ha anche
-le sue API protette. Il file `_redirects` non viene mai servito; le modifiche si
+le sue API protette. I cookie di accesso di quick non arrivano mai all'host esterno, e i
+cookie che l'host esterno imposta restano sull'indirizzo del sito. Il file `_redirects` non viene mai servito; le modifiche si
 propagano entro qualche secondo.
 
 **`_headers`** (stile Netlify): un file `_headers` nella radice del sito imposta
