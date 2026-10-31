@@ -407,7 +407,8 @@ func safeRedirect(rd, host string) bool {
 		return false
 	}
 	if u.Host == "" {
-		return strings.HasPrefix(rd, "/")
+		// Browsers read "/\host" as "//host": another site.
+		return strings.HasPrefix(rd, "/") && !strings.HasPrefix(rd, "//") && !strings.Contains(rd, `\`)
 	}
 	return u.Scheme == "https" && u.Host == host
 }
