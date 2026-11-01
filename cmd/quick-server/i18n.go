@@ -80,7 +80,7 @@ func acceptLanguages(h string) []string {
 // sit next to inline <code>/<b> markup in the templates are split so the markup
 // stays in the template and only the prose is translated.
 type uiText struct {
-	NavDashboard, Copy string
+	NavDashboard, Copy, Copied string
 
 	LandingTitle, LandingHeadline, LandingTagline, LandingGetStarted string
 	LandingInstall, LandingLogin, LandingDeploy                      string
@@ -152,6 +152,7 @@ var uiTexts = map[lang]uiText{
 	langEN: {
 		NavDashboard: "Dashboard",
 		Copy:         "Copy",
+		Copied:       "Copied",
 
 		LandingTitle:      "quick — static hosting",
 		LandingHeadline:   "Publish a folder, get a URL.",
@@ -335,6 +336,7 @@ var uiTexts = map[lang]uiText{
 	langIT: {
 		NavDashboard: "Dashboard",
 		Copy:         "Copia",
+		Copied:       "Copiato",
 
 		LandingTitle:      "quick · hosting statico",
 		LandingHeadline:   "Pubblica una cartella, ottieni un URL.",

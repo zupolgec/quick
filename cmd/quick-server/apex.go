@@ -589,7 +589,7 @@ code.inline{background:var(--sunk);padding:.1rem .35rem;font-size:.88em;font-fam
 .panel h3{font-size:1rem;margin:1.4rem 0 .4rem;color:var(--ink)}
 .err{margin:0 0 1rem;padding:.7rem .9rem;font-size:.92rem;color:var(--err);background:var(--err-bg);max-width:64ch}
 form.access{display:grid;gap:4px;max-width:560px}
-.share{max-width:560px;margin-bottom:1.4rem}.share h3:first-child{margin-top:0}.share .secret code{display:block;background:var(--sunk)}
+.share{max-width:560px;margin-bottom:1.4rem}.share h3:first-child{margin-top:0}.share .secret code{display:block;background:var(--sunk);color:var(--fg)}
 .opt{display:flex;align-items:flex-start;gap:.7rem;padding:.75rem 1rem;background:var(--sunk);cursor:pointer;font-size:.95rem;color:var(--fg);transition:background-color .18s}
 .opt:has(input:checked){background:var(--brand);color:#fff}
 .opt:has(input:checked) small{color:rgba(255,255,255,.85)}
@@ -616,7 +616,7 @@ form.access .btn{justify-self:start;margin-top:.6rem}
   {{if .Reveal}}<div class="reveal">
     <strong>{{.T.TokenCreated}}</strong>
     <p>{{.T.TokenStoreAs}} <code class="inline">QUICK_API_TOKEN</code>. {{.T.TokenNotShown}}</p>
-    <div class="secret"><code id="new-token">{{.Reveal}}</code><button class="btn-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('new-token').textContent)">{{.T.Copy}}</button></div>
+    <div class="secret"><code id="new-token">{{.Reveal}}</code><button class="btn-secondary" type="button" aria-live="polite" data-done="{{.T.Copied}}" onclick="copyFrom(this,'new-token')">{{.T.Copy}}</button></div>
   </div>{{end}}
 
   <section class="panel" id="access">
@@ -625,9 +625,9 @@ form.access .btn{justify-self:start;margin-top:.6rem}
     {{if .Error}}<div class="err" role="alert">{{.Error}}</div>{{end}}
     {{if .HasCode}}{{if .Code}}<div class="share">
     <h3>{{.T.AccessCodeCurrent}}</h3>
-    <div class="secret"><code id="site-code">{{.Code}}</code><button class="btn-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('site-code').textContent)">{{.T.Copy}}</button></div>
+    <div class="secret"><code id="site-code">{{.Code}}</code><button class="btn-secondary" type="button" aria-live="polite" data-done="{{.T.Copied}}" onclick="copyFrom(this,'site-code')">{{.T.Copy}}</button></div>
     <h3>{{.T.AccessCodeLink}}</h3>
-    <div class="secret"><code id="site-code-link">{{.CodeLink}}</code><button class="btn-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('site-code-link').textContent)">{{.T.Copy}}</button></div>
+    <div class="secret"><code id="site-code-link">{{.CodeLink}}</code><button class="btn-secondary" type="button" aria-live="polite" data-done="{{.T.Copied}}" onclick="copyFrom(this,'site-code-link')">{{.T.Copy}}</button></div>
     </div>{{else}}<p class="hint">{{.T.AccessCodeHidden}}</p>{{end}}{{end}}
     {{if .IsOwner}}
     <form class="access" method="post" action="/api/site/{{.Name}}/policy">
@@ -701,7 +701,9 @@ form.access .btn{justify-self:start;margin-top:.6rem}
       <button class="btn" type="submit">{{.T.TokenCreate}}</button>
     </form>
   </section>
-</div></body></html>`))
+</div>
+<script>function copyFrom(b,id){navigator.clipboard.writeText(document.getElementById(id).textContent).then(function(){b.dataset.idle=b.dataset.idle||b.textContent;b.textContent=b.dataset.done;clearTimeout(b._t);b._t=setTimeout(function(){b.textContent=b.dataset.idle},1500)})}</script>
+</body></html>`))
 
 // iconCopy/iconCheck stack in the same slot; cp() flips data-state to cross-fade
 // copy → check (icon swap), so the button never resizes from a "Copied" label.
