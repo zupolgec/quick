@@ -29,7 +29,7 @@ Inside a folder linked to the site (it has a `.quick` file) you can drop the nam
 
 Administrators (set on the server with `QUICK_ADMINS`) can see, open and manage every site, chosen-people and "only me" ones included, and can do on any site whatever its owner can: change who sees it, lock or unlock it, delete it, manage its tokens and domains, raise its size limit. The site's page in the dashboard names them.
 
-`quick publish`, `quick unpublish` and `quick private` still work as shortcuts for `public`, `team` and `code`. The same choices are on the site's page in the dashboard.
+`quick publish`, `quick unpublish` and `quick private` still work as shortcuts for `public`, `team` and `code`. The same choices are on the site's page in the dashboard; there, leaving the code field empty generates a random code.
 
 ## Who can change a site
 

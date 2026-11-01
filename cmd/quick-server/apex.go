@@ -634,7 +634,7 @@ form.access .btn{justify-self:start;margin-top:.6rem}
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <input type="hidden" name="op" value="access">
       {{range .Levels}}<label class="opt"><input type="radio" name="access" value="{{.Value}}"{{if .Checked}} checked{{end}}><span><strong>{{.Label}}</strong><small>{{.Hint}}</small></span></label>
-      {{end}}<div class="field code"><label for="access-code">{{.T.AccessCodeLabel}}</label><input id="access-code" name="code" minlength="8" autocomplete="off"{{if .HasCode}} placeholder="{{.T.AccessCodeKeep}}"{{end}}></div>
+      {{end}}<div class="field code"><label for="access-code">{{.T.AccessCodeLabel}}</label><input id="access-code" name="code" minlength="8" autocomplete="off"placeholder="{{if .HasCode}}{{.T.AccessCodeKeep}}{{else}}{{.T.AccessCodeNew}}{{end}}"></div>
       <button class="btn" type="submit">{{.T.AccessSave}}</button>
     </form>
     {{else}}<p class="hint">{{.T.AccessCurrent}} <b>{{.CurrentLevel}}</b>. {{.T.AccessOwnerOnly}}</p>{{end}}

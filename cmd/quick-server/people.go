@@ -185,6 +185,9 @@ func policyFormRequest(r *http.Request, cur policy) (quick.PolicyRequest, *polic
 			if code == "" && cur.Access == quick.AccessCode {
 				return req, nil // keep the current code
 			}
+			if code == "" {
+				code = genCode()
+			}
 			req.Access, req.Code = new(quick.AccessCode), &code
 		default:
 			return req, &policyErr{status: http.StatusBadRequest, msg: "invalid access"}

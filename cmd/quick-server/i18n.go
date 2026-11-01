@@ -99,7 +99,7 @@ type uiText struct {
 	DashManage                                                                     string
 
 	AccessTitle, AccessOwner, AccessCurrent, AccessOwnerOnly, AccessSave string
-	AccessCodeLabel, AccessCodeKeep                                      string
+	AccessCodeLabel, AccessCodeKeep, AccessCodeNew                       string
 	AccessCodeCurrent, AccessCodeLink, AccessCodeHidden                  string
 	LevelTeam, LevelTeamHint, LevelOnlyMe, LevelOnlyMeHint               string
 	LevelPeople, LevelPeopleHint, LevelCode, LevelCodeHint               string
@@ -236,6 +236,7 @@ var uiTexts = map[lang]uiText{
 		AccessSave:      "Save",
 		AccessCodeLabel: "Access code",
 		AccessCodeKeep:  "Leave empty to keep the current code",
+		AccessCodeNew:   "Leave empty to generate a random one",
 
 		AccessCodeCurrent: "Current code",
 		AccessCodeLink:    "Link that opens the site",
@@ -418,6 +419,7 @@ var uiTexts = map[lang]uiText{
 		AccessSave:      "Salva",
 		AccessCodeLabel: "Codice di accesso",
 		AccessCodeKeep:  "Lascia vuoto per tenere il codice attuale",
+		AccessCodeNew:   "Lascia vuoto per generarne uno casuale",
 
 		AccessCodeCurrent: "Codice attuale",
 		AccessCodeLink:    "Link che apre il sito",

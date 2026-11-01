@@ -8,6 +8,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -145,4 +146,16 @@ func (c *codeAttempts) fail(ip string) {
 		now = c.now()
 	}
 	c.fails[ip] = append(c.recent(ip), now)
+}
+
+// genCode creates a short, readable access code (no ambiguous characters),
+// for the dashboard when the owner leaves the code empty.
+func genCode() string {
+	const alphabet = "abcdefghijkmnpqrstuvwxyz23456789"
+	b := make([]byte, codeMinLength)
+	rand.Read(b)
+	for i := range b {
+		b[i] = alphabet[int(b[i])%len(alphabet)]
+	}
+	return string(b)
 }

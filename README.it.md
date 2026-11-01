@@ -257,7 +257,7 @@ di accesso la prende `quick-server`: pubblico → servito sempre; codice → pag
 inserimento codice (oppure un link con `?quick_code=`, che quick stampa insieme al
 codice), poi un cookie firmato vale 7 giorni, legato al codice: cambiarlo fa uscire
 tutti (`quick access foo` e la dashboard rimostrano codice e link a chi può
-modificare il sito); i codici hanno almeno 8 caratteri e ogni visitatore ha 10 tentativi sbagliati
+modificare il sito; nella dashboard, lasciando vuoto il campo del codice, ne viene generato uno casuale); i codici hanno almeno 8 caratteri e ogni visitatore ha 10 tentativi sbagliati
 ogni 15 minuti; SSO → verifica la sessione
 Google via oauth2-proxy. **Persone scelte** (`only-me`, `add`, `remove`): SSO più un elenco; entrano solo il
 proprietario (chi ha creato il sito) e gli account in elenco, gli altri vedono una

@@ -183,3 +183,23 @@ func siteCookie(w *httptest.ResponseRecorder, site string) *http.Cookie {
 	}
 	return nil
 }
+
+func TestDashboardGeneratesCodeWhenEmpty(t *testing.T) {
+	e := newPeopleEnv(t)
+	page, csrf := e.sitePage(t, ann, "open")
+	if !strings.Contains(page, `placeholder="Lascia vuoto per generarne uno casuale"`) {
+		t.Errorf("the code field doesn't say it can be left empty:\n%s", page)
+	}
+	w := e.form(ann, "/api/site/open/policy", url.Values{"csrf": {csrf}, "op": {"access"}, "access": {"code"}, "code": {""}})
+	if w.Code != http.StatusSeeOther && w.Code != http.StatusOK {
+		t.Fatalf("empty code: status %d\n%s", w.Code, w.Body)
+	}
+	p := e.policyOf(t, "open")
+	if p.Access != quick.AccessCode || len(p.Code) < codeMinLength {
+		t.Fatalf("no generated code: %+v", p)
+	}
+	page, _ = e.sitePage(t, ann, "open")
+	if !strings.Contains(page, ">"+p.Code+"<") || !strings.Contains(page, `placeholder="Lascia vuoto per tenere il codice attuale"`) {
+		t.Errorf("dashboard doesn't show the generated code:\n%s", page)
+	}
+}
