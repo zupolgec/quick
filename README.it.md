@@ -261,9 +261,11 @@ accedere), tutti gli altri vedono la pagina di inserimento codice (oppure un lin
 codice), poi un cookie firmato vale 7 giorni, legato al codice: cambiarlo fa uscire
 tutti (`quick access foo` e la dashboard rimostrano codice e link a chi può
 modificare il sito; nella dashboard, lasciando vuoto il campo del codice, ne viene generato uno casuale); i codici hanno almeno 8 caratteri e ogni visitatore ha 10 tentativi sbagliati
-ogni 15 minuti; con `--code-only` il codice serve anche ai colleghi, ammesso solo su
-un sito bloccato o fuori dalla modalità `free` (altrimenti qualsiasi collega potrebbe
-leggere o cambiare il codice), e sbloccare il sito lo disattiva; SSO → verifica la sessione
+ogni 15 minuti; con `--code-only` il codice serve anche ai colleghi (gli amministratori
+entrano comunque), ammesso solo su un sito che i colleghi non possono gestire,
+altrimenti chiunque di loro potrebbe leggere o cambiare il codice: in modalità `free`
+un sito bloccato, e sbloccarlo lo disattiva; in `shared` e `owned` un sito con un
+proprietario registrato; SSO → verifica la sessione
 Google via oauth2-proxy. **Persone scelte** (`only-me`, `add`, `remove`): SSO più un elenco; entrano solo il
 proprietario (chi ha creato il sito) e gli account in elenco, gli altri vedono una
 pagina "sito riservato" con il nome del proprietario (mai l'elenco). Elenco,
@@ -289,8 +291,10 @@ Hanno anche una pagina **Impostazioni** nella dashboard (`/dashboard/settings`) 
 valori predefiniti del server, che valgono quando nessuno sceglie diversamente e non
 cambiano i siti esistenti: **blocca i siti nuovi** (il primo deploy blocca il sito per
 chi lo crea) e **chiedi il codice anche ai colleghi** (un sito che riceve un codice lo
-chiede anche ai colleghi, sempre solo sui siti bloccati in modalità `free`;
-`--code-only=false` esclude un sito).
+chiede anche ai colleghi, sempre solo sui siti che i colleghi non possono gestire;
+reimpostando il codice vale di nuovo il predefinito, e `--code-only=false` esclude un
+sito). Se le impostazioni non si riescono a leggere, il primo deploy e un codice
+impostato senza scelta esplicita vengono rifiutati invece di tirare a indovinare.
 
 Al deploy la CLI mostra **chi sei** (`Autenticato come …`) e, se l'ultima
 pubblicazione di quel sito è di un'altra persona, chiede di **ridigitare il nome

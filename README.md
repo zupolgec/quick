@@ -255,9 +255,10 @@ session get in (the code page offers them a sign-in link), everyone else gets th
 7 days, tied to the code so changing it signs everyone out (`quick access foo` and the
 dashboard show the code and link again to whoever can change the site; in the dashboard an empty code field generates a random one); codes have at least 8
 characters and a visitor gets 10 wrong ones per 15 minutes; with `--code-only`
-colleagues need the code too, accepted only on a locked site or outside the `free`
-ownership mode (otherwise any colleague could read or change the code), and
-unlocking turns it off; SSO → checks the Google session through oauth2-proxy. **Chosen people** (`only-me`, `add`, `remove`):
+colleagues need the code too (administrators still get in), accepted only on a site
+colleagues can't manage, otherwise any of them could read or change the code: in `free`
+mode a locked site, and unlocking turns it off; in `shared` and `owned` mode a site with
+a recorded owner; SSO → checks the Google session through oauth2-proxy. **Chosen people** (`only-me`, `add`, `remove`):
 SSO plus a list; only the owner (the creator) and the listed accounts get in, others
 see a "restricted" page naming the owner (never the list). Only the owner changes the
 list or the visibility of such a site, or deletes it, in every ownership mode; deploys
@@ -279,7 +280,9 @@ They also get a **Settings** page in the dashboard (`/dashboard/settings`) with 
 server's defaults, which apply when nobody chooses otherwise and never change existing
 sites: **lock new sites** (the first deploy locks a site for its creator) and **ask
 colleagues for the access code** (a site given a code asks colleagues for it too, still
-only on locked sites in `free` mode; `--code-only=false` opts a site out).
+only on sites colleagues can't manage; setting the code again keeps applying the
+default, and `--code-only=false` opts a site out). If the settings can't be read, a
+first deploy and a code set without an explicit choice are refused rather than guessed.
 
 On deploy the CLI shows **who you are** (`Authenticated as …`) and, if the last
 publish of that site was by someone else, asks you to **retype the site name** before

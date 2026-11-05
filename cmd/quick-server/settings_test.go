@@ -21,6 +21,15 @@ func newSettingsEnv(t *testing.T) *peopleEnv {
 	return e
 }
 
+func mustSettings(t *testing.T, s *server) instanceSettings {
+	t.Helper()
+	st, err := s.settings()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return st
+}
+
 func (e *peopleEnv) settingsPage(t *testing.T, email string) (int, string, string) {
 	t.Helper()
 	w := e.visit("quick.test", email, "/dashboard/settings?lang=it", nil)
@@ -49,8 +58,8 @@ func TestSettingsPageOnlyForAdmins(t *testing.T) {
 	}
 	// Non-admins can't save, even with a token of their own.
 	w := e.form(bob, "/dashboard/settings", url.Values{"csrf": {e.s.meta.signCSRF(bob, 1<<40)}, "lock_new_sites": {"1"}})
-	if w.Code != http.StatusNotFound || e.s.settings().LockNewSites {
-		t.Errorf("non-admin save: %d, settings %+v", w.Code, e.s.settings())
+	if w.Code != http.StatusNotFound || mustSettings(t, e.s).LockNewSites {
+		t.Errorf("non-admin save: %d, settings %+v", w.Code, mustSettings(t, e.s))
 	}
 }
 
@@ -61,7 +70,7 @@ func TestSettingsSaveAndShow(t *testing.T) {
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("save: %d\n%s", w.Code, w.Body)
 	}
-	if st := e.s.settings(); !st.LockNewSites || !st.CodeOnly {
+	if st := mustSettings(t, e.s); !st.LockNewSites || !st.CodeOnly {
 		t.Fatalf("saved %+v", st)
 	}
 	_, page, _ := e.settingsPage(t, zedAdmin)
@@ -69,8 +78,8 @@ func TestSettingsSaveAndShow(t *testing.T) {
 		t.Errorf("saved settings not shown:\n%s", page)
 	}
 	// A bad token changes nothing.
-	if w := e.form(zedAdmin, "/dashboard/settings", url.Values{"csrf": {"nope"}}); w.Code != http.StatusForbidden || !e.s.settings().LockNewSites {
-		t.Errorf("bad csrf: %d %+v", w.Code, e.s.settings())
+	if w := e.form(zedAdmin, "/dashboard/settings", url.Values{"csrf": {"nope"}}); w.Code != http.StatusForbidden || !mustSettings(t, e.s).LockNewSites {
+		t.Errorf("bad csrf: %d %+v", w.Code, mustSettings(t, e.s))
 	}
 	// Settings are no site: the list doesn't show them.
 	names, _ := e.s.store.ListSites()

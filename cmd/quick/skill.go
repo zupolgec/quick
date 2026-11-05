@@ -43,11 +43,14 @@ site (codes set before this was possible show as ` + "`not visible`" + `: set a 
 Colleagues signed in with the company SSO open a code site without the code (the code
 page offers them a sign-in link): the code is for people outside the company. To ask
 colleagues for it too, add ` + "`--code-only`" + ` (` + "`quick access <site> code --code-only`" + `).
-The server accepts it only on a locked site (` + "`quick lock`" + ` first), or when it isn't in
-free ownership mode: otherwise any colleague could read or change the code anyway.
-Unlocking the site turns it off. Without the flag the server's default applies
-(administrators can make it ask colleagues by default, and lock new sites by default);
-` + "`--code-only=false`" + ` lets colleagues in whatever the default.
+It needs a site colleagues can't manage, otherwise any of them could read or change
+the code anyway: on a server in free ownership mode (the default) a locked site
+(` + "`quick lock`" + ` first), and unlocking it turns the option off; in shared or owned
+mode, any site with a recorded owner. Administrators always get in. Without the flag
+the server's default applies, also when the code is set again (administrators can
+make it ask colleagues by default, and lock new sites by default);
+` + "`--code-only=false`" + ` lets colleagues in whatever the default. ` + "`quick private`" + ` and
+` + "`deploy --private`" + ` print which of the two applies.
 
 The server configures itself: the only required input is the URL, via ` + "`--server`" + `
 or the ` + "`QUICK_SERVER`" + ` variable. After the first deploy, the folder remembers site

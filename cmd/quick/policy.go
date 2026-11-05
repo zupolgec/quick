@@ -80,7 +80,7 @@ func policyCmd(action string, args []string) {
 	url := "https://" + res.Site + "." + cfg.BaseDomain
 	switch action {
 	case "private":
-		fmt.Printf("✓ %s protected by code → %s\n  code: %s\n  link: %s\n", name, url, code, codeLink(url, code))
+		fmt.Printf("✓ %s protected by code (%s) → %s\n  code: %s\n  link: %s\n", name, codeAudience(res.CodeOnly), url, code, codeLink(url, code))
 	case "publish":
 		fmt.Printf("✓ %s public → %s\n", name, url)
 	case "unpublish":

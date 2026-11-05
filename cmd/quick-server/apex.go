@@ -153,6 +153,7 @@ func (s *server) renderSitePageWith(w http.ResponseWriter, r *http.Request, name
 		}
 	}
 	csrf := s.meta.signCSRF(email, time.Now().Add(2*time.Hour).Unix())
+	st, _ := s.settings() // only to propose the default: unreadable means none
 	code, link := s.visibleCode(p, email), ""
 	if code != "" {
 		link = codeLink("https://"+name+"."+s.baseDomain, code)
@@ -173,7 +174,7 @@ func (s *server) renderSitePageWith(w http.ResponseWriter, r *http.Request, name
 		"Owner": p.CreatedBy, "IsOwner": s.actsAsOwner(p, email), "Levels": levels,
 		"CurrentLevel": currentLabel, "People": p.Access == quick.AccessPeople,
 		"Viewers": s.viewerInfos(p), "Outside": s.mail != nil, "HasCode": p.Access == quick.AccessCode, "Error": errText,
-		"CodeOnly":   s.teamNeedsCode(p) || (p.Access != quick.AccessCode && s.settings().CodeOnly && !s.teamManages(p)),
+		"CodeOnly":   s.teamNeedsCode(p) || (p.Access != quick.AccessCode && st.CodeOnly && !s.teamManages(p)),
 		"CodeOnlyOK": !s.teamManages(p),
 		"Code":       code, "CodeLink": link,
 		"Domain": s.companyDomain(), "Lang": string(l), "T": t,

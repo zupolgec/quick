@@ -195,7 +195,7 @@ func TestAccessChosenPeopleEndToEnd(t *testing.T) {
 	if code := status(); code != http.StatusOK {
 		t.Errorf("colleague on a code site: %d, want the site", code)
 	}
-	if out := quick(false, "access", "secret", "code", "--code", "abc12345", "--code-only"); !strings.Contains(out, "locked site") {
+	if out := quick(false, "access", "secret", "code", "--code", "abc12345", "--code-only"); !strings.Contains(out, "lock it first") {
 		t.Errorf("code-only without a lock:\n%s", out)
 	}
 	quick(true, "lock", "secret")
@@ -211,6 +211,13 @@ func TestAccessChosenPeopleEndToEnd(t *testing.T) {
 	quick(true, "unlock", "secret")
 	if code := status(); code != http.StatusOK {
 		t.Errorf("colleague after unlocking: %d, want the site", code)
+	}
+	// The shortcuts say who needs the code too.
+	if out := quick(true, "private", "secret", "--code", "abc12345"); !strings.Contains(out, "colleagues open it without the code") {
+		t.Errorf("private:\n%s", out)
+	}
+	if out := quick(true, "deploy", "secret", ".", "--yes", "--private=abc12345"); !strings.Contains(out, "protected by code (colleagues open it without the code), code: abc12345") {
+		t.Errorf("deploy --private:\n%s", out)
 	}
 	if out := quick(true, "access", "secret", "public"); !strings.Contains(out, "public") {
 		t.Errorf("public:\n%s", out)

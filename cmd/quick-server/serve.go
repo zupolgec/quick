@@ -111,12 +111,8 @@ func (s *server) siteAccess(r *http.Request, sub string) (p policy, email string
 		if c, err := r.Cookie("quick_access_" + sub); err == nil && s.meta.validAccessCookie(sub, p.CodeHash, c.Value) {
 			return p, "", false, true, nil
 		}
-		if s.teamNeedsCode(p) {
-			return p, "", false, false, nil
-		}
-		// Colleagues signed in with the company SSO don't need the code.
-		email, signedIn = s.checkSSO(r)
-		return p, email, signedIn, signedIn, nil
+		email, signedIn, ok = s.openCodeSite(r, p)
+		return p, email, signedIn, ok, nil
 	default:
 		if guest, ok := s.guestFromCookie(r, sub, p); ok {
 			return p, guest, false, true, nil

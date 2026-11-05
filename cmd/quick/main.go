@@ -374,16 +374,21 @@ func runPublish(in *interrupts, cfg *cliConfig, name, tok, dir string, pl *plan,
 		if code == "" {
 			code = genCode()
 		}
-		req, done = &quick.PolicyRequest{Access: new(quick.AccessCode), Code: &code}, "  → private, code: "+code+"\n  link: "+codeLink(strings.TrimSuffix(res.URL, "/"), code)
+		req = &quick.PolicyRequest{Access: new(quick.AccessCode), Code: &code}
 	}
 	if req != nil {
-		if _, err := postPolicy(in.context(), cfg, name, tok, *req); err != nil {
+		pres, err := postPolicy(in.context(), cfg, name, tok, *req)
+		if err != nil {
 			if code := in.code(); code != 0 {
 				fmt.Fprintln(errOut, "\npublished; visibility change interrupted")
 				return code
 			}
 			fmt.Fprintln(errOut, "error:", err)
 			return 1
+		}
+		if code := req.Code; code != nil {
+			done = fmt.Sprintf("  → protected by code (%s), code: %s\n  link: %s",
+				codeAudience(pres.CodeOnly), *code, codeLink(strings.TrimSuffix(res.URL, "/"), *code))
 		}
 		fmt.Fprintln(out, done)
 	}

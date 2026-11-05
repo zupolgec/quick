@@ -429,7 +429,6 @@ func (s *server) finishDeploy(w http.ResponseWriter, name string, cur policy, id
 	now := nowStamp()
 	if cur.CreatedBy == "" {
 		cur.CreatedBy, cur.CreatedAt = ident.Email, now
-		s.lockNewSite(&cur, ident.Email)
 	}
 	cur.UpdatedBy, cur.UpdatedAt = by, now
 	if ident.Token {

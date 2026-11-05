@@ -36,9 +36,13 @@ func (s *server) visibleCode(p policy, email string) string {
 }
 
 // teamManages reports whether anyone at the company may change the site's
-// access (and read its code): free ownership mode and not locked.
+// access (and read its code), as canWrite decides: unless someone locked it,
+// in free mode, or on a site with no recorded creator in any mode.
 func (s *server) teamManages(p policy) bool {
-	return !p.Locked && (s.ownership == "" || s.ownership == "free")
+	if p.Locked && p.Owner != "" {
+		return false
+	}
+	return s.ownership == "" || s.ownership == "free" || p.CreatedBy == ""
 }
 
 // teamNeedsCode reports whether colleagues signed in with the company SSO
@@ -46,6 +50,15 @@ func (s *server) teamManages(p policy) bool {
 // when they couldn't read or change it anyway.
 func (s *server) teamNeedsCode(p policy) bool {
 	return p.Access == quick.AccessCode && p.CodeOnly && !s.teamManages(p)
+}
+
+// openCodeSite reports whether a visitor without a valid code cookie gets
+// into a code site anyway: colleagues signed in with the company SSO, or on a
+// site that asks them for the code too, only the administrators (who can read
+// the code anyway). email is the SSO account, if any.
+func (s *server) openCodeSite(r *http.Request, p policy) (email string, signedIn, ok bool) {
+	email, signedIn = s.checkSSO(r)
+	return email, signedIn, signedIn && (!s.teamNeedsCode(p) || s.isAdmin(email))
 }
 
 // teamSignIn is the company sign-in link for the code page, "" where it

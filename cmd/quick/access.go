@@ -126,6 +126,15 @@ func accessCall(cfg *cliConfig, a accessArgs, tok string) (quick.PolicyResponse,
 	return postPolicy(context.Background(), cfg, a.Name, tok, accessRequest(a))
 }
 
+// codeAudience says who needs the code of a code site, from the server's
+// answer (which applies its default when the command didn't choose).
+func codeAudience(codeOnly bool) string {
+	if codeOnly {
+		return "colleagues need the code too"
+	}
+	return "colleagues open it without the code"
+}
+
 // describeSiteAccess renders who can see the site, for `quick access <site>`.
 func describeSiteAccess(res quick.PolicyResponse, siteURL string) string {
 	var b strings.Builder
@@ -223,11 +232,7 @@ func accessCmd(args []string) {
 	case "public":
 		fmt.Printf("✓ %s public → %s\n", a.Name, url)
 	case "code":
-		who := "colleagues open it without the code"
-		if res.CodeOnly {
-			who = "colleagues need the code too"
-		}
-		fmt.Printf("✓ %s protected by code (%s) → %s\n  code: %s\n  link: %s\n", a.Name, who, url, a.Code, codeLink(url, a.Code))
+		fmt.Printf("✓ %s protected by code (%s) → %s\n  code: %s\n  link: %s\n", a.Name, codeAudience(res.CodeOnly), url, a.Code, codeLink(url, a.Code))
 	default: // only-me, add, remove
 		if len(res.Viewers) == 0 {
 			fmt.Printf("✓ %s visible only to you → %s\n", a.Name, url)

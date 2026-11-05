@@ -395,12 +395,11 @@ func (s *server) handleCodePage(w http.ResponseWriter, r *http.Request, sub stri
 		s.enterCode(w, r, sub, p, r.FormValue("code"), rd)
 		return
 	}
-	signIn := s.teamSignIn(p, host, rd)
-	if _, ok := s.checkSSO(r); ok && signIn != "" {
-		http.Redirect(w, r, rd, http.StatusFound) // a colleague: no code needed
+	if _, _, ok := s.openCodeSite(r, p); ok {
+		http.Redirect(w, r, rd, http.StatusFound) // signed in: no code needed
 		return
 	}
-	renderCodeForm(w, pickLang(r), host, rd, signIn, 0)
+	renderCodeForm(w, pickLang(r), host, rd, s.teamSignIn(p, host, rd), 0)
 }
 
 // safeRedirect only allows same-host https URLs or relative paths.
@@ -625,9 +624,14 @@ func (s *server) applyPolicy(cur *policy, email string, req quick.PolicyRequest)
 					msg: fmt.Sprintf("the access code must be at least %d characters", codeMinLength)}
 			}
 			cur.Access, cur.Code, cur.CodeHash, cur.Viewers = quick.AccessCode, *req.Code, s.meta.hashCode(*req.Code), nil
-			cur.CodeOnly = s.settings().CodeOnly // the instance default...
 			if req.CodeOnly != nil {
-				cur.CodeOnly = *req.CodeOnly // ...unless the request chooses
+				cur.CodeOnly = *req.CodeOnly
+			} else { // no choice: the instance default
+				st, err := s.settings()
+				if err != nil {
+					return &policyErr{status: http.StatusServiceUnavailable, msg: err.Error()}
+				}
+				cur.CodeOnly = st.CodeOnly
 			}
 		case quick.AccessPeople:
 			viewers, perr := s.editViewers(*cur, req)
@@ -651,7 +655,7 @@ func (s *server) applyPolicy(cur *policy, email string, req quick.PolicyRequest)
 	if cur.CodeOnly && s.teamManages(*cur) {
 		if req.CodeOnly != nil && *req.CodeOnly {
 			return &policyErr{status: http.StatusBadRequest, kind: errCodeOnlyLock,
-				msg: "colleagues can be asked for the code only on a locked site (lock it with `quick lock`)"}
+				msg: "colleagues can be asked for the code only on a site they can't manage: lock it first with `quick lock`"}
 		}
 		cur.CodeOnly = false
 	}

@@ -9,6 +9,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -27,13 +28,15 @@ type settingsCache struct {
 	val *instanceSettings
 }
 
-// settings returns the instance settings. If they can't be read, the
-// built-in defaults apply (and the next call tries again).
-func (s *server) settings() instanceSettings {
+// settings returns the instance settings: the built-in defaults when none
+// were ever saved, an error when they can't be read. Callers that apply them
+// refuse to go on rather than guess: a guess could leave a site more open
+// than the administrators chose.
+func (s *server) settings() (instanceSettings, error) {
 	s.settingsCache.mu.Lock()
 	defer s.settingsCache.mu.Unlock()
 	if v := s.settingsCache.val; v != nil {
-		return *v
+		return *v, nil
 	}
 	var st instanceSettings
 	b, ok, err := s.store.GetSettings()
@@ -41,11 +44,11 @@ func (s *server) settings() instanceSettings {
 		err = json.Unmarshal(b, &st)
 	}
 	if err != nil {
-		log.Printf("WARNING: reading the instance settings: %v (using the defaults)", err)
-		return instanceSettings{}
+		log.Printf("WARNING: reading the instance settings: %v", err)
+		return instanceSettings{}, fmt.Errorf("could not read the server settings: %w", err)
 	}
 	s.settingsCache.val = &st
-	return st
+	return st, nil
 }
 
 func (s *server) saveSettings(st instanceSettings) error {
@@ -61,9 +64,9 @@ func (s *server) saveSettings(st instanceSettings) error {
 }
 
 // lockNewSite locks a site being created for its creator when the instance
-// says so, and reports whether it did.
-func (s *server) lockNewSite(p *policy, creator string) bool {
-	if p.Locked || creator == "" || !s.settings().LockNewSites {
+// settings st say so, and reports whether it did.
+func lockNewSite(p *policy, creator string, st instanceSettings) bool {
+	if p.Locked || creator == "" || !st.LockNewSites {
 		return false
 	}
 	p.Locked, p.Owner = true, creator
@@ -96,6 +99,11 @@ func (s *server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/dashboard/settings", http.StatusSeeOther)
 		return
 	}
+	st, err := s.settings()
+	if err != nil { // an empty form would overwrite what's saved
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
 	l := pickLang(r)
 	t := textsFor(l)
 	codeOnlyHint := t.SettingsCodeOnlyHint
@@ -106,7 +114,7 @@ func (s *server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Add("Vary", "Accept-Language")
 	_ = settingsPage.Execute(w, map[string]any{
-		"Email": email, "Lang": string(l), "T": t, "S": s.settings(), "CodeOnlyHint": codeOnlyHint,
+		"Email": email, "Lang": string(l), "T": t, "S": st, "CodeOnlyHint": codeOnlyHint,
 		"CSRF": s.meta.signCSRF(email, time.Now().Add(2*time.Hour).Unix()),
 	})
 }

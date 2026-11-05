@@ -405,13 +405,17 @@ type versions struct {
 func (s *server) clearVersions(site string, cur *policy, creator string) (versions, error) {
 	v := versions{live: cur.Version, prev: cur.PrevVersion}
 	if cur.CreatedBy == "" && creator != "" {
+		st, err := s.settings() // a new site: it may have to be locked
+		if err != nil {
+			return v, err
+		}
 		_, had, err := s.store.GetMeta(site)
 		if err != nil {
 			return v, err
 		}
 		v.reserved, v.hadMeta = true, had
 		cur.CreatedBy, cur.CreatedAt = creator, nowStamp()
-		v.lockedNew = s.lockNewSite(cur, creator)
+		v.lockedNew = lockNewSite(cur, creator, st)
 	}
 	if v.live == "" && v.prev == "" && !v.reserved {
 		return v, nil
@@ -421,6 +425,9 @@ func (s *server) clearVersions(site string, cur *policy, creator string) (versio
 		cur.Version, cur.PrevVersion = v.live, v.prev
 		if v.reserved {
 			cur.CreatedBy, cur.CreatedAt = "", ""
+		}
+		if v.lockedNew {
+			cur.Locked, cur.Owner = false, ""
 		}
 		return versions{live: v.live, prev: v.prev}, err
 	}
