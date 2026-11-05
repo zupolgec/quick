@@ -9,7 +9,7 @@ export declare class QuickError extends Error {
 }
 
 export declare const id: {
-  /** The signed-in visitor, or null on public and access-code sites. */
+  /** The signed-in visitor, or null on public sites and for whoever entered an access code. */
   me(): Promise<User | null>;
 };
 

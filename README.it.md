@@ -97,7 +97,8 @@ di Unity). Gli altri `.gz` (archivi) restano download normali.
 
 **Libreria `quick.js`**: ogni sito può importare `/__quick/quick.js` (ESM, tipi in
 `/__quick/quick.d.ts`). `await quick.id.me()` restituisce l'utente collegato
-(`{email}`) sui siti SSO, `null` su quelli pubblici o con codice.
+(`{email}`) sui siti SSO e per i colleghi sui siti con codice, `null` sui siti
+pubblici e per chi è entrato con il codice.
 
 ```html
 <script type="module">
@@ -248,17 +249,21 @@ quick publish   foo            # aperto a chiunque, niente SSO
 quick unpublish foo            # torna dietro l'SSO aziendale (default)
 quick private   foo            # accesso con codice (lo genera e te lo stampa)
 quick private   foo --code abc12345 # accesso con codice scelto da te
+quick access    foo code --code-only # il codice serve anche ai colleghi (siti bloccati)
 quick lock      foo            # da ora solo tu puoi sovrascrivere foo
 quick unlock    foo
 ```
 
 Il cambio di visibilità è **istantaneo** (solo un file di metadata). La decisione
-di accesso la prende `quick-server`: pubblico → servito sempre; codice → pagina di
-inserimento codice (oppure un link con `?quick_code=`, che quick stampa insieme al
+di accesso la prende `quick-server`: pubblico → servito sempre; codice → i colleghi
+con una sessione SSO aziendale entrano (la pagina del codice offre loro il link per
+accedere), tutti gli altri vedono la pagina di inserimento codice (oppure un link con `?quick_code=`, che quick stampa insieme al
 codice), poi un cookie firmato vale 7 giorni, legato al codice: cambiarlo fa uscire
 tutti (`quick access foo` e la dashboard rimostrano codice e link a chi può
 modificare il sito; nella dashboard, lasciando vuoto il campo del codice, ne viene generato uno casuale); i codici hanno almeno 8 caratteri e ogni visitatore ha 10 tentativi sbagliati
-ogni 15 minuti; SSO → verifica la sessione
+ogni 15 minuti; con `--code-only` il codice serve anche ai colleghi, ammesso solo su
+un sito bloccato o fuori dalla modalità `free` (altrimenti qualsiasi collega potrebbe
+leggere o cambiare il codice), e sbloccare il sito lo disattiva; SSO → verifica la sessione
 Google via oauth2-proxy. **Persone scelte** (`only-me`, `add`, `remove`): SSO più un elenco; entrano solo il
 proprietario (chi ha creato il sito) e gli account in elenco, gli altri vedono una
 pagina "sito riservato" con il nome del proprietario (mai l'elenco). Elenco,
@@ -280,6 +285,12 @@ Gli **amministratori** (`QUICK_ADMINS`) vedono, aprono e gestiscono tutti i siti
 quelli per persone scelte e "solo io", e su qualsiasi sito possono fare tutto quello che
 può il proprietario (visibilità, lock, eliminazione, token, domini, limite di dimensione).
 La dashboard li indica nella pagina di ogni sito.
+Hanno anche una pagina **Impostazioni** nella dashboard (`/dashboard/settings`) con i
+valori predefiniti del server, che valgono quando nessuno sceglie diversamente e non
+cambiano i siti esistenti: **blocca i siti nuovi** (il primo deploy blocca il sito per
+chi lo crea) e **chiedi il codice anche ai colleghi** (un sito che riceve un codice lo
+chiede anche ai colleghi, sempre solo sui siti bloccati in modalità `free`;
+`--code-only=false` esclude un sito).
 
 Al deploy la CLI mostra **chi sei** (`Autenticato come …`) e, se l'ultima
 pubblicazione di quel sito è di un'altra persona, chiede di **ridigitare il nome

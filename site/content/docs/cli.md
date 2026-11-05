@@ -17,7 +17,7 @@ description: Every quick command, how the server is chosen, and the deploy flags
 | `quick deploy [<site>] [folder]` | Publish a folder (default: the current one) |
 | `quick ignore [folder]` | Write an editable `.quickignore` with the defaults inside |
 | `quick access [<site>]` | Who can see the site: level, owner, and the people on the list (if you are on it) |
-| `quick access [<site>] team \| only-me \| public \| code [--code X]` | Everyone at the company (the default), only you, anyone, or an access code |
+| `quick access [<site>] team \| only-me \| public \| code [--code X] [--code-only]` | Everyone at the company (the default), only you, anyone, or an access code (colleagues get in without it, unless `--code-only` on a locked site) |
 | `quick access [<site>] add\|remove <email>...` | Share with chosen people, or stop (people outside the company sign in with an email link, if the server sends email) |
 | `quick publish [<site>]` | Open the site to anyone, no sign-in |
 | `quick unpublish [<site>]` | Put it back behind the company sign-in (the default) |

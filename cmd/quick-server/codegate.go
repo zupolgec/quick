@@ -35,6 +35,29 @@ func (s *server) visibleCode(p policy, email string) string {
 	return p.Code
 }
 
+// teamManages reports whether anyone at the company may change the site's
+// access (and read its code): free ownership mode and not locked.
+func (s *server) teamManages(p policy) bool {
+	return !p.Locked && (s.ownership == "" || s.ownership == "free")
+}
+
+// teamNeedsCode reports whether colleagues signed in with the company SSO
+// need the code too. By default they don't; a site can ask them for it only
+// when they couldn't read or change it anyway.
+func (s *server) teamNeedsCode(p policy) bool {
+	return p.Access == quick.AccessCode && p.CodeOnly && !s.teamManages(p)
+}
+
+// teamSignIn is the company sign-in link for the code page, "" where it
+// doesn't apply: the site asks the team for the code, or it's on a custom
+// domain (the SSO session lives on the base domain).
+func (s *server) teamSignIn(p policy, host, rd string) string {
+	if s.teamNeedsCode(p) || !strings.HasSuffix(host, "."+s.baseDomain) {
+		return ""
+	}
+	return "https://" + s.baseDomain + "/oauth2/sign_in?rd=" + url.QueryEscape(rd)
+}
+
 // codeLink is the address that opens a code site without typing the code.
 func codeLink(siteURL, code string) string {
 	return siteURL + "/?" + codeParam + "=" + url.QueryEscape(code)
@@ -70,13 +93,14 @@ func (s *server) codeFromLink(w http.ResponseWriter, r *http.Request, sub string
 // the access cookie and goes on to rd, otherwise it shows the form again.
 func (s *server) enterCode(w http.ResponseWriter, r *http.Request, sub string, p policy, code, rd string) {
 	host, l, ip := fwdHost(r), pickLang(r), clientIP(r)
+	signIn := s.teamSignIn(p, host, rd)
 	if s.codeTries.blocked(ip) {
-		renderCodeForm(w, l, host, rd, http.StatusTooManyRequests)
+		renderCodeForm(w, l, host, rd, signIn, http.StatusTooManyRequests)
 		return
 	}
 	if !s.meta.checkCode(p, code) {
 		s.codeTries.fail(ip)
-		renderCodeForm(w, l, host, rd, http.StatusUnauthorized)
+		renderCodeForm(w, l, host, rd, signIn, http.StatusUnauthorized)
 		return
 	}
 	exp := time.Now().Add(codeAccessTTL).Unix()

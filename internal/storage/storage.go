@@ -72,6 +72,10 @@ type Backend interface {
 	Rollback(site string) (ok bool, err error)
 	GetMeta(site string) (data []byte, ok bool, err error)
 	PutMeta(site string, data []byte) error
+	// GetSettings and PutSettings keep the instance's settings, one opaque
+	// blob next to the metadata that ListSites never lists.
+	GetSettings() (data []byte, ok bool, err error)
+	PutSettings(data []byte) error
 	// GetIndex, PutIndex and PruneIndexes keep opaque per-version blobs next
 	// to the metadata (the delta deploy's chunk index of a published version).
 	// version is lowercase hex. PruneIndexes removes the site's blobs whose
@@ -420,6 +424,28 @@ func (l *local) PutMeta(site string, data []byte) error {
 		return err
 	}
 	return os.Rename(tmp, l.metaPath(site))
+}
+
+// The settings file has no .json extension, so ListSites skips it.
+func (l *local) settingsPath() string { return filepath.Join(l.metaDir, "_settings.conf") }
+
+func (l *local) GetSettings() ([]byte, bool, error) {
+	b, err := os.ReadFile(l.settingsPath())
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	return b, true, nil
+}
+
+func (l *local) PutSettings(data []byte) error {
+	tmp := l.settingsPath() + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, l.settingsPath())
 }
 
 // Index blobs: <metaDir>/<site>.<version>.idx (site names have no dots, so

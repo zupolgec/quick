@@ -16,6 +16,8 @@ quick access launch only-me                 # only you
 quick access launch add giulia@acme.com     # you and the people you choose
 quick access launch remove giulia@acme.com
 quick access launch code [--code abc12345]  # access code, generated if you don't give one
+quick access launch code --code-only        # colleagues need the code too (locked sites)
+quick access launch code --code-only=false  # colleagues get in, whatever the server's default
 quick access launch public                  # anyone, no sign-in
 ```
 
@@ -25,9 +27,15 @@ Inside a folder linked to the site (it has a `.quick` file) you can drop the nam
 - **Chosen people** works like company sign-in, but only the owner (whoever created the site) and the accounts on the list get in. Anyone else at the company sees a page saying the site is restricted and who owns it, never who else is on the list. "Only me" is the same with an empty list. The list takes company accounts, and people outside the company too when the server can send email (see below).
 - **People outside the company** on a chosen-people list can't use company sign-in. On the sign-in page they enter their email and get a link: it works once, for 15 minutes, and keeps them signed in on that browser for 7 days. Only listed addresses get the email, and the page answers the same way for anyone, so it doesn't reveal who is on the list. Take someone off the list and they're out at once. This needs the server to send email (`QUICK_SMTP_URL`); without it, `quick access add` refuses addresses outside the company.
 - **Access code** shows a page asking for the code. Once entered, it is remembered for 7 days on that browser. Codes have at least 8 characters. When you set the code, quick also prints a link that carries it (`https://launch.quick.acme.com/?quick_code=...`): whoever opens it gets straight in, without typing anything, and the code leaves the address bar. Whoever can change the site sees the current code and link again with `quick access launch` and on the site's page in the dashboard. Changing the code signs out everyone who entered the old one. After 10 wrong codes in 15 minutes, a visitor has to wait before trying again.
+- **Colleagues and access codes**: the code is for people outside the company. Anyone signed in with a company account opens a code site without it, and the code page offers them a link to sign in. To ask colleagues for the code too, add `--code-only`, or tick "Ask colleagues for the code too" on the site's page in the dashboard. It works only on a locked site (`quick lock launch` first), or when the server isn't in `free` mode: otherwise any colleague could read or change the code anyway. Unlocking the site turns it off, and so does setting a code again without it.
 - **Public** serves the site to everyone.
 
 Administrators (set on the server with `QUICK_ADMINS`) can see, open and manage every site, chosen-people and "only me" ones included, and can do on any site whatever its owner can: change who sees it, lock or unlock it, delete it, manage its tokens and domains, raise its size limit. The site's page in the dashboard names them.
+
+Administrators also have a **Settings** page in the dashboard with the server's defaults. They apply when nobody chooses otherwise and never change existing sites:
+
+- **Lock new sites**: the first publish locks a site for whoever created it.
+- **Ask colleagues for the access code too**: a site given an access code asks colleagues for it as well. In `free` mode this still holds only on locked sites. To let colleagues in on one site, use `quick access launch code --code-only=false` or untick the box on its page.
 
 `quick publish`, `quick unpublish` and `quick private` still work as shortcuts for `public`, `team` and `code`. The same choices are on the site's page in the dashboard; there, leaving the code field empty generates a random code.
 

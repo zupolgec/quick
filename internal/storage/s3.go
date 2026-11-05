@@ -744,11 +744,36 @@ func (s *s3) GetMeta(site string) ([]byte, bool, error) {
 }
 
 func (s *s3) PutMeta(site string, data []byte) error {
-	_, err := s.cli.PutObject(context.Background(), s.bucket, s.metaKey(site),
+	return s.putJSON(s.metaKey(site), data)
+}
+
+func (s *s3) putJSON(key string, data []byte) error {
+	_, err := s.cli.PutObject(context.Background(), s.bucket, key,
 		bytes.NewReader(data), int64(len(data)),
 		minio.PutObjectOptions{ContentType: "application/json"})
 	return err
 }
+
+// The settings live outside meta/, which ListSites reads.
+func (s *s3) settingsKey() string { return s.prefix + "settings.json" }
+
+func (s *s3) GetSettings() ([]byte, bool, error) {
+	obj, err := s.cli.GetObject(context.Background(), s.bucket, s.settingsKey(), minio.GetObjectOptions{})
+	if err != nil {
+		return nil, false, err
+	}
+	defer obj.Close()
+	b, err := io.ReadAll(obj)
+	if err != nil {
+		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
+			return nil, false, nil
+		}
+		return nil, false, err
+	}
+	return b, true, nil
+}
+
+func (s *s3) PutSettings(data []byte) error { return s.putJSON(s.settingsKey(), data) }
 
 func (s *s3) GetIndex(site, version string) ([]byte, bool, error) {
 	if err := checkVersion(version); err != nil {

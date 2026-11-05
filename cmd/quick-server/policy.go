@@ -87,6 +87,7 @@ type policy struct {
 	Access    string       `json:"access,omitempty"`    // "" = SSO | "public" | "code" | "people"
 	Code      string       `json:"code,omitempty"`      // shown to who manages the site; "" on older sites
 	CodeHash  string       `json:"code_hash,omitempty"` // HMAC of the code, what visitors are checked against
+	CodeOnly  bool         `json:"code_only,omitempty"` // "code": colleagues need the code too (see teamNeedsCode)
 	Viewers   []string     `json:"viewers,omitempty"`   // "people": lowercased emails, owner excluded
 	Tokens    []siteToken  `json:"tokens,omitempty"`
 	Domains   []siteDomain `json:"domains,omitempty"`
@@ -394,7 +395,12 @@ func (s *server) handleCodePage(w http.ResponseWriter, r *http.Request, sub stri
 		s.enterCode(w, r, sub, p, r.FormValue("code"), rd)
 		return
 	}
-	renderCodeForm(w, pickLang(r), host, rd, 0)
+	signIn := s.teamSignIn(p, host, rd)
+	if _, ok := s.checkSSO(r); ok && signIn != "" {
+		http.Redirect(w, r, rd, http.StatusFound) // a colleague: no code needed
+		return
+	}
+	renderCodeForm(w, pickLang(r), host, rd, signIn, 0)
 }
 
 // safeRedirect only allows same-host https URLs or relative paths.
@@ -584,6 +590,9 @@ func (s *server) applyPolicy(cur *policy, email string, req quick.PolicyRequest)
 	if viewerOps && access != quick.AccessPeople {
 		return &policyErr{status: http.StatusBadRequest, msg: "viewers apply only to access=people"}
 	}
+	if req.CodeOnly != nil && *req.CodeOnly && access != quick.AccessCode {
+		return &policyErr{status: http.StatusBadRequest, msg: "code_only applies only to access=code"}
+	}
 	changesAccess := req.Access != nil || viewerOps
 	if changesAccess && (cur.Access == quick.AccessPeople || access == quick.AccessPeople) {
 		if cur.CreatedBy == "" {
@@ -606,7 +615,7 @@ func (s *server) applyPolicy(cur *policy, email string, req quick.PolicyRequest)
 	if changesAccess {
 		switch access {
 		case "", quick.AccessPublic:
-			cur.Access, cur.Code, cur.CodeHash, cur.Viewers = access, "", "", nil
+			cur.Access, cur.Code, cur.CodeHash, cur.Viewers, cur.CodeOnly = access, "", "", nil, false
 		case quick.AccessCode:
 			if req.Code == nil || *req.Code == "" {
 				return &policyErr{status: http.StatusBadRequest, kind: errCodeRequired, msg: "access=code requires a code"}
@@ -616,13 +625,19 @@ func (s *server) applyPolicy(cur *policy, email string, req quick.PolicyRequest)
 					msg: fmt.Sprintf("the access code must be at least %d characters", codeMinLength)}
 			}
 			cur.Access, cur.Code, cur.CodeHash, cur.Viewers = quick.AccessCode, *req.Code, s.meta.hashCode(*req.Code), nil
+			cur.CodeOnly = s.settings().CodeOnly // the instance default...
+			if req.CodeOnly != nil {
+				cur.CodeOnly = *req.CodeOnly // ...unless the request chooses
+			}
 		case quick.AccessPeople:
 			viewers, perr := s.editViewers(*cur, req)
 			if perr != nil {
 				return perr
 			}
-			cur.Access, cur.Code, cur.CodeHash, cur.Viewers = quick.AccessPeople, "", "", viewers
+			cur.Access, cur.Code, cur.CodeHash, cur.Viewers, cur.CodeOnly = quick.AccessPeople, "", "", viewers, false
 		}
+	} else if req.CodeOnly != nil {
+		cur.CodeOnly = *req.CodeOnly
 	}
 	if req.Locked != nil {
 		if cur.Locked = *req.Locked; cur.Locked {
@@ -630,6 +645,15 @@ func (s *server) applyPolicy(cur *policy, email string, req quick.PolicyRequest)
 		} else {
 			cur.Owner = ""
 		}
+	}
+	// Asking the team for the code holds only if the team can't read or change
+	// it; unlocking such a site lets the team in again.
+	if cur.CodeOnly && s.teamManages(*cur) {
+		if req.CodeOnly != nil && *req.CodeOnly {
+			return &policyErr{status: http.StatusBadRequest, kind: errCodeOnlyLock,
+				msg: "colleagues can be asked for the code only on a locked site (lock it with `quick lock`)"}
+		}
+		cur.CodeOnly = false
 	}
 	return nil
 }
@@ -648,7 +672,7 @@ func (s *server) writePolicy(w http.ResponseWriter, name string, p policy, email
 	_ = json.NewEncoder(w).Encode(quick.PolicyResponse{
 		Site: name, Access: access, Locked: p.Locked, Owner: p.Owner, Exists: exists,
 		CreatedBy: p.CreatedBy, CreatedAt: p.CreatedAt, UpdatedBy: p.UpdatedBy, UpdatedAt: p.UpdatedAt,
-		Viewers: viewers, ViewersHidden: !visible, Code: s.visibleCode(p, email),
+		Viewers: viewers, ViewersHidden: !visible, Code: s.visibleCode(p, email), CodeOnly: s.teamNeedsCode(p),
 	})
 }
 
@@ -711,6 +735,8 @@ var codeForm = template.Must(template.New("code").Parse(`<!doctype html>
     background:var(--sunk);border:0;border-radius:0;font-family:var(--font-body)}
   .btn{width:100%;margin-top:1rem;min-height:3rem;font-size:1rem}
   .err{margin-top:1rem;font-size:.92rem;color:var(--err)}
+  .team{margin:1.5rem 0 0;font-size:.92rem}
+  .team a{color:var(--ink);text-decoration:underline;text-underline-offset:2px}
 </style></head><body>
 <form class="card" method="post" action="/__quick/code">
   ` + brandWordmark + `
@@ -721,11 +747,13 @@ var codeForm = template.Must(template.New("code").Parse(`<!doctype html>
   <input id="code" type="password" name="code" placeholder="••••••••" autofocus required autocomplete="off">
   <button class="btn" type="submit">{{.T.CodeButton}}</button>
   {{with .Error}}<div class="err">{{.}}</div>{{end}}
+  {{with .SignIn}}<p class="team">{{$.T.CodeTeam}} <a href="{{.}}">{{$.T.CodeTeamSignIn}}</a></p>{{end}}
 </form></body></html>`))
 
-// renderCodeForm shows the code form; status 401 (wrong code) and 429 (too
-// many wrong codes) add their message.
-func renderCodeForm(w http.ResponseWriter, l lang, host, rd string, status int) {
+// renderCodeForm shows the code form, with the company sign-in link when
+// signIn is set; status 401 (wrong code) and 429 (too many wrong codes) add
+// their message.
+func renderCodeForm(w http.ResponseWriter, l lang, host, rd, signIn string, status int) {
 	t := textsFor(l)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Add("Vary", "Accept-Language")
@@ -740,6 +768,6 @@ func renderCodeForm(w http.ResponseWriter, l lang, host, rd string, status int) 
 		w.WriteHeader(status)
 	}
 	_ = codeForm.Execute(w, map[string]any{
-		"Host": host, "RD": rd, "Error": errText, "Lang": string(l), "T": t,
+		"Host": host, "RD": rd, "SignIn": signIn, "Error": errText, "Lang": string(l), "T": t,
 	})
 }

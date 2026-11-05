@@ -173,7 +173,9 @@ func (s *server) renderSitePageWith(w http.ResponseWriter, r *http.Request, name
 		"Owner": p.CreatedBy, "IsOwner": s.actsAsOwner(p, email), "Levels": levels,
 		"CurrentLevel": currentLabel, "People": p.Access == quick.AccessPeople,
 		"Viewers": s.viewerInfos(p), "Outside": s.mail != nil, "HasCode": p.Access == quick.AccessCode, "Error": errText,
-		"Code": code, "CodeLink": link,
+		"CodeOnly":   s.teamNeedsCode(p) || (p.Access != quick.AccessCode && s.settings().CodeOnly && !s.teamManages(p)),
+		"CodeOnlyOK": !s.teamManages(p),
+		"Code":       code, "CodeLink": link,
 		"Domain": s.companyDomain(), "Lang": string(l), "T": t,
 		"Limit": quick.FormatSize(s.limitOf(p)), "Admin": s.isAdmin(email), "SizeError": sizeErr, "SizeAsk": sizeAsk, "AdminsNote": adminsNote,
 		"SizeHint": fmt.Sprintf(t.SizeHint, quick.FormatSize(s.ceiling()), quick.FormatSize(s.defaultLimit())),
@@ -310,7 +312,7 @@ func (s *server) renderDashboard(w http.ResponseWriter, l lang, email string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Add("Vary", "Accept-Language")
 	_ = dashboardPage.Execute(w, map[string]any{
-		"Email": email, "Sites": rows, "Filters": dashFilters(rows, t), "Base": s.baseDomain,
+		"Email": email, "Sites": rows, "Filters": dashFilters(rows, t), "Base": s.baseDomain, "Admin": s.isAdmin(email),
 		"Lang": string(l), "T": t,
 	})
 }
@@ -487,7 +489,7 @@ code{background:var(--sunk);padding:.12rem .4rem;font-size:.88em;font-family:var
 @media(max-width:640px){.filters{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -1rem;padding:0 1rem}.filter{flex:none}.wrap{padding:1.5rem 1rem 3rem}header{display:grid;grid-template-columns:minmax(0,1fr) auto}.who{text-align:left;grid-column:1/-1;margin-top:.75rem}.site{padding:.9rem}.help code{overflow-wrap:anywhere}}
 </style></head><body>
 <div class="wrap">
-  <header>` + brandLink + `<div class="who">{{.Email}}</div></header>
+  <header>` + brandLink + `<div class="who">{{if .Admin}}<a href="/dashboard/settings">{{.T.SettingsTitle}}</a> · {{end}}{{.Email}}</div></header>
 
   {{if .Sites}}<div class="toolbar">
     <input class="search" id="search" type="search" placeholder="{{.T.DashSearch}}" aria-label="{{.T.DashSearch}}" autocomplete="off">
@@ -591,6 +593,7 @@ code.inline{background:var(--sunk);padding:.1rem .35rem;font-size:.88em;font-fam
 form.access{display:grid;gap:4px;max-width:560px}
 .share{max-width:560px;margin-bottom:1.4rem}.share h3:first-child{margin-top:0}.share .secret code{display:block;background:var(--sunk);color:var(--fg)}
 .opt{display:flex;align-items:flex-start;gap:.7rem;padding:.75rem 1rem;background:var(--sunk);cursor:pointer;font-size:.95rem;color:var(--fg);transition:background-color .18s}
+.opt:has(input:disabled){cursor:default}
 .opt:has(input:checked){background:var(--brand);color:#fff}
 .opt:has(input:checked) small{color:rgba(255,255,255,.85)}
 .opt input{width:auto;height:auto;margin:.25rem 0 0;accent-color:var(--ink)}
@@ -635,6 +638,7 @@ form.access .btn{justify-self:start;margin-top:.6rem}
       <input type="hidden" name="op" value="access">
       {{range .Levels}}<label class="opt"><input type="radio" name="access" value="{{.Value}}"{{if .Checked}} checked{{end}}><span><strong>{{.Label}}</strong><small>{{.Hint}}</small></span></label>
       {{end}}<div class="field code"><label for="access-code">{{.T.AccessCodeLabel}}</label><input id="access-code" name="code" minlength="8" autocomplete="off"placeholder="{{if .HasCode}}{{.T.AccessCodeKeep}}{{else}}{{.T.AccessCodeNew}}{{end}}"></div>
+      <label class="opt field code"><input type="checkbox" name="code_only" value="1"{{if .CodeOnly}} checked{{end}}{{if not .CodeOnlyOK}} disabled{{end}}><span><strong>{{.T.AccessCodeOnly}}</strong><small>{{.T.AccessCodeOnlyHint}}{{if not .CodeOnlyOK}} {{.T.AccessCodeOnlyLocked}}{{end}}</small></span></label>
       <button class="btn" type="submit">{{.T.AccessSave}}</button>
     </form>
     {{else}}<p class="hint">{{.T.AccessCurrent}} <b>{{.CurrentLevel}}</b>. {{.T.AccessOwnerOnly}}</p>{{end}}

@@ -98,7 +98,8 @@ loader). Other `.gz` files (archives) stay normal downloads.
 
 **`quick.js` library**: every site can import `/__quick/quick.js` (ESM, types at
 `/__quick/quick.d.ts`). `await quick.id.me()` returns the signed-in user (`{email}`)
-on SSO sites, `null` on public or code-protected ones.
+on SSO sites and for colleagues on code-protected ones, `null` on public sites and for
+whoever entered a code.
 
 ```html
 <script type="module">
@@ -242,16 +243,21 @@ quick publish   foo            # open to anyone, no SSO
 quick unpublish foo            # back behind the company SSO (default)
 quick private   foo            # access by code (generated and printed)
 quick private   foo --code abc12345 # access by a code you choose
+quick access    foo code --code-only # colleagues need the code too (locked sites)
 quick lock      foo            # from now on only you can overwrite foo
 quick unlock    foo
 ```
 
 Changing visibility is **instant** (just a metadata file). `quick-server` makes the
-access decision: public → always served; code → code entry page (or a link carrying
+access decision: public → always served; code → colleagues with a company SSO
+session get in (the code page offers them a sign-in link), everyone else gets the code entry page (or a link carrying
 `?quick_code=`, which quick prints with the code), then a signed cookie valid for
 7 days, tied to the code so changing it signs everyone out (`quick access foo` and the
 dashboard show the code and link again to whoever can change the site; in the dashboard an empty code field generates a random one); codes have at least 8
-characters and a visitor gets 10 wrong ones per 15 minutes; SSO → checks the Google session through oauth2-proxy. **Chosen people** (`only-me`, `add`, `remove`):
+characters and a visitor gets 10 wrong ones per 15 minutes; with `--code-only`
+colleagues need the code too, accepted only on a locked site or outside the `free`
+ownership mode (otherwise any colleague could read or change the code), and
+unlocking turns it off; SSO → checks the Google session through oauth2-proxy. **Chosen people** (`only-me`, `add`, `remove`):
 SSO plus a list; only the owner (the creator) and the listed accounts get in, others
 see a "restricted" page naming the owner (never the list). Only the owner changes the
 list or the visibility of such a site, or deletes it, in every ownership mode; deploys
@@ -269,6 +275,11 @@ or change its policy until you `unlock`.
 **Administrators** (`QUICK_ADMINS`) see, open and manage every site, chosen-people and
 "only me" ones included, and can do on any site whatever its owner can (visibility,
 lock, delete, tokens, domains, size limit). The dashboard names them on each site's page.
+They also get a **Settings** page in the dashboard (`/dashboard/settings`) with the
+server's defaults, which apply when nobody chooses otherwise and never change existing
+sites: **lock new sites** (the first deploy locks a site for its creator) and **ask
+colleagues for the access code** (a site given a code asks colleagues for it too, still
+only on locked sites in `free` mode; `--code-only=false` opts a site out).
 
 On deploy the CLI shows **who you are** (`Authenticated as …`) and, if the last
 publish of that site was by someone else, asks you to **retype the site name** before

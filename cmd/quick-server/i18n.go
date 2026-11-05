@@ -101,6 +101,10 @@ type uiText struct {
 	AccessTitle, AccessOwner, AccessCurrent, AccessOwnerOnly, AccessSave string
 	AccessCodeLabel, AccessCodeKeep, AccessCodeNew                       string
 	AccessCodeCurrent, AccessCodeLink, AccessCodeHidden                  string
+	AccessCodeOnly, AccessCodeOnlyHint, AccessCodeOnlyLocked             string
+	SettingsTitle, SettingsDefaults, SettingsDefaultsHint                string
+	SettingsLock, SettingsLockHint                                       string
+	SettingsCodeOnly, SettingsCodeOnlyHint, SettingsCodeOnlyLocked       string
 	LevelTeam, LevelTeamHint, LevelOnlyMe, LevelOnlyMeHint               string
 	LevelPeople, LevelPeopleHint, LevelCode, LevelCodeHint               string
 	LevelPublic, LevelPublicHint                                         string
@@ -109,7 +113,7 @@ type uiText struct {
 	AccessErrNotOwnerA, AccessErrNotOwnerB, AccessErrNoOwner             string
 	AccessErrBadEmail, AccessErrMissingEmail, AccessErrDomain            string
 	AccessErrTooMany, AccessErrOwnerAlways, AccessErrCode                string
-	AccessErrCodeShort                                                   string
+	AccessErrCodeShort, AccessErrCodeOnly                                string
 	AccessErrGeneric                                                     string
 
 	RestrictedTitle, RestrictedHeading, RestrictedBy, RestrictedCanOpen string
@@ -126,9 +130,9 @@ type uiText struct {
 	TokenRevoke, TokenCreate, TokenName, TokenExpiry, TokenDays         string
 	TokenNoExpiry                                                       string
 
-	CodeTitle, CodeHeading, CodeIntro string
-	CodeLabel, CodeButton, CodeError  string
-	CodeTooMany                       string
+	CodeTitle, CodeHeading, CodeIntro     string
+	CodeLabel, CodeButton, CodeError      string
+	CodeTooMany, CodeTeam, CodeTeamSignIn string
 
 	GuestOr, GuestIntro, GuestEmail, GuestSend, GuestTitle             string
 	GuestSentHeading, GuestSentA, GuestSentB                           string
@@ -239,26 +243,38 @@ var uiTexts = map[lang]uiText{
 		AccessCodeKeep:  "Leave empty to keep the current code",
 		AccessCodeNew:   "Leave empty to generate a random one",
 
-		AccessCodeCurrent: "Current code",
-		AccessCodeLink:    "Link that opens the site",
-		AccessCodeHidden:  "The code can't be shown. Set a new one to see it here.",
-		LevelTeam:         "Everyone at the company",
-		LevelTeamHint:     "Anyone signed in with a company account.",
-		LevelOnlyMe:       "Only me",
-		LevelOnlyMeHint:   "Just you, once signed in.",
-		LevelPeople:       "Chosen people",
-		LevelPeopleHint:   "You and the people you add below.",
-		LevelCode:         "With a code",
-		LevelCodeHint:     "Anyone who has the access code.",
-		LevelPublic:       "Public",
-		LevelPublicHint:   "Anyone with the link, no sign-in.",
-		PeopleTitle:       "People who can see it",
-		PeopleOnlyOwner:   "For now, only you.",
-		PeopleRemove:      "Remove",
-		PeopleAdd:         "Add",
-		PeopleEmail:       "Company email",
-		PeopleEmailHint:   "You can add several, separated by commas.",
-		PeopleEmailUser:   "name",
+		AccessCodeCurrent:    "Current code",
+		AccessCodeLink:       "Link that opens the site",
+		AccessCodeHidden:     "The code can't be shown. Set a new one to see it here.",
+		AccessCodeOnly:       "Ask colleagues for the code too",
+		AccessCodeOnlyHint:   "Otherwise anyone signed in with a company account opens the site without it.",
+		AccessCodeOnlyLocked: "Only for locked sites.",
+
+		SettingsTitle:          "Settings",
+		SettingsDefaults:       "Defaults",
+		SettingsDefaultsHint:   "They apply to every site on this server when nobody chooses otherwise. Existing sites don't change.",
+		SettingsLock:           "Lock new sites",
+		SettingsLockHint:       "The first publish locks a site for whoever created it: only they can update it or change who sees it, until they unlock it.",
+		SettingsCodeOnly:       "Ask colleagues for the access code too",
+		SettingsCodeOnlyHint:   "When a site is given an access code, colleagues signed in with a company account need it as well. It can still be changed site by site.",
+		SettingsCodeOnlyLocked: "Only on locked sites: on the others colleagues always get in.",
+		LevelTeam:              "Everyone at the company",
+		LevelTeamHint:          "Anyone signed in with a company account.",
+		LevelOnlyMe:            "Only me",
+		LevelOnlyMeHint:        "Just you, once signed in.",
+		LevelPeople:            "Chosen people",
+		LevelPeopleHint:        "You and the people you add below.",
+		LevelCode:              "With a code",
+		LevelCodeHint:          "Anyone who has the access code, and everyone at the company.",
+		LevelPublic:            "Public",
+		LevelPublicHint:        "Anyone with the link, no sign-in.",
+		PeopleTitle:            "People who can see it",
+		PeopleOnlyOwner:        "For now, only you.",
+		PeopleRemove:           "Remove",
+		PeopleAdd:              "Add",
+		PeopleEmail:            "Company email",
+		PeopleEmailHint:        "You can add several, separated by commas.",
+		PeopleEmailUser:        "name",
 
 		AccessErrNotOwnerA:    "Only the owner",
 		AccessErrNotOwnerB:    "can change who can see this site.",
@@ -270,6 +286,7 @@ var uiTexts = map[lang]uiText{
 		AccessErrOwnerAlways:  "The owner can always see the site.",
 		AccessErrCode:         "Choose an access code.",
 		AccessErrCodeShort:    "The access code must be at least 8 characters.",
+		AccessErrCodeOnly:     "Colleagues can be asked for the code only on a locked site.",
 		AccessErrGeneric:      "The change couldn't be saved.",
 
 		RestrictedTitle:    "quick — restricted",
@@ -280,13 +297,15 @@ var uiTexts = map[lang]uiText{
 		RestrictedAsk:      "Ask the owner to add you.",
 		RestrictedSwitch:   "Sign in with another account",
 
-		CodeTitle:   "Protected access",
-		CodeHeading: "Protected site",
-		CodeIntro:   "Enter the access code for",
-		CodeLabel:   "Code",
-		CodeButton:  "Enter",
-		CodeError:   "Wrong code, try again.",
-		CodeTooMany: "Too many wrong attempts. Try again in a few minutes.",
+		CodeTitle:      "Protected access",
+		CodeHeading:    "Protected site",
+		CodeIntro:      "Enter the access code for",
+		CodeLabel:      "Code",
+		CodeButton:     "Enter",
+		CodeError:      "Wrong code, try again.",
+		CodeTooMany:    "Too many wrong attempts. Try again in a few minutes.",
+		CodeTeam:       "Have a company account?",
+		CodeTeamSignIn: "Sign in, no code needed",
 
 		GuestOr:             "Not from the company?",
 		GuestIntro:          "If you've been invited, get a sign-in link by email.",
@@ -423,26 +442,38 @@ var uiTexts = map[lang]uiText{
 		AccessCodeKeep:  "Lascia vuoto per tenere il codice attuale",
 		AccessCodeNew:   "Lascia vuoto per generarne uno casuale",
 
-		AccessCodeCurrent: "Codice attuale",
-		AccessCodeLink:    "Link che apre il sito",
-		AccessCodeHidden:  "Il codice non è visibile. Impostane uno nuovo per vederlo qui.",
-		LevelTeam:         "Tutta l'azienda",
-		LevelTeamHint:     "Chiunque acceda con un account aziendale.",
-		LevelOnlyMe:       "Solo io",
-		LevelOnlyMeHint:   "Solo tu, dopo l'accesso.",
-		LevelPeople:       "Persone scelte",
-		LevelPeopleHint:   "Tu e le persone che aggiungi qui sotto.",
-		LevelCode:         "Con codice",
-		LevelCodeHint:     "Chiunque abbia il codice di accesso.",
-		LevelPublic:       "Pubblico",
-		LevelPublicHint:   "Chiunque abbia il link, senza accesso.",
-		PeopleTitle:       "Persone che possono vederlo",
-		PeopleOnlyOwner:   "Per ora solo tu.",
-		PeopleRemove:      "Rimuovi",
-		PeopleAdd:         "Aggiungi",
-		PeopleEmail:       "Email aziendale",
-		PeopleEmailHint:   "Puoi aggiungerne più di una, separate da virgole.",
-		PeopleEmailUser:   "nome",
+		AccessCodeCurrent:    "Codice attuale",
+		AccessCodeLink:       "Link che apre il sito",
+		AccessCodeHidden:     "Il codice non è visibile. Impostane uno nuovo per vederlo qui.",
+		AccessCodeOnly:       "Chiedi il codice anche ai colleghi",
+		AccessCodeOnlyHint:   "Altrimenti chi accede con l'account aziendale apre il sito senza codice.",
+		AccessCodeOnlyLocked: "Disponibile solo per i siti bloccati.",
+
+		SettingsTitle:          "Impostazioni",
+		SettingsDefaults:       "Valori predefiniti",
+		SettingsDefaultsHint:   "Valgono per tutti i siti di questo server quando nessuno sceglie diversamente. I siti già esistenti non cambiano.",
+		SettingsLock:           "Blocca i siti nuovi",
+		SettingsLockHint:       "Alla prima pubblicazione il sito viene bloccato per chi l'ha creato, che resta l'unico a poterlo aggiornare o a decidere chi lo vede, finché non lo sblocca.",
+		SettingsCodeOnly:       "Chiedi il codice di accesso anche ai colleghi",
+		SettingsCodeOnlyHint:   "Quando un sito riceve un codice di accesso, serve anche a chi entra con l'account aziendale. Si può sempre cambiare sito per sito.",
+		SettingsCodeOnlyLocked: "Vale solo per i siti bloccati: negli altri i colleghi entrano comunque.",
+		LevelTeam:              "Tutta l'azienda",
+		LevelTeamHint:          "Chiunque acceda con un account aziendale.",
+		LevelOnlyMe:            "Solo io",
+		LevelOnlyMeHint:        "Solo tu, dopo l'accesso.",
+		LevelPeople:            "Persone scelte",
+		LevelPeopleHint:        "Tu e le persone che aggiungi qui sotto.",
+		LevelCode:              "Con codice",
+		LevelCodeHint:          "Chi ha il codice di accesso, più tutta l'azienda.",
+		LevelPublic:            "Pubblico",
+		LevelPublicHint:        "Chiunque abbia il link, senza accesso.",
+		PeopleTitle:            "Persone che possono vederlo",
+		PeopleOnlyOwner:        "Per ora solo tu.",
+		PeopleRemove:           "Rimuovi",
+		PeopleAdd:              "Aggiungi",
+		PeopleEmail:            "Email aziendale",
+		PeopleEmailHint:        "Puoi aggiungerne più di una, separate da virgole.",
+		PeopleEmailUser:        "nome",
 
 		AccessErrNotOwnerA:    "Solo il proprietario",
 		AccessErrNotOwnerB:    "può cambiare chi vede questo sito.",
@@ -454,6 +485,7 @@ var uiTexts = map[lang]uiText{
 		AccessErrOwnerAlways:  "Il proprietario può sempre vedere il sito.",
 		AccessErrCode:         "Scegli un codice di accesso.",
 		AccessErrCodeShort:    "Il codice di accesso deve avere almeno 8 caratteri.",
+		AccessErrCodeOnly:     "Il codice si può chiedere anche ai colleghi solo se il sito è bloccato.",
 		AccessErrGeneric:      "Non è stato possibile salvare la modifica.",
 
 		RestrictedTitle:    "quick · accesso riservato",
@@ -464,13 +496,15 @@ var uiTexts = map[lang]uiText{
 		RestrictedAsk:      "Chiedi al proprietario di aggiungerti.",
 		RestrictedSwitch:   "Accedi con un altro account",
 
-		CodeTitle:   "Accesso protetto",
-		CodeHeading: "Sito protetto",
-		CodeIntro:   "Inserisci il codice di accesso per",
-		CodeLabel:   "Codice",
-		CodeButton:  "Entra",
-		CodeError:   "Codice errato, riprova.",
-		CodeTooMany: "Troppi tentativi sbagliati. Riprova tra qualche minuto.",
+		CodeTitle:      "Accesso protetto",
+		CodeHeading:    "Sito protetto",
+		CodeIntro:      "Inserisci il codice di accesso per",
+		CodeLabel:      "Codice",
+		CodeButton:     "Entra",
+		CodeError:      "Codice errato, riprova.",
+		CodeTooMany:    "Troppi tentativi sbagliati. Riprova tra qualche minuto.",
+		CodeTeam:       "Hai un account aziendale?",
+		CodeTeamSignIn: "Accedi senza codice",
 
 		GuestOr:             "Non fai parte dell'azienda?",
 		GuestIntro:          "Se ti hanno invitato, ricevi un link di accesso via email.",

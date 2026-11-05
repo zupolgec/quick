@@ -95,8 +95,9 @@ func (s *server) handleSite(w http.ResponseWriter, r *http.Request, sub string) 
 }
 
 // siteAccess applies the site's visibility to the request: ok reports whether
-// the visitor may see it, email is the SSO user (only checked on SSO and
-// people sites) or the outside person signed in with an email link,
+// the visitor may see it, email is the SSO user (checked on SSO and people
+// sites, and on code sites without a valid code cookie) or the outside person
+// signed in with an email link,
 // signedIn whether they have an SSO session.
 func (s *server) siteAccess(r *http.Request, sub string) (p policy, email string, signedIn, ok bool, err error) {
 	p, err = s.meta.load(sub)
@@ -107,8 +108,15 @@ func (s *server) siteAccess(r *http.Request, sub string) (p policy, email string
 	case "public":
 		return p, "", false, true, nil
 	case "code":
-		c, err := r.Cookie("quick_access_" + sub)
-		return p, "", false, err == nil && s.meta.validAccessCookie(sub, p.CodeHash, c.Value), nil
+		if c, err := r.Cookie("quick_access_" + sub); err == nil && s.meta.validAccessCookie(sub, p.CodeHash, c.Value) {
+			return p, "", false, true, nil
+		}
+		if s.teamNeedsCode(p) {
+			return p, "", false, false, nil
+		}
+		// Colleagues signed in with the company SSO don't need the code.
+		email, signedIn = s.checkSSO(r)
+		return p, email, signedIn, signedIn, nil
 	default:
 		if guest, ok := s.guestFromCookie(r, sub, p); ok {
 			return p, guest, false, true, nil

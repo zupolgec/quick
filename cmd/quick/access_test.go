@@ -23,6 +23,8 @@ func TestParseAccessArgs(t *testing.T) {
 		{[]string{"foo", "public", "--server", "acme"}, accessArgs{Name: "foo", Op: "public", Server: "acme"}},
 		{[]string{"foo", "code"}, accessArgs{Name: "foo", Op: "code"}},
 		{[]string{"foo", "code", "--code", "s3cret"}, accessArgs{Name: "foo", Op: "code", Code: "s3cret"}},
+		{[]string{"foo", "code", "--code-only"}, accessArgs{Name: "foo", Op: "code", CodeOnly: new(true)}},
+		{[]string{"foo", "code", "--code-only=false"}, accessArgs{Name: "foo", Op: "code", CodeOnly: new(false)}},
 		{[]string{"--server", "acme", "foo", "only-me"}, accessArgs{Name: "foo", Op: "only-me", Server: "acme"}},
 		{[]string{"foo", "add", "a@x.it", "--server", "acme", "b@x.it"}, accessArgs{Name: "foo", Op: "add", Emails: []string{"a@x.it", "b@x.it"}, Server: "acme"}},
 		{[]string{"foo", "add", "a@x.it,b@x.it"}, accessArgs{Name: "foo", Op: "add", Emails: []string{"a@x.it", "b@x.it"}}},
@@ -44,6 +46,7 @@ func TestParseAccessArgs(t *testing.T) {
 		{"foo", "remove"},         // no emails
 		{"foo", "team", "a@x.it"}, // stray argument
 		{"foo", "public", "--code", "x"},
+		{"foo", "team", "--code-only"},
 		{"foo", "--nope"},
 	} {
 		if _, err := parseAccessArgs(bad); err == nil {
@@ -57,12 +60,14 @@ func TestAccessRequest(t *testing.T) {
 		a    accessArgs
 		want string
 	}{
-		"team":    {accessArgs{Op: "team"}, `{"access":"sso"}`},
-		"public":  {accessArgs{Op: "public"}, `{"access":"public"}`},
-		"code":    {accessArgs{Op: "code", Code: "abc"}, `{"access":"code","code":"abc"}`},
-		"only-me": {accessArgs{Op: "only-me"}, `{"access":"people","viewers":[]}`},
-		"add":     {accessArgs{Op: "add", Emails: []string{"a@x.it", "b@x.it"}}, `{"add_viewers":["a@x.it","b@x.it"]}`},
-		"remove":  {accessArgs{Op: "remove", Emails: []string{"a@x.it"}}, `{"remove_viewers":["a@x.it"]}`},
+		"team":          {accessArgs{Op: "team"}, `{"access":"sso"}`},
+		"public":        {accessArgs{Op: "public"}, `{"access":"public"}`},
+		"code":          {accessArgs{Op: "code", Code: "abc"}, `{"access":"code","code":"abc"}`},
+		"code-only":     {accessArgs{Op: "code", Code: "abc", CodeOnly: new(true)}, `{"access":"code","code":"abc","code_only":true}`},
+		"code-for-team": {accessArgs{Op: "code", Code: "abc", CodeOnly: new(false)}, `{"access":"code","code":"abc","code_only":false}`},
+		"only-me":       {accessArgs{Op: "only-me"}, `{"access":"people","viewers":[]}`},
+		"add":           {accessArgs{Op: "add", Emails: []string{"a@x.it", "b@x.it"}}, `{"add_viewers":["a@x.it","b@x.it"]}`},
+		"remove":        {accessArgs{Op: "remove", Emails: []string{"a@x.it"}}, `{"remove_viewers":["a@x.it"]}`},
 	}
 	for name, c := range cases {
 		b, _ := json.Marshal(accessRequest(c.a))
@@ -116,7 +121,8 @@ func TestDescribeSiteAccess(t *testing.T) {
 	}{
 		{quick.PolicyResponse{Access: "sso", CreatedBy: "ann@x.it"}, []string{"everyone at the company", "Owner:   ann@x.it"}, nil},
 		{quick.PolicyResponse{Access: "public"}, []string{"public"}, nil},
-		{quick.PolicyResponse{Access: "code"}, []string{"access code", "Code:    not visible"}, []string{"Link:"}},
+		{quick.PolicyResponse{Access: "code"}, []string{"the company (company SSO) and anyone with the access code", "Code:    not visible"}, []string{"Link:"}},
+		{quick.PolicyResponse{Access: "code", CodeOnly: true}, []string{"only with the access code, colleagues too"}, []string{"company SSO"}},
 		{quick.PolicyResponse{Access: "code", Code: "abcd1234"}, []string{"Code:    abcd1234", "Link:    https://foo.quick.test/?quick_code=abcd1234"}, nil},
 		{quick.PolicyResponse{Access: "people", CreatedBy: "ann@x.it"}, []string{"only the owner"}, []string{"Viewers"}},
 		{quick.PolicyResponse{Access: "people", CreatedBy: "ann@x.it", Viewers: []string{"bob@x.it", "carl@x.it"}}, []string{"chosen people (2)", "bob@x.it", "carl@x.it"}, nil},

@@ -29,8 +29,12 @@ const (
 // only the owner), AddViewers/RemoveViewers edit it; any of them on a site
 // that isn't "people" yet switches it. Only the site's owner can.
 type PolicyRequest struct {
-	Access        *string   `json:"access,omitempty"` // "sso" | "public" | "code" | "people"
-	Code          *string   `json:"code,omitempty"`   // required for access=code
+	Access *string `json:"access,omitempty"` // "sso" | "public" | "code" | "people"
+	Code   *string `json:"code,omitempty"`   // required for access=code
+	// CodeOnly asks the code of colleagues signed in with the company SSO too
+	// (by default they open a code site without it). Only for access=code,
+	// and only on a site the team can't manage: locked, or not in free mode.
+	CodeOnly      *bool     `json:"code_only,omitempty"`
 	Locked        *bool     `json:"locked,omitempty"`
 	Viewers       *[]string `json:"viewers,omitempty"`
 	AddViewers    []string  `json:"add_viewers,omitempty"`
@@ -55,6 +59,8 @@ type PolicyResponse struct {
 	ViewersHidden bool `json:"viewers_hidden,omitempty"`
 	// The access code of a "code" site, only for those who can change it.
 	Code string `json:"code,omitempty"`
+	// A "code" site that asks the code of colleagues too.
+	CodeOnly bool `json:"code_only,omitempty"`
 }
 
 // SiteInfo describes a site in the /api/sites list (and the dashboard).

@@ -94,6 +94,6 @@ Every site can import a small library from `/__quick/quick.js` (an ES module; ty
 ```html
 <script type="module">
   import quick from "/__quick/quick.js";
-  const user = await quick.id.me(); // { email } on sign-in sites, null on public or code sites
+  const user = await quick.id.me(); // { email } for signed-in visitors, null on public sites or after an access code
 </script>
 ```

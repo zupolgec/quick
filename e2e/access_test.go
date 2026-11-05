@@ -179,6 +179,39 @@ func TestAccessChosenPeopleEndToEnd(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("visit with the code cookie: %d", resp.StatusCode)
 	}
+	// Dev mode signs every visitor in as a colleague: no code needed, unless
+	// the site asks colleagues for it too, which needs a lock.
+	status := func() int {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, "http://"+addr+"/", nil)
+		req.Host = "secret.127.0.0.1"
+		resp, err := http.DefaultTransport.RoundTrip(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := status(); code != http.StatusOK {
+		t.Errorf("colleague on a code site: %d, want the site", code)
+	}
+	if out := quick(false, "access", "secret", "code", "--code", "abc12345", "--code-only"); !strings.Contains(out, "locked site") {
+		t.Errorf("code-only without a lock:\n%s", out)
+	}
+	quick(true, "lock", "secret")
+	if out := quick(true, "access", "secret", "code", "--code", "abc12345", "--code-only"); !strings.Contains(out, "colleagues need the code too") {
+		t.Errorf("code-only:\n%s", out)
+	}
+	if out := quick(true, "access", "secret"); !strings.Contains(out, "colleagues too") {
+		t.Errorf("show code-only:\n%s", out)
+	}
+	if code := status(); code != http.StatusFound {
+		t.Errorf("colleague on a code-only site: %d, want the code page", code)
+	}
+	quick(true, "unlock", "secret")
+	if code := status(); code != http.StatusOK {
+		t.Errorf("colleague after unlocking: %d, want the site", code)
+	}
 	if out := quick(true, "access", "secret", "public"); !strings.Contains(out, "public") {
 		t.Errorf("public:\n%s", out)
 	}

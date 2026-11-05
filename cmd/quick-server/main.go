@@ -46,37 +46,38 @@ var httpClient = &http.Client{Timeout: 10 * time.Second}
 const googleIssuer = "https://accounts.google.com"
 
 type server struct {
-	store        storage.Backend
-	meta         *metaStore
-	baseDomain   string
-	domain       string // allowed Google hosted domain; also exposed in /api/config
-	clientID     string // ID token audience; also exposed in /api/config
-	clientSecret string // optional CLI client secret (only for a Web client), served via /api/config
-	oauth2URL    string
-	ownership    string // free | shared | owned (QUICK_OWNERSHIP)
-	oauthProxy   *httputil.ReverseProxy
-	rules        *rulesStore            // per-site _redirects, TTL-cached
-	siteProxy    *httputil.ReverseProxy // _redirects 200-to-URL proxying
-	apexMux      *http.ServeMux
-	noAuth       bool           // local development only
-	locks        keyedMutex     // serializes per-site writes (single instance)
-	leases       leaseTable     // one deploy at a time per site (lease.go)
-	timeouts     deployTimeouts // deploy request bodies (timeouts.go)
-	stage        *chunkStage    // delta deploy staging; nil = delta deploy off
-	oidcIssuer   string         // QUICK_OIDC_ISSUER; empty = Google
-	oidcMu       sync.Mutex     // guards oidcVerifier (lazy init)
-	oidcVerifier *oidc.IDTokenVerifier
-	domains      *domainIndex          // custom domain -> site
-	domainsMu    sync.Mutex            // serializes custom domain changes across sites
-	resolver     resolver              // DNS checks for custom domains
-	siteLimit    int64                 // default size limit per site (limit.go)
-	maxSiteLimit int64                 // highest limit an administrator can set
-	minFree      int64                 // disk space a deploy must leave free
-	freeSpace    func() (int64, error) // nil = not on a local disk
-	admins       map[string]bool       // QUICK_ADMINS, lowercased
-	mail         mailer                // QUICK_SMTP_URL; nil = no email, no outside people
-	guests       guestLinks            // email links for outside people (guestlink.go)
-	codeTries    codeAttempts          // wrong access codes per visitor (codegate.go)
+	store         storage.Backend
+	meta          *metaStore
+	baseDomain    string
+	domain        string // allowed Google hosted domain; also exposed in /api/config
+	clientID      string // ID token audience; also exposed in /api/config
+	clientSecret  string // optional CLI client secret (only for a Web client), served via /api/config
+	oauth2URL     string
+	ownership     string // free | shared | owned (QUICK_OWNERSHIP)
+	oauthProxy    *httputil.ReverseProxy
+	rules         *rulesStore            // per-site _redirects, TTL-cached
+	siteProxy     *httputil.ReverseProxy // _redirects 200-to-URL proxying
+	apexMux       *http.ServeMux
+	noAuth        bool           // local development only
+	locks         keyedMutex     // serializes per-site writes (single instance)
+	leases        leaseTable     // one deploy at a time per site (lease.go)
+	timeouts      deployTimeouts // deploy request bodies (timeouts.go)
+	stage         *chunkStage    // delta deploy staging; nil = delta deploy off
+	oidcIssuer    string         // QUICK_OIDC_ISSUER; empty = Google
+	oidcMu        sync.Mutex     // guards oidcVerifier (lazy init)
+	oidcVerifier  *oidc.IDTokenVerifier
+	domains       *domainIndex          // custom domain -> site
+	domainsMu     sync.Mutex            // serializes custom domain changes across sites
+	resolver      resolver              // DNS checks for custom domains
+	siteLimit     int64                 // default size limit per site (limit.go)
+	maxSiteLimit  int64                 // highest limit an administrator can set
+	minFree       int64                 // disk space a deploy must leave free
+	freeSpace     func() (int64, error) // nil = not on a local disk
+	admins        map[string]bool       // QUICK_ADMINS, lowercased
+	settingsCache settingsCache         // instance settings (settings.go)
+	mail          mailer                // QUICK_SMTP_URL; nil = no email, no outside people
+	guests        guestLinks            // email links for outside people (guestlink.go)
+	codeTries     codeAttempts          // wrong access codes per visitor (codegate.go)
 }
 
 type authIdentity struct {
@@ -232,6 +233,7 @@ func (s *server) buildApexMux() *http.ServeMux {
 	m.HandleFunc("/install.sh", s.handleInstallSh)
 	m.HandleFunc("/install.ps1", s.handleInstallPs1)
 	m.HandleFunc("/dashboard/site/", s.handleDashboardSite)
+	m.HandleFunc("/dashboard/settings", s.handleSettings)
 	m.HandleFunc("/dashboard", s.handleDashboard) // sites dashboard (SSO page for guests)
 	m.HandleFunc("/", s.handleApexRoot)           // home: install + usage (SSO page for guests)
 	return m
@@ -427,6 +429,7 @@ func (s *server) finishDeploy(w http.ResponseWriter, name string, cur policy, id
 	now := nowStamp()
 	if cur.CreatedBy == "" {
 		cur.CreatedBy, cur.CreatedAt = ident.Email, now
+		s.lockNewSite(&cur, ident.Email)
 	}
 	cur.UpdatedBy, cur.UpdatedAt = by, now
 	if ident.Token {

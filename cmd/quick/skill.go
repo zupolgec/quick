@@ -40,6 +40,15 @@ treat it like the code. Changing the code signs out everyone who entered the old
 ` + "`quick access <site>`" + ` shows the current code and link again to whoever can change the
 site (codes set before this was possible show as ` + "`not visible`" + `: set a new one).
 
+Colleagues signed in with the company SSO open a code site without the code (the code
+page offers them a sign-in link): the code is for people outside the company. To ask
+colleagues for it too, add ` + "`--code-only`" + ` (` + "`quick access <site> code --code-only`" + `).
+The server accepts it only on a locked site (` + "`quick lock`" + ` first), or when it isn't in
+free ownership mode: otherwise any colleague could read or change the code anyway.
+Unlocking the site turns it off. Without the flag the server's default applies
+(administrators can make it ask colleagues by default, and lock new sites by default);
+` + "`--code-only=false`" + ` lets colleagues in whatever the default.
+
 The server configures itself: the only required input is the URL, via ` + "`--server`" + `
 or the ` + "`QUICK_SERVER`" + ` variable. After the first deploy, the folder remembers site
 and server in a ` + "`.quick`" + ` file, so later commands don't need
@@ -64,7 +73,7 @@ quick deploy my-site ./build                    # -> https://my-site.quick.examp
 | ` + "`quick deploy [<site>] [folder]`" + ` | Publish a folder (default: the current one) |
 | ` + "`quick ignore [folder]`" + ` | Create an editable ` + "`.quickignore`" + ` with the defaults already inside |
 | ` + "`quick access [<site>]`" + ` | Who can see the site: level, owner, and the people list (if you are on it) |
-| ` + "`quick access [<site>] team \\| public \\| code [--code X] \\| only-me`" + ` | Set who can see it: everyone at the company (default), public, by code (min 8 characters, prints a ready link), or only you |
+| ` + "`quick access [<site>] team \\| public \\| code [--code X] [--code-only[=false]] \\| only-me`" + ` | Set who can see it: everyone at the company (default), public, by code (min 8 characters, prints a ready link; colleagues signed in with company SSO get in without it unless ` + "`--code-only`" + `, locked sites only), or only you |
 | ` + "`quick access [<site>] add <email>...`" + ` / ` + "`remove <email>...`" + ` | Share with (or stop sharing with) chosen people (company accounts; outside addresses too if the server sends email); ` + "`add`" + ` limits the site to the owner + the list |
 | ` + "`quick publish [<site>]`" + ` | Open to the public (no SSO) |
 | ` + "`quick unpublish [<site>]`" + ` | Back behind company SSO (default) |
@@ -241,7 +250,7 @@ Use ` + "`quick status`" + ` or ` + "`quick deploy ... --dry-run`" + ` to see in
   so the browser decompresses it); no server config needed.
 - Every site can import the browser library ` + "`/__quick/quick.js`" + ` (ESM, types at
   ` + "`/__quick/quick.d.ts`" + `). ` + "`await quick.id.me()`" + ` returns the signed-in user
-  (` + "`{email}`" + `) on SSO and chosen-people sites, ` + "`null`" + ` on public or access-code sites. The
+  (` + "`{email}`" + `) on SSO and chosen-people sites and for colleagues on access-code sites, ` + "`null`" + ` on public sites and for whoever entered a code. The
   ` + "`/__quick/`" + ` path prefix is reserved for quick: a deploy containing a ` + "`__quick/`" + ` folder at the root is refused.
 
 ## Notes

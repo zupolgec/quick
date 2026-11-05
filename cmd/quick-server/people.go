@@ -85,14 +85,15 @@ func (s *server) siteVisibleTo(w http.ResponseWriter, name, email string) bool {
 
 // Kinds of policy errors the dashboard shows in its own words.
 const (
-	errNotOwner     = "not_owner"     // arg: the owner
-	errNoOwner      = "no_owner"      // site without a recorded creator
-	errBadEmail     = "bad_email"     // arg: the address
-	errDomain       = "domain"        // arg: the address
-	errTooMany      = "too_many"      // over maxViewers
-	errOwnerAlways  = "owner_always"  // arg: the owner
-	errCodeRequired = "code_required" // access=code without a code
-	errCodeShort    = "code_short"    // code under codeMinLength
+	errNotOwner     = "not_owner"      // arg: the owner
+	errNoOwner      = "no_owner"       // site without a recorded creator
+	errBadEmail     = "bad_email"      // arg: the address
+	errDomain       = "domain"         // arg: the address
+	errTooMany      = "too_many"       // over maxViewers
+	errOwnerAlways  = "owner_always"   // arg: the owner
+	errCodeRequired = "code_required"  // access=code without a code
+	errCodeShort    = "code_short"     // code under codeMinLength
+	errCodeOnlyLock = "code_only_lock" // code_only on a site the team can manage
 )
 
 // policyErr is a refused policy change: msg for the API, kind/arg for the
@@ -166,7 +167,7 @@ func isFormPost(r *http.Request) bool {
 
 // policyFormRequest turns the dashboard's access forms into a policy request:
 //
-//	op=access access=team|only-me|people|public|code [code=...]
+//	op=access access=team|only-me|people|public|code [code=...] [code_only=1]
 //	op=add    email=a@x, b@x
 //	op=remove email=a@x
 func policyFormRequest(r *http.Request, cur policy) (quick.PolicyRequest, *policyErr) {
@@ -181,6 +182,7 @@ func policyFormRequest(r *http.Request, cur policy) (quick.PolicyRequest, *polic
 		case quick.AccessPeople, quick.AccessPublic:
 			req.Access = new(a)
 		case quick.AccessCode:
+			req.CodeOnly = new(r.FormValue("code_only") == "1")
 			code := strings.TrimSpace(r.FormValue("code"))
 			if code == "" && cur.Access == quick.AccessCode {
 				return req, nil // keep the current code
@@ -229,6 +231,8 @@ func policyErrText(e *policyErr, t uiText) string {
 		return t.AccessErrCode
 	case errCodeShort:
 		return t.AccessErrCodeShort
+	case errCodeOnlyLock:
+		return t.AccessErrCodeOnly
 	default:
 		return t.AccessErrGeneric
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/zupolgec/quick/internal/quick"
@@ -14,12 +15,13 @@ import (
 
 // accessArgs is a parsed `quick access` command line.
 type accessArgs struct {
-	Name   string
-	Op     string // "" = show | team | public | code | only-me | add | remove
-	Emails []string
-	Code   string
-	Server string
-	Token  string
+	Name     string
+	Op       string // "" = show | team | public | code | only-me | add | remove
+	Emails   []string
+	Code     string
+	CodeOnly *bool // `code`: colleagues need the code too (nil: the server's default)
+	Server   string
+	Token    string
 }
 
 // parseAccessArgs parses `quick access [<site>] [level | add|remove <email>...]`
@@ -31,6 +33,11 @@ func parseAccessArgs(args []string) (accessArgs, error) {
 	fs.StringVar(&a.Server, "server", "", "server URL (or QUICK_SERVER)")
 	fs.StringVar(&a.Token, "token", "", "login ID token (default: saved login)")
 	fs.StringVar(&a.Code, "code", "", "access code for `code` (if empty, generated)")
+	fs.BoolFunc("code-only", "with `code`: ask colleagues for the code too (locked sites only); =false lets them in", func(v string) error {
+		b, err := strconv.ParseBool(v)
+		a.CodeOnly = &b
+		return err
+	})
 	var pos []string
 	for {
 		if err := fs.Parse(args); err != nil {
@@ -69,6 +76,9 @@ func parseAccessArgs(args []string) (accessArgs, error) {
 	if a.Code != "" && a.Op != "code" {
 		return a, errors.New("--code only goes with `code`")
 	}
+	if a.CodeOnly != nil && a.Op != "code" {
+		return a, errors.New("--code-only only goes with `code`")
+	}
 	return a, nil
 }
 
@@ -93,6 +103,7 @@ func accessRequest(a accessArgs) quick.PolicyRequest {
 		req.Access = new(quick.AccessPublic)
 	case "code":
 		req.Access, req.Code = new(quick.AccessCode), new(a.Code)
+		req.CodeOnly = a.CodeOnly
 	case "only-me":
 		req.Access, req.Viewers = new(quick.AccessPeople), &[]string{}
 	case "add":
@@ -123,7 +134,10 @@ func describeSiteAccess(res quick.PolicyResponse, siteURL string) string {
 	case quick.AccessPublic:
 		level = "public (no SSO)"
 	case quick.AccessCode:
-		level = "anyone with the access code"
+		level = "everyone at the company (company SSO) and anyone with the access code"
+		if res.CodeOnly {
+			level = "only with the access code, colleagues too"
+		}
 	case quick.AccessPeople:
 		switch {
 		case res.ViewersHidden:
@@ -161,7 +175,7 @@ func accessCmd(args []string) {
 	a, err := parseAccessArgs(args)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
-		fmt.Fprintln(os.Stderr, "usage: quick access [<site>] [team | public | code [--code X] | only-me | add <email>... | remove <email>...]")
+		fmt.Fprintln(os.Stderr, "usage: quick access [<site>] [team | public | code [--code X] [--code-only[=false]] | only-me | add <email>... | remove <email>...]")
 		os.Exit(2)
 	}
 	sf := loadSiteFile(".")
@@ -209,7 +223,11 @@ func accessCmd(args []string) {
 	case "public":
 		fmt.Printf("✓ %s public → %s\n", a.Name, url)
 	case "code":
-		fmt.Printf("✓ %s protected by code → %s\n  code: %s\n  link: %s\n", a.Name, url, a.Code, codeLink(url, a.Code))
+		who := "colleagues open it without the code"
+		if res.CodeOnly {
+			who = "colleagues need the code too"
+		}
+		fmt.Printf("✓ %s protected by code (%s) → %s\n  code: %s\n  link: %s\n", a.Name, who, url, a.Code, codeLink(url, a.Code))
 	default: // only-me, add, remove
 		if len(res.Viewers) == 0 {
 			fmt.Printf("✓ %s visible only to you → %s\n", a.Name, url)

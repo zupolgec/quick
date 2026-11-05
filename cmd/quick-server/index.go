@@ -393,6 +393,7 @@ func (s *server) liveIndexLocked(site string, cur policy) (idx map[[32]byte]chun
 type versions struct {
 	live, prev string
 	reserved   bool // CreatedBy was set by this publish, before writing files
+	lockedNew  bool // and the instance settings locked the new site for them
 	hadMeta    bool // the site had metadata before the reservation
 }
 
@@ -410,6 +411,7 @@ func (s *server) clearVersions(site string, cur *policy, creator string) (versio
 		}
 		v.reserved, v.hadMeta = true, had
 		cur.CreatedBy, cur.CreatedAt = creator, nowStamp()
+		v.lockedNew = s.lockNewSite(cur, creator)
 	}
 	if v.live == "" && v.prev == "" && !v.reserved {
 		return v, nil
@@ -467,6 +469,9 @@ func (s *server) unreserveCreator(site string, cur *policy, v versions) {
 		return // something is live (in-place backend): it keeps its creator
 	}
 	cur.CreatedBy, cur.CreatedAt = "", ""
+	if v.lockedNew {
+		cur.Locked, cur.Owner = false, ""
+	}
 	if !v.hadMeta {
 		if _, err := s.store.DeleteSite(site); err != nil {
 			log.Printf("site %s: removing a failed first deploy's metadata failed: %v", site, err)

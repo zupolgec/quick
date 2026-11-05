@@ -64,10 +64,11 @@ func (s *server) handleClientAPI(w http.ResponseWriter, r *http.Request, sub str
 			apiError(w, http.StatusMethodNotAllowed, "GET only")
 			return
 		}
-		// Only SSO sites know who the visitor is: public and code sites stay
-		// anonymous even for a signed-in employee.
+		// The visitor is named when they came in with an account: SSO and
+		// chosen-people sites, and colleagues on code sites. Public sites and
+		// whoever entered a code stay anonymous.
 		var user any
-		if siteIsSSO(p) && email != "" {
+		if p.Access != "public" && email != "" {
 			user = map[string]string{"email": email}
 		}
 		apiJSON(w, http.StatusOK, map[string]any{"user": user})
