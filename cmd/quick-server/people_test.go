@@ -299,9 +299,9 @@ func TestPeopleSwitchIntoPeopleIsOwnerOnly(t *testing.T) {
 	if w, res := e.setAccess(t, bob, "open", quick.PolicyRequest{Access: new(quick.AccessPublic)}); w.Code != http.StatusOK || res.Access != quick.AccessPublic {
 		t.Errorf("public stays free: code %d res %+v", w.Code, res)
 	}
-	// A site with no recorded owner can't be limited to people.
+	// A site with no recorded owner was never published: nothing to limit.
 	e.setPolicy(t, "app", policy{})
-	if w, _ := e.setAccess(t, bob, "app", quick.PolicyRequest{Access: new(quick.AccessPeople)}); w.Code != http.StatusConflict {
+	if w, _ := e.setAccess(t, bob, "app", quick.PolicyRequest{Access: new(quick.AccessPeople)}); w.Code != http.StatusNotFound {
 		t.Errorf("no owner: code %d body %s", w.Code, w.Body)
 	}
 }

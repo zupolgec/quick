@@ -66,6 +66,9 @@ func (s *server) handleTokenCreate(w http.ResponseWriter, r *http.Request, name 
 		http.Error(w, "could not read site state: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
+	if !published(w, p) {
+		return
+	}
 	if ok, reason := s.canWrite(p, email, actToken); !ok {
 		http.Error(w, reason, http.StatusForbidden)
 		return

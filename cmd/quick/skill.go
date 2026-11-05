@@ -52,6 +52,11 @@ make it ask colleagues by default, and lock new sites by default);
 ` + "`--code-only=false`" + ` lets colleagues in whatever the default. ` + "`quick private`" + ` and
 ` + "`deploy --private`" + ` print which of the two applies.
 
+A site exists from its first deploy, which records its owner: visibility (` + "`quick access`" + `,
+` + "`publish`" + `, ` + "`private`" + `), lock and deploy tokens are refused before it
+(` + "`publish it first with quick deploy`" + `). To publish a site already protected, use
+` + "`quick deploy <site> --private`" + ` or ` + "`--public`" + `, which set it right after the first deploy.
+
 The server configures itself: the only required input is the URL, via ` + "`--server`" + `
 or the ` + "`QUICK_SERVER`" + ` variable. After the first deploy, the folder remembers site
 and server in a ` + "`.quick`" + ` file, so later commands don't need

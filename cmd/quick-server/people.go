@@ -86,7 +86,7 @@ func (s *server) siteVisibleTo(w http.ResponseWriter, name, email string) bool {
 // Kinds of policy errors the dashboard shows in its own words.
 const (
 	errNotOwner     = "not_owner"      // arg: the owner
-	errNoOwner      = "no_owner"       // site without a recorded creator
+	errNotPublished = "not_published"  // no first deploy yet (no recorded creator)
 	errBadEmail     = "bad_email"      // arg: the address
 	errDomain       = "domain"         // arg: the address
 	errTooMany      = "too_many"       // over maxViewers
@@ -214,8 +214,8 @@ func policyErrText(e *policyErr, t uiText) string {
 	switch e.kind {
 	case errNotOwner:
 		return t.AccessErrNotOwnerA + " (" + e.arg + ") " + t.AccessErrNotOwnerB
-	case errNoOwner:
-		return t.AccessErrNoOwner
+	case errNotPublished:
+		return t.AccessErrNotPublished
 	case errBadEmail:
 		if e.arg == "" {
 			return t.AccessErrMissingEmail

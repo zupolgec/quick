@@ -569,9 +569,26 @@ func (s *server) handlePolicy(w http.ResponseWriter, r *http.Request, name strin
 	s.writePolicy(w, name, cur, email)
 }
 
+// notPublishedMsg refuses settings on a site before its first deploy, which
+// records its owner: settings before that would make a site nobody owns.
+const notPublishedMsg = "site not found: publish it first with `quick deploy`, then change its settings"
+
+// published reports whether the site has had its first deploy, answering 404
+// when it hasn't.
+func published(w http.ResponseWriter, p policy) bool {
+	if p.CreatedBy == "" {
+		http.Error(w, notPublishedMsg, http.StatusNotFound)
+		return false
+	}
+	return true
+}
+
 // applyPolicy applies req to cur on behalf of email, enforcing the write
 // rules (canWrite, lock, chosen people: see canWrite).
 func (s *server) applyPolicy(cur *policy, email string, req quick.PolicyRequest) *policyErr {
+	if cur.CreatedBy == "" { // see notPublishedMsg
+		return &policyErr{status: http.StatusNotFound, kind: errNotPublished, msg: notPublishedMsg}
+	}
 	viewerOps := req.Viewers != nil || len(req.AddViewers) > 0 || len(req.RemoveViewers) > 0
 	access := cur.Access
 	if req.Access != nil {
@@ -594,10 +611,6 @@ func (s *server) applyPolicy(cur *policy, email string, req quick.PolicyRequest)
 	}
 	changesAccess := req.Access != nil || viewerOps
 	if changesAccess && (cur.Access == quick.AccessPeople || access == quick.AccessPeople) {
-		if cur.CreatedBy == "" {
-			return &policyErr{status: http.StatusConflict, kind: errNoOwner,
-				msg: "this site has no recorded owner: it can't be limited to chosen people"}
-		}
 		if !s.actsAsOwner(*cur, email) {
 			return &policyErr{status: http.StatusForbidden, kind: errNotOwner, arg: cur.CreatedBy,
 				msg: "only the owner (" + cur.CreatedBy + ") can change who can see this site"}

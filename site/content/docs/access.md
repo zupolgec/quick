@@ -43,7 +43,7 @@ Administrators also have a **Settings** page in the dashboard with the server's 
 
 ## Who can change a site
 
-quick records who created each site and who published it last. The server decides what that means with `QUICK_OWNERSHIP`:
+quick records who created each site and who published it last. A site exists from its first publish, so every site has an owner: before that, quick refuses to change who can see it, lock it or create deploy tokens for it. Only an administrator's size limit can be set ahead, for a big first publish. The server decides what owning means with `QUICK_OWNERSHIP`:
 
 | Mode | Overwrite | Delete, change visibility |
 |---|---|---|

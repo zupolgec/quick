@@ -119,6 +119,7 @@ func TestCodeOnlyNeedsALockInFreeMode(t *testing.T) {
 	if _, res := e.setAccess(t, ann, "open", quick.PolicyRequest{Access: new(quick.AccessCode), Code: &code}); res.CodeOnly {
 		t.Errorf("code set again without code_only: %+v", res)
 	}
+	e.setPolicy(t, "app", policy{CreatedBy: ann})
 	if w, _ := e.setAccess(t, ann, "app", quick.PolicyRequest{CodeOnly: &yes}); w.Code != http.StatusBadRequest {
 		t.Errorf("code-only on a site without a code: %d, want 400", w.Code)
 	}

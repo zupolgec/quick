@@ -16,6 +16,8 @@ quick token create launch --name github-actions --expires 90d
 QUICK_API_TOKEN=qk_... quick deploy launch ./dist --yes
 ```
 
+The site has to exist first: publish it once yourself (`quick deploy launch ./dist`), so it gets its owner, then create the token.
+
 A token is deliberately narrow:
 
 - It is valid for **one site**, and only for **deploys**. It cannot delete, roll back, change visibility or the lock, or create other tokens.

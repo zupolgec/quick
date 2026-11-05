@@ -336,7 +336,10 @@ il sito com'era.
 ## Chi può modificare un sito
 
 Di chi è un sito viene tracciato al primo deploy (creatore) e a ogni
-aggiornamento. La regola di chi può sovrascrivere/eliminare/cambiare visibilità
+aggiornamento. Un sito esiste dal primo deploy: prima non si possono cambiare chi lo
+vede, il blocco o i token di deploy (`publish it first with quick deploy`), così ogni
+sito ha un proprietario; solo il limite di dimensione di un amministratore si può
+impostare prima, per un primo deploy grande. La regola di chi può sovrascrivere/eliminare/cambiare visibilità
 è impostabile sul server con `QUICK_OWNERSHIP`:
 
 - `free` (default): chiunque, in azienda, può tutto.

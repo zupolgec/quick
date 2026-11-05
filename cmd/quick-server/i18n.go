@@ -110,7 +110,7 @@ type uiText struct {
 	LevelPublic, LevelPublicHint                                         string
 	PeopleTitle, PeopleOnlyOwner, PeopleRemove, PeopleAdd, PeopleEmail   string
 	PeopleEmailHint, PeopleEmailUser                                     string
-	AccessErrNotOwnerA, AccessErrNotOwnerB, AccessErrNoOwner             string
+	AccessErrNotOwnerA, AccessErrNotOwnerB, AccessErrNotPublished        string
 	AccessErrBadEmail, AccessErrMissingEmail, AccessErrDomain            string
 	AccessErrTooMany, AccessErrOwnerAlways, AccessErrCode                string
 	AccessErrCodeShort, AccessErrCodeOnly                                string
@@ -278,7 +278,7 @@ var uiTexts = map[lang]uiText{
 
 		AccessErrNotOwnerA:    "Only the owner",
 		AccessErrNotOwnerB:    "can change who can see this site.",
-		AccessErrNoOwner:      "This site has no owner on record, so it can't be limited to chosen people.",
+		AccessErrNotPublished: "This site hasn't been published yet: publish it first, then choose who can see it.",
 		AccessErrBadEmail:     "this isn't a valid email address.",
 		AccessErrMissingEmail: "Enter at least one email address.",
 		AccessErrDomain:       "you can only add company accounts.",
@@ -477,7 +477,7 @@ var uiTexts = map[lang]uiText{
 
 		AccessErrNotOwnerA:    "Solo il proprietario",
 		AccessErrNotOwnerB:    "può cambiare chi vede questo sito.",
-		AccessErrNoOwner:      "Questo sito non ha un proprietario registrato, quindi non si può limitare a persone scelte.",
+		AccessErrNotPublished: "Questo sito non è ancora stato pubblicato: pubblicalo prima, poi scegli chi può vederlo.",
 		AccessErrBadEmail:     "non è un indirizzo email valido.",
 		AccessErrMissingEmail: "Inserisci almeno un indirizzo email.",
 		AccessErrDomain:       "puoi aggiungere solo account aziendali.",

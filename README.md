@@ -322,7 +322,11 @@ mix. A deploy that fails leaves the site as it was.
 
 ## Who can modify a site
 
-Who owns a site is tracked at the first deploy (creator) and on every update. The rule
+Who owns a site is tracked at the first deploy (creator) and on every update. A site
+exists from its first deploy: before that, changing who can see it, locking it or
+creating deploy tokens is refused (`publish it first with quick deploy`), so every site
+has an owner; only an administrator's size limit can be set ahead, for a big first
+deploy. The rule
 for who can overwrite/delete/change visibility is set on the server with
 `QUICK_OWNERSHIP`:
 
